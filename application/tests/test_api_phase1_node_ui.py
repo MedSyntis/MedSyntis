@@ -777,7 +777,7 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
     # 1. Spoofed user header WITHOUT valid proxy secret -> ignored on /me
     me_spoof = client.get(
         "/api/v1/me",
-        headers={"X-Oncoflow-User": "dr_admin"},
+        headers={"X-MedSyntis-User": "dr_admin"},
     )
     assert me_spoof.status_code == 200
     assert me_spoof.json() == {
@@ -790,9 +790,9 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
     me_user = client.get(
         "/api/v1/me",
         headers={
-            "X-Oncoflow-Proxy-Secret": "top-secret-proxy",
-            "X-Oncoflow-User": "dr_regular",
-            "X-Oncoflow-User-Name": "Dr Regular",
+            "X-MedSyntis-Proxy-Secret": "top-secret-proxy",
+            "X-MedSyntis-User": "dr_regular",
+            "X-MedSyntis-User-Name": "Dr Regular",
         },
     )
     assert me_user.status_code == 200
@@ -806,9 +806,9 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
     me_admin = client.get(
         "/api/v1/me",
         headers={
-            "X-Oncoflow-Proxy-Secret": "top-secret-proxy",
-            "X-Oncoflow-User": "dr_admin",
-            "X-Oncoflow-User-Name": "Dr Admin",
+            "X-MedSyntis-Proxy-Secret": "top-secret-proxy",
+            "X-MedSyntis-User": "dr_admin",
+            "X-MedSyntis-User-Name": "Dr Admin",
         },
     )
     assert me_admin.status_code == 200
@@ -820,8 +820,8 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
 
     # 4. Non-admin blocked on destructive endpoints
     non_admin_headers = {
-        "X-Oncoflow-Proxy-Secret": "top-secret-proxy",
-        "X-Oncoflow-User": "dr_regular",
+        "X-MedSyntis-Proxy-Secret": "top-secret-proxy",
+        "X-MedSyntis-User": "dr_regular",
     }
     assert (
         client.post("/api/v1/queue/clean", headers=non_admin_headers).status_code == 403
@@ -850,7 +850,7 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
     )
 
     # 5. Spoofed admin header WITHOUT valid proxy secret blocked on destructive endpoints
-    spoof_headers = {"X-Oncoflow-User": "dr_admin"}
+    spoof_headers = {"X-MedSyntis-User": "dr_admin"}
     assert client.post("/api/v1/queue/clean", headers=spoof_headers).status_code == 403
     assert (
         client.delete(
@@ -861,8 +861,8 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
 
     # 6. Admin with valid proxy secret allowed on destructive endpoints
     admin_headers = {
-        "X-Oncoflow-Proxy-Secret": "top-secret-proxy",
-        "X-Oncoflow-User": "dr_admin",
+        "X-MedSyntis-Proxy-Secret": "top-secret-proxy",
+        "X-MedSyntis-User": "dr_admin",
     }
     assert client.post("/api/v1/queue/clean", headers=admin_headers).status_code == 200
     assert (
@@ -872,12 +872,12 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
         == 200
     )
 
-    # 7. Internal service call (no X-Oncoflow-User header) remains allowed, even when X-Oncoflow-Proxy-Secret is sent
+    # 7. Internal service call (no X-MedSyntis-User header) remains allowed, even when X-MedSyntis-Proxy-Secret is sent
     assert client.post("/api/v1/queue/clean").status_code == 200
     assert (
         client.post(
             "/api/v1/queue/clean",
-            headers={"X-Oncoflow-Proxy-Secret": "top-secret-proxy"},
+            headers={"X-MedSyntis-Proxy-Secret": "top-secret-proxy"},
         ).status_code
         == 200
     )

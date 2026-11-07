@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
-from src.application.agent.agent import ChatResponse, OncowflowAgent
+from src.application.agent.agent import ChatResponse, MedSyntisAgent
 from src.application.reader import DocumentReader
 from src.domain.oncology.agents import Agents as OncologyAgents
 
@@ -146,7 +146,7 @@ class TestTokenCachePhase2PromptPrefix(unittest.TestCase):
         Interactive `ChatResponse` mode must NOT pre-inject the full patient record into
         the system prompt so short greetings or connectivity checks remain lightweight.
         """
-        OncowflowAgent(
+        MedSyntisAgent(
             config=self.mock_config,
             mtd=self.reader_with_markdown,
             output_format=ChatResponse,

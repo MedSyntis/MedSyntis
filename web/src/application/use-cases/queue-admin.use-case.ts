@@ -1,5 +1,5 @@
 import type { ClinicalDomain, QueueJobItem, QueueStats } from "../../domain/types.js";
-import type { OncoflowApiPort } from "../ports/oncoflow-api.port.js";
+import type { MedsyntisApiPort } from "../ports/medsyntis-api.port.js";
 
 export interface QueueDashboardView {
   stats: QueueStats;
@@ -8,7 +8,7 @@ export interface QueueDashboardView {
 }
 
 export class QueueAdminUseCase {
-  constructor(private readonly api: OncoflowApiPort) {}
+  constructor(private readonly api: MedsyntisApiPort) {}
 
   async getDashboard(domain: ClinicalDomain, allDomains = true): Promise<QueueDashboardView> {
     const [stats, jobs] = await Promise.all([

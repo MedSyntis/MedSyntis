@@ -139,7 +139,7 @@ spec:
           # Pré-peupler le cache pour éviter ce délai :
           #   gsutil -m cp -r \
           #     ~/.cache/huggingface/hub/models--unsloth--Qwen3.6-35B-A3B-MTP-GGUF \
-          #     gs://oncoflow-models-cache/hub/
+          #     gs://medsyntis-models-cache/hub/
           failureThreshold: 359
         resources:
           limits:
@@ -154,4 +154,4 @@ spec:
         csi:
           driver: gcsfuse.run.googleapis.com
           volumeAttributes:
-            bucketName: oncoflow-models-cache
+            bucketName: medsyntis-models-cache

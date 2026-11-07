@@ -5,7 +5,7 @@ from pydantic import Field
 
 from src.domain.common.common_ressources import *  # noqa: F403
 
-from src.application.agent.agent import OncowflowAgent
+from src.application.agent.agent import MedSyntisAgent
 from src.domain.oncology.agents import Agents
 from src.domain.common.patient_mdt_common_form import PatientMDTForm
 
@@ -109,7 +109,7 @@ class PatientMDTOncologicForm(PatientMDTForm):
         )
 
     class ExpertAnswer(PatientMDTForm.default_model):
-        agents: ClassVar[list[type[OncowflowAgent]]] = [
+        agents: ClassVar[list[type[MedSyntisAgent]]] = [
             Agents.Pancreas_expert_agent,
             Agents.Oesophagus_expert_agent,
             Agents.Hepatocellular_expert_agent,
@@ -141,7 +141,7 @@ class PatientMDTOncologicForm(PatientMDTForm):
             """
 
     class MTDCompleted(PatientMDTForm.MTDCompleted):
-        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
 
     class CareOrientationProposal(PatientMDTForm.CareOrientationProposal):
         """
@@ -149,7 +149,7 @@ class PatientMDTOncologicForm(PatientMDTForm):
         of patient care should be discussed by the medical board, its priority, and rationale.
         """
 
-        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
         collaborative = True
 
         question: ClassVar[str] = """

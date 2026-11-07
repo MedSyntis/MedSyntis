@@ -94,7 +94,7 @@ spec:
         # pas --reasoning-format deepseek (spécifique Qwen3/DeepSeek)
         # Pas de --reasoning-budget non plus (géré par le template Gemma)
         # ─── Multimodal ────────────────────────────────────────────────────────
-        # Oncoflow n'envoie que du texte → désactiver le mmproj (projecteur vision)
+        # MedSyntis n'envoie que du texte → désactiver le mmproj (projecteur vision)
         # Le mmproj-BF16.gguf pèse ~2-3 GB VRAM et ralentit l'inférence text-only
         # car llama.cpp le charge automatiquement avec les GGUF unsloth/gemma-4
         - "--no-mmproj"
@@ -122,4 +122,4 @@ spec:
         csi:
           driver: gcsfuse.run.googleapis.com
           volumeAttributes:
-            bucketName: oncoflow-models-cache
+            bucketName: medsyntis-models-cache

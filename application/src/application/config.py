@@ -77,9 +77,9 @@ def _detect_runtime_service(logger_name: str = "") -> str:
         return "api"
 
     lname = (logger_name or "").lower()
-    if lname == "ui" or lname.startswith("oncoflow.ui"):
+    if lname == "ui" or lname.startswith("medsyntis.ui"):
         return "ui"
-    if lname == "api" or lname.startswith(("oncoflow.api", "oncoflow.queue")):
+    if lname == "api" or lname.startswith(("medsyntis.api", "medsyntis.queue")):
         return "api"
     return "ui" if has_st else ("api" if has_fastapi else "app")
 
@@ -112,7 +112,7 @@ class LogSettings(BaseSettings):
     )
     file: str | None = Field(
         default=None,
-        description="Optional path to a log file (e.g. /var/log/oncoflow/oncoflow.log). Enables RotatingFileHandler.",
+        description="Optional path to a log file (e.g. /var/log/medsyntis/medsyntis.log). Enables RotatingFileHandler.",
     )
     max_bytes: int = Field(
         default=10 * 1024 * 1024,
@@ -210,7 +210,7 @@ class DatabasesVectorialSettings(BaseSettings):
         description="Type of vectorial database to use. Supported values: milvus, chroma.",
     )
     collection: str = Field(
-        default="oncoflowDocs",
+        default="medsyntisDocs",
         description="Name of the vector collection for document storage and retrieval.",
     )
 
@@ -229,7 +229,7 @@ class MilvusDBSettings(BaseSettings):
         description="Authentication token for Milvus in the format 'username:password'.",
     )
     database: str = Field(
-        default="oncowflow",
+        default="medsyntis",
         description="Name of the Milvus database instance.",
     )
     port: str = Field(
@@ -296,11 +296,11 @@ class MongoDBSettings(BaseSettings):
         description="Port number of the MongoDB server.",
     )
     database: str = Field(
-        default="Oncoflow",
+        default="MedSyntis",
         description="Name of the primary MongoDB database for document metadata.",
     )
     vectordatabase: str = Field(
-        default="OncoflowVector",
+        default="MedSyntisVector",
         description="Name of the MongoDB database used for vector storage.",
     )
 
@@ -335,7 +335,7 @@ class QueueSettings(BaseSettings):
     )
     api_url: str = Field(
         default="http://127.0.0.1:8000",
-        description="URL of the cross-domain FastAPI service hosting the central PriorityQueue (e.g. http://127.0.0.1:8000 in dev, http://oncoflow-api:8000 in prod). Falls back to in-process PriorityQueue if unreachable.",
+        description="URL of the cross-domain FastAPI service hosting the central PriorityQueue (e.g. http://127.0.0.1:8000 in dev, http://medsyntis-api:8000 in prod). Falls back to in-process PriorityQueue if unreachable.",
     )
 
 
@@ -425,11 +425,11 @@ class ApiSecuritySettings(BaseSettings):
         description="Comma-separated HTTP methods allowed for CORS (APP_API_CORS_ALLOW_METHODS).",
     )
     cors_allow_headers: str = Field(
-        default="Authorization,Content-Type,X-API-Key,X-Oncoflow-Domain,X-Oncoflow-User,X-Oncoflow-User-Name,X-Oncoflow-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With",
+        default="Authorization,Content-Type,X-API-Key,X-MedSyntis-Domain,X-MedSyntis-User,X-MedSyntis-User-Name,X-MedSyntis-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With",
         description="Comma-separated HTTP request headers allowed for CORS (APP_API_CORS_ALLOW_HEADERS).",
     )
     cors_expose_headers: str = Field(
-        default="X-Oncoflow-Domain,X-Request-ID,Content-Disposition",
+        default="X-MedSyntis-Domain,X-Request-ID,Content-Disposition",
         description="Comma-separated response headers exposed to browser scripts via CORS (APP_API_CORS_EXPOSE_HEADERS).",
     )
     cors_max_age: int = Field(
@@ -631,7 +631,7 @@ def is_local_host(url_or_host: str) -> bool:
 # A ContextVar instead of a class-level dict: an override set by one user session
 # must never leak into other sessions or background worker threads.
 _RUNTIME_OVERRIDES: contextvars.ContextVar[dict[str, Any] | None] = (
-    contextvars.ContextVar("oncoflow_runtime_overrides", default=None)
+    contextvars.ContextVar("medsyntis_runtime_overrides", default=None)
 )
 
 _LOGGING_GLOBALS_CONFIGURED = False
@@ -778,7 +778,7 @@ class AppConfig(BaseSettings):
 
     proxy_secret: SecretStr | None = Field(
         default=None,
-        description="Shared secret injected by the reverse proxy (header `X-Oncoflow-Proxy-Secret`) in auth_mode=oauth_proxy. Identity headers are ignored when it does not match (APP_PROXY_SECRET).",
+        description="Shared secret injected by the reverse proxy (header `X-MedSyntis-Proxy-Secret`) in auth_mode=oauth_proxy. Identity headers are ignored when it does not match (APP_PROXY_SECRET).",
     )
 
     admin_users: str = Field(

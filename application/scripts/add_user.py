@@ -5,7 +5,7 @@ import streamlit_authenticator as stauth
 
 
 def main():
-    print("--- Oncoflow : Ajouter un nouvel utilisateur ---")
+    print("--- MedSyntis : Ajouter un nouvel utilisateur ---")
 
     username = input("Nom d'utilisateur (username) : ").strip()
     if not username:

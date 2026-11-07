@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// DataSyntis design system — WCAG 2.2 contrast check of tokens.css (zero dependency).
+// MedSyntis design system — WCAG 2.2 contrast check of tokens.css (zero dependency).
 // Usage: node web/scripts/check-contrast.mjs   (exit code 1 if any pair fails)
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

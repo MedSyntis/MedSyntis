@@ -17,7 +17,7 @@ class TestMongodbDocumentStore(unittest.TestCase):
         self.mock_config.mongodb.port = "27017"
         self.mock_config.mongodb.user = "root"
         self.mock_config.mongodb.password = "password"
-        self.mock_config.mongodb.database = "TestOncoflow"
+        self.mock_config.mongodb.database = "TestMedSyntis"
 
         # Mock logger
         self.mock_logger = MagicMock()

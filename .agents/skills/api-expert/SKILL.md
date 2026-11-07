@@ -1,18 +1,18 @@
 ---
 name: api-expert
-description: "Expert on the Oncoflow / MedDataSyntis Cross-Domain FastAPI architecture (`app-api.py`, `src/routers/`, `src/models/`, `src/application/use_cases/`). Use when auditing, debugging, refactoring, testing, or extending REST and Server-Sent Events (SSE) API endpoints."
+description: "Expert on the MedSyntis Cross-Domain FastAPI architecture (`app-api.py`, `src/routers/`, `src/models/`, `src/application/use_cases/`). Use when auditing, debugging, refactoring, testing, or extending REST and Server-Sent Events (SSE) API endpoints."
 ---
 
-# Oncoflow API Expert Skill (`api-expert`)
+# MedSyntis API Expert Skill (`api-expert`)
 
-This skill encapsulates full architectural knowledge of the **Oncoflow / MedDataSyntis Cross-Domain FastAPI** (`application/app-api.py`, `src/routers/`, `src/models/`) and defines a concrete roadmap and ruleset for evolving and improving the API.
+This skill encapsulates full architectural knowledge of the **MedSyntis Cross-Domain FastAPI** (`application/app-api.py`, `src/routers/`, `src/models/`) and defines a concrete roadmap and ruleset for evolving and improving the API.
 
 ---
 
 ## 1. Current API Architecture Map
 
 ### Entrypoint & Lifespan (`application/app-api.py`)
-- **App Metadata**: `Oncoflow Cross-Domain API` (`v1.1.0`), OpenAPI schema served at `/api/v1/openapi.json`, interactive docs at `/docs` and `/redoc`.
+- **App Metadata**: `MedSyntis Cross-Domain API` (`v1.1.0`), OpenAPI schema served at `/api/v1/openapi.json`, interactive docs at `/docs` and `/redoc`.
 - **Lifespan Management**:
   1. Boots `InMemoryQueueManager` with `auto_start_workers=True`.
   2. Runs crash recovery from MongoDB (`queue_manager.recover_unfinished_from_mongodb()`).
@@ -25,7 +25,7 @@ This skill encapsulates full architectural knowledge of the **Oncoflow / MedData
   - Uses constant-time `hmac.compare_digest` against `APP_API_TOKEN` (`SecretStr`).
   - Mandatory whenever `APP_DEV_MODE=false` (enforced at startup).
 - **Multi-Domain Routing (`AllowedDomainMiddleware` & `DomainConfigDep`)**:
-  - Intercepts `/api/*` requests, extracts `?domain=...` or `X-Oncoflow-Domain`, validates against `APP_ALLOWED_DOMAINS` (e.g., `oncology`, `sma`), attaches `request.state.domain_config` via `@lru_cache` `get_domain_scoped_config(domain)`, and echoes `X-Oncoflow-Domain` in response headers.
+  - Intercepts `/api/*` requests, extracts `?domain=...` or `X-MedSyntis-Domain`, validates against `APP_ALLOWED_DOMAINS` (e.g., `oncology`, `sma`), attaches `request.state.domain_config` via `@lru_cache` `get_domain_scoped_config(domain)`, and echoes `X-MedSyntis-Domain` in response headers.
 - **Database Session (`get_db` / `require_db`)**:
   - Yields a domain-scoped `Mongodb(config)` wrapper backed by the shared process-wide `MongoClient` pool.
 
@@ -102,7 +102,7 @@ When improving or refactoring the API, systematically address these architectura
 
 ## 3. Testing & Verification Workflow (Strict TDD)
 
-Always run from `/home/guillaume/git/oncoflow/application`:
+Always run from `application/`:
 
 1. **Write Failing Contract / Integration Tests First (`Red`)**:
    - Add tests in `application/tests/test_api_*.py` using `fastapi.testclient.TestClient(app)` without starting background workers (do not enter lifespan context unless testing lifespan).

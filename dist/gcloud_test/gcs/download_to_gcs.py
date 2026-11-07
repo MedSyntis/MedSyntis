@@ -24,7 +24,7 @@ MODELS = {
 
 
 def main():
-    bucket_name = "oncoflow-models-cache"
+    bucket_name = "medsyntis-models-cache"
     model_key = sys.argv[1] if len(sys.argv) > 1 else "ornith-moe"
     if model_key not in MODELS:
         print(f"Unknown model '{model_key}'. Available: {', '.join(MODELS.keys())}")
@@ -32,7 +32,7 @@ def main():
     blob_name, url = MODELS[model_key]
 
     print(f"Connecting to GCS bucket: {bucket_name}...")
-    storage_client = storage.Client(project="oncowflow-ollama")
+    storage_client = storage.Client(project="medsyntis-ollama")
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
 

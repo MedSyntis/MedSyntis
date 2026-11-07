@@ -1,9 +1,9 @@
 import type {
   ChatReply,
+  MedsyntisApiPort,
   MissingItemsUpdateInput,
-  OncoflowApiPort,
   UploadFileInput,
-} from "../../application/ports/oncoflow-api.port.js";
+} from "../../application/ports/medsyntis-api.port.js";
 import {
   buildDefaultDomainFormSchema,
   coerceSectionUpdatePayload,
@@ -129,7 +129,7 @@ function buildClinicalPdfBuffer(title: string, subtitle: string, bodyLines: stri
 }
 
 const MINIMAL_PDF_BUFFER = buildClinicalPdfBuffer(
-  "DataSyntis — Compte Rendu Medical RCP",
+  "MedSyntis — Compte Rendu Medical RCP",
   "Document clinique source (mode demonstration local)",
   [
     "Compte rendu medical numerise pour preparation collegiale de seance RCP.",
@@ -137,7 +137,7 @@ const MINIMAL_PDF_BUFFER = buildClinicalPdfBuffer(
   ],
 );
 
-export class InMemoryOncoflowApiFake implements OncoflowApiPort {
+export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
   private forms = new Map<string, MdtFormDetail>();
   private batches = new Map<string, BatchStatus>();
   private resources = new Map<string, ResourceDocument>();
@@ -1196,7 +1196,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
       form.markdownText ||
         `Dossier clinique ${patientLabel}\nFichier source : ${form.file}\nDate RCP : ${form.mdtDate ?? "Non renseignee"}`,
     );
-    return buildClinicalPdfBuffer("DataSyntis — Fiche Source RCP / MDT", subtitle, lines);
+    return buildClinicalPdfBuffer("MedSyntis — Fiche Source RCP / MDT", subtitle, lines);
   }
 
   async askDossierQuestion(
@@ -1261,7 +1261,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         file: f.filename,
         patientId: pid,
         domain,
-        mdtDate: new Date().toISOString().slice(0, 10),
+        mdtDate: "2026-10-31",
         processingStatus: "COMPLETED",
         processingStep: null,
         processingProgressPct: 100,
@@ -1269,7 +1269,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
           PatientAdministrative: {
             first_name: domain === "sma" ? "Léo" : "Jeanne",
             last_name: domain === "sma" ? "EXEMPLE" : "FICTIVE",
-            date_rcp: new Date().toISOString().slice(0, 10),
+            date_rcp: "2026-10-31",
           },
           MTDCompleted: { is_mtd_complete: true, what_missing: [] },
           CareOrientationProposal: {
@@ -1386,7 +1386,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         "- Toute proposition d'orientation pre-RCP doit etre validee par le college medical.",
       ].join("\n"),
     );
-    return buildClinicalPdfBuffer(`DataSyntis — ${domainLabel}`, `Fichier : ${filename}`, lines);
+    return buildClinicalPdfBuffer(`MedSyntis — ${domainLabel}`, `Fichier : ${filename}`, lines);
   }
 
   async listAgents(domain: ClinicalDomain, language: Language): Promise<AgentModuleInfo[]> {

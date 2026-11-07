@@ -31,7 +31,7 @@ from src.routers.queue import router as queue_router
 from src.routers.resources import router as resources_router
 
 app_conf = get_base_config()
-logger = app_conf.set_logger("oncoflow.api")
+logger = app_conf.set_logger("medsyntis.api")
 
 if app_conf.api_token is None:
     if not app_conf.dev_mode:
@@ -46,7 +46,7 @@ if app_conf.api_token is None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(
-        f"Starting Cross-Domain Oncoflow FastAPI App (allowed_domains={app_conf.enabled_domains_list}, "
+        f"Starting Cross-Domain MedSyntis FastAPI App (allowed_domains={app_conf.enabled_domains_list}, "
         f"batch_size={app_conf.queue.batch_size})..."
     )
     queue_manager = get_global_queue_manager(app_conf, auto_start_workers=True)
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    logger.info("Shutting down Oncoflow FastAPI App & PriorityQueue workers...")
+    logger.info("Shutting down MedSyntis FastAPI App & PriorityQueue workers...")
     queue_manager.shutdown()
     try:
         from src.application.app_functions import unload_active_models
@@ -106,7 +106,7 @@ def configure_security_middlewares(target_app: FastAPI, conf: AppConfig) -> None
 
 
 app = FastAPI(
-    title="Oncoflow Cross-Domain API",
+    title="MedSyntis Cross-Domain API",
     description=(
         "API REST multi-domaines versionnée pour la gestion des RCP (Oncologie, SMA...) "
         "et de la file de traitement `queue.PriorityQueue` intégrée."

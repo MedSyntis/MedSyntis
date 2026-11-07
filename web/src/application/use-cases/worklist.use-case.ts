@@ -5,7 +5,7 @@ import type {
   WorklistFilter,
   WorklistKpis,
 } from "../../domain/types.js";
-import type { OncoflowApiPort } from "../ports/oncoflow-api.port.js";
+import type { MedsyntisApiPort } from "../ports/medsyntis-api.port.js";
 
 export interface WorklistViewResult {
   kpis: WorklistKpis;
@@ -15,7 +15,7 @@ export interface WorklistViewResult {
 }
 
 export class WorklistUseCase {
-  constructor(private readonly api: OncoflowApiPort) {}
+  constructor(private readonly api: MedsyntisApiPort) {}
 
   async execute(domain: ClinicalDomain, filter: WorklistFilter = {}): Promise<WorklistViewResult> {
     const viewMode = filter.viewMode ?? "patients";

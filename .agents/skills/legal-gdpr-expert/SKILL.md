@@ -1,17 +1,17 @@
 ---
 name: legal-gdpr-expert
-description: "French GDPR (CNIL, Loi Informatique et Libertés, HDS, PGSSI-S) and Medical-Legal (CSP, EU AI Act, EU MDR 2017/745, HAS) compliance expert for DataSyntis. Audits features, UI wording, data flows, storage, logging, and AI prompts to provide structured regulatory and medico-legal opinions."
+description: "French GDPR (CNIL, Loi Informatique et Libertés, HDS, PGSSI-S) and Medical-Legal (CSP, EU AI Act, EU MDR 2017/745, HAS) compliance expert for MedSyntis. Audits features, UI wording, data flows, storage, logging, and AI prompts to provide structured regulatory and medico-legal opinions."
 ---
 
-# DataSyntis French GDPR & Medical-Legal Expert Skill (`legal-gdpr-expert`)
+# MedSyntis French GDPR & Medical-Legal Expert Skill (`legal-gdpr-expert`)
 
-This skill provides the French and European regulatory, data-protection, and medico-legal framework for **DataSyntis** (Oncoflow / MedDataSyntis). Use it to audit architecture, features, prompts, UI wording, data storage, logging, and clinical workflows, and to deliver structured legal and compliance opinions.
+This skill provides the French and European regulatory, data-protection, and medico-legal framework for **MedSyntis**. Use it to audit architecture, features, prompts, UI wording, data storage, logging, and clinical workflows, and to deliver structured legal and compliance opinions.
 
 ---
 
 ## 1. Regulatory Framework & Applicable Texts
 
-Every compliance review must evaluate DataSyntis against six pillars of French and European health law:
+Every compliance review must evaluate MedSyntis against six pillars of French and European health law:
 
 ### A. GDPR & French Data Protection Law (CNIL / LIL)
 - **Regulation (EU) 2016/679 (GDPR / RGPD)**:
@@ -34,14 +34,14 @@ Every compliance review must evaluate DataSyntis against six pillars of French a
   - Health data is covered by strict professional secrecy (*secret professionnel*).
   - Information may only be shared among healthcare professionals belonging to the **care team (*équipe de soins*, Art. L. 1110-12 CSP)** when strictly necessary for the coordination or continuity of care (such as an RCP / MDT meeting).
 - **Article L. 1111-8 & R. 1111-1 et seq. (HDS — Hébergeur de Données de Santé)**:
-  - When DataSyntis is deployed **on-premise** inside a hospital's own infrastructure and operated by the hospital, HDS certification does not apply to the hospital itself, though **PGSSI-S** (Politique Générale de Sécurité des Systèmes d'Information de Santé) standards apply.
-  - If DataSyntis is ever hosted or managed by a third party on behalf of a hospital (SaaS / managed cloud / external GPU host), the hosting provider **must hold HDS certification** (all 6 HDS activities as applicable) and **no data may be transferred outside the EU** without sovereign guarantees (SecNumCloud / HDS v2 alignment).
+  - When MedSyntis is deployed **on-premise** inside a hospital's own infrastructure and operated by the hospital, HDS certification does not apply to the hospital itself, though **PGSSI-S** (Politique Générale de Sécurité des Systèmes d'Information de Santé) standards apply.
+  - If MedSyntis is ever hosted or managed by a third party on behalf of a hospital (SaaS / managed cloud / external GPU host), the hosting provider **must hold HDS certification** (all 6 HDS activities as applicable) and **no data may be transferred outside the EU** without sovereign guarantees (SecNumCloud / HDS v2 alignment).
 - **Article L. 4001-2 CSP (Human Guarantee for AI in Health — "Garantie Humaine" / Bioethics Law)**:
   - When an algorithmic or AI data-processing tool is used for a medical act (prevention, diagnosis, or care), the healthcare professional must evaluate its output and **remains solely responsible** for the medical decision and the adaptation of parameters/conclusions for the specific patient.
   - Traceability of human review (`manual_edits`) is a direct technical safeguard supporting Article L. 4001-2 CSP.
 - **Article D. 6124-131 CSP & INCa Referentials (Organisation des RCP en Cancérologie)** / **PNDS (Filières Maladies Rares — FILNEMUS / SMA)**:
   - Every cancer patient's file must be registered and discussed in a Multidisciplinary Team Meeting (**RCP**), adhering to national guidelines (**TNCD**, **INCa**, **HAS**) and specialty quorum rules.
-  - DataSyntis assists the **preparation** (completeness check, synoptic summary, guideline citations) and **logistics** (priority ordering, specialty quorum identification), while the collegial decision belongs exclusively to the RCP physicians.
+  - MedSyntis assists the **preparation** (completeness check, synoptic summary, guideline citations) and **logistics** (priority ordering, specialty quorum identification), while the collegial decision belongs exclusively to the RCP physicians.
 
 ### C. European Medical Device Regulation (MDR — Regulation (EU) 2017/745) & MDCG 2019-11
 - **Qualification & Classification of Medical Software (MDSW)**:
@@ -62,7 +62,7 @@ Every compliance review must evaluate DataSyntis against six pillars of French a
 
 ---
 
-## 2. DataSyntis Non-Negotiable Compliance Rules
+## 2. MedSyntis Non-Negotiable Compliance Rules
 
 When auditing code, specifications, or issues, verify compliance with these **8 Golden Rules**:
 

@@ -1,11 +1,11 @@
 ---
 name: python-developer
-description: "Develops, modifies, and debugs Python services, LangChain chains, Vector Store connectors, and Streamlit dashboards within the Oncoflow application."
+description: "Develops, modifies, and debugs Python services, LangChain chains, Vector Store connectors, and Streamlit dashboards within the MedSyntis application."
 ---
 
 # Python Developer Skill
 
-This skill provides comprehensive rules, code patterns, and reference architectures for managing Python development on the Oncoflow platform.
+This skill provides comprehensive rules, code patterns, and reference architectures for managing Python development on the MedSyntis platform.
 
 ## Key Technologies
 - **Python `>=3.13`** (Check and strictly follow typing and typing extension patterns).
@@ -16,7 +16,7 @@ This skill provides comprehensive rules, code patterns, and reference architectu
 ## Rules & Patterns
 
 ### 1. LangChain Agent Integration
-When modifying or instantiating an agent, always refer to the base template in [agent.py](file:///home/guillaume/git/oncoflow/application/src/application/agent/agent.py). Utilize structured response structures based on Pydantic `BaseModel`:
+When modifying or instantiating an agent, always refer to the base template in [`application/src/application/agent/agent.py`](../../../application/src/application/agent/agent.py). Utilize structured response structures based on Pydantic `BaseModel`:
 
 ```python
 from pydantic import BaseModel, Field

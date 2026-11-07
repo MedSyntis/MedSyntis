@@ -17,7 +17,7 @@ from src.application.config import (
         "http://127.0.0.1:4000",
         "http://localhost",
         "http://litellm",  # Docker service name
-        "http://oncoflow-api:8000",
+        "http://medsyntis-api:8000",
         "http://10.0.0.12",
         "http://192.168.1.20:11434",
         "http://172.17.0.2",

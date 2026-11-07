@@ -1,6 +1,6 @@
 import { loadConfig } from "./config.js";
-import { HttpOncoflowApiAdapter } from "./infrastructure/api/http-oncoflow-api.adapter.js";
-import { InMemoryOncoflowApiFake } from "./infrastructure/api/in-memory-oncoflow-api.fake.js";
+import { HttpMedsyntisApiAdapter } from "./infrastructure/api/http-medsyntis-api.adapter.js";
+import { InMemoryMedsyntisApiFake } from "./infrastructure/api/in-memory-medsyntis-api.fake.js";
 import { buildServer } from "./ui/server.js";
 
 async function main() {
@@ -17,11 +17,11 @@ async function main() {
     }
   }
 
-  const fakeFallback = config.useFakeApiFallback ? new InMemoryOncoflowApiFake() : undefined;
+  const fakeFallback = config.useFakeApiFallback ? new InMemoryMedsyntisApiFake() : undefined;
   const api =
     process.env.APP_USE_FAKE_ONLY === "true" && fakeFallback
       ? fakeFallback
-      : new HttpOncoflowApiAdapter({
+      : new HttpMedsyntisApiAdapter({
           baseUrl: config.apiUrl,
           apiToken: config.apiToken,
           proxySecret: config.proxySecret,
@@ -31,7 +31,7 @@ async function main() {
   const app = await buildServer({ config, api });
   await app.listen({ port: config.port, host: config.host });
   process.stdout.write(
-    `[DataSyntis Web] Server listening on http://${config.host}:${config.port} (API: ${config.apiUrl})\n`,
+    `[MedSyntis Web] Server listening on http://${config.host}:${config.port} (API: ${config.apiUrl})\n`,
   );
 }
 

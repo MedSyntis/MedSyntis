@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
-import { InMemoryOncoflowApiFake } from "../../src/infrastructure/api/in-memory-oncoflow-api.fake.js";
+import { InMemoryMedsyntisApiFake } from "../../src/infrastructure/api/in-memory-medsyntis-api.fake.js";
 import {
   renderChatLogMessagePartial,
   renderSafeMarkdown,
@@ -14,7 +14,7 @@ import {
 import { html, raw } from "../../src/ui/templates.js";
 
 async function createTestApp() {
-  const api = new InMemoryOncoflowApiFake();
+  const api = new InMemoryMedsyntisApiFake();
   const config = loadConfig({
     PORT_WEB: "0",
     APP_DOMAIN: "oncology",
@@ -423,7 +423,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(isSafeFilename("../etc/passwd")).toBe(false);
     expect(isSafeFilename("sub/file.pdf")).toBe(false);
 
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const config = loadConfig({
       PORT_WEB: "0",
       APP_DEV_MODE: "false",
@@ -439,16 +439,16 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     const healthRes = await app.inject({ method: "GET", url: "/health" });
     expect(healthRes.statusCode).toBe(200);
 
-    // Unauthenticated request without X-Oncoflow-Proxy-Secret is rejected with 403
+    // Unauthenticated request without X-MedSyntis-Proxy-Secret is rejected with 403
     const deniedRes = await app.inject({ method: "GET", url: "/worklist" });
     expect(deniedRes.statusCode).toBe(403);
 
-    // Authenticated request with valid X-Oncoflow-Proxy-Secret + OAuth2-Proxy user header succeeds
+    // Authenticated request with valid X-MedSyntis-Proxy-Secret + OAuth2-Proxy user header succeeds
     const allowedRes = await app.inject({
       method: "GET",
       url: "/worklist",
       headers: {
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
         "x-auth-request-email": "dr.martin@chu-exemple.fr",
       },
@@ -463,7 +463,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       method: "POST",
       url: "/admin/queue/locks/release",
       headers: {
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });
@@ -474,7 +474,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       method: "POST",
       url: "/admin/queue/locks/release",
       headers: {
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.admin",
       },
     });
@@ -485,8 +485,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       method: "GET",
       url: "/worklist",
       headers: {
-        host: "sma.meddatasyntis.bricks-it.fr",
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        host: "sma.medsyntis.bricks-it.fr",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });
@@ -500,8 +500,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       method: "GET",
       url: "/worklist",
       headers: {
-        host: "oncologic.meddatasyntis.bricks-it.fr",
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        host: "oncologic.medsyntis.bricks-it.fr",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });
@@ -515,8 +515,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       method: "GET",
       url: "/worklist?domain=oncology&priority=high",
       headers: {
-        host: "oncologic.meddatasyntis.bricks-it.fr",
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        host: "oncologic.medsyntis.bricks-it.fr",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });
@@ -528,8 +528,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       method: "GET",
       url: "/unknown-route-xyz",
       headers: {
-        host: "oncologic.meddatasyntis.bricks-it.fr",
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        host: "oncologic.medsyntis.bricks-it.fr",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });
@@ -542,8 +542,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       method: "GET",
       url: "/maintenance",
       headers: {
-        host: "sma.meddatasyntis.bricks-it.fr",
-        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        host: "sma.medsyntis.bricks-it.fr",
+        "x-medsyntis-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });

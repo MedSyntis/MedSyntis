@@ -1,4 +1,4 @@
-import type { ChatReply } from "../application/ports/oncoflow-api.port.js";
+import type { ChatReply } from "../application/ports/medsyntis-api.port.js";
 import type { BugListResult } from "../application/use-cases/feedback.use-case.js";
 import type { GuidelinesOverview } from "../application/use-cases/guidelines.use-case.js";
 import type {
@@ -362,8 +362,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
-  <title>${esc(title)} — DataSyntis</title>
-  <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
+  <title>${esc(title)} — MedSyntis</title>
+  <link rel="icon" href="/public/img/medsyntis-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/public/css/tokens.css?v=30">
   <link rel="stylesheet" href="/public/css/components.css?v=30">
 </head>
@@ -374,10 +374,10 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <!-- ===================== Sidebar (Material Design 3 Navigation Rail) ===================== -->
   <aside class="ds-sidebar ds-nav-rail" id="sidebar-nav" aria-label="Navigation principale" data-testid="sidebar">
     <div class="ds-rail__header">
-      <a class="ds-brand" href="/worklist?domain=${domainParam}" title="DataSyntis — ${session.domain === "sma" ? "RCP Maladies Rares · SMA" : "RCP Oncologie Digestive"}">
-        <img class="ds-brand__logo" src="/public/img/datasyntis-icon.svg" alt="" width="32" height="32">
+      <a class="ds-brand" href="/worklist?domain=${domainParam}" title="MedSyntis — ${session.domain === "sma" ? "RCP Maladies Rares · SMA" : "RCP Oncologie Digestive"}">
+        <img class="ds-brand__logo" src="/public/img/medsyntis-icon.svg" alt="" width="32" height="32">
         <span class="ds-brand__text">
-          <span class="ds-brand__name">Data<b>Syntis</b></span>
+          <span class="ds-brand__name">Med<b>Syntis</b></span>
           <span class="ds-brand__domain">${session.domain === "sma" ? "RCP Maladies Rares · SMA" : "RCP Oncologie Digestive"}</span>
         </span>
       </a>
@@ -469,7 +469,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
         ${iconSvg("ic-menu")}
       </button>
       <ol class="ds-breadcrumb" aria-label="Fil d'Ariane">
-        <li><a href="/worklist?domain=${domainParam}">DataSyntis</a></li>
+        <li><a href="/worklist?domain=${domainParam}">MedSyntis</a></li>
         ${breadcrumbHtml}
       </ol>
       <div class="ds-topbar__actions">
@@ -2867,7 +2867,7 @@ export function renderFeedbackPage(
     <div class="ds-page-header">
       <div class="ds-page-header__text">
         <h1>${esc(t("nav.feedback", lang))}</h1>
-        <p class="ds-muted">Signalez une anomalie d'extraction ou une suggestion d'ergonomie clinique pour améliorer DataSyntis.</p>
+        <p class="ds-muted">Signalez une anomalie d'extraction ou une suggestion d'ergonomie clinique pour améliorer MedSyntis.</p>
       </div>
     </div>
 
@@ -3619,7 +3619,7 @@ export function renderAgendaPage(
       </form>
     </dialog>
 
-    <!-- Destructive Confirmation Modal for Clearing Agenda (DataSyntis Rose) -->
+    <!-- Destructive Confirmation Modal for Clearing Agenda (MedSyntis Rose) -->
     <dialog class="ds-modal ds-modal--danger" id="clear-agenda-dialog" aria-labelledby="clear-agenda-title">
       <div class="ds-modal__header">
         <span>${iconSvg("ic-delete")}</span>

@@ -1,131 +1,140 @@
-# 🩺 MedDataSyntis — Guide à l'usage des Cliniciens
+# 🩺 MedSyntis — Clinical User Guide
 
-Bienvenue dans le guide d'utilisation de **MedDataSyntis**. Cet espace est conçu pour vous aider à comprendre comment notre solution d'intelligence artificielle locale vous accompagne dans la préparation et la tenue des **Réunions de Concertation Pluridisciplinaire (RCP)** (oncologie digestive, amyotrophie spinale, etc.).
+Welcome to the **MedSyntis** Clinical User Guide. This guide explains how hospital teams—**MDT Medical Secretaries**, **Oncologists**, **Digestive Surgeons**, **Gastroenterologists**, **Radiologists**, **Pathologists**, and **Neuromuscular / SMA Specialists**—use MedSyntis to prepare and conduct **Multidisciplinary Team Meetings (MDT / RCP — Réunions de Concertation Pluridisciplinaire)**.
+
+MedSyntis supports two specialized clinical domains out of the box:
+* **Digestive Oncology** — grounded in the French **TNCD** (*Thésaurus National de Cancérologie Digestive*) clinical guidelines.
+* **Spinal Muscular Atrophy (SMA)** — grounded in the French **PNDS** (*Protocole National de Diagnostic et de Soins*) neuromuscular reference guidelines.
 
 ---
 
-## 🌟 La Vision MedDataSyntis
+## 🌟 Clinical Workflow Overview
 
-La préparation d'une RCP est chronophage et exigeante. **MedDataSyntis** a été créé en étroite collaboration avec des professionnels de santé pour automatiser les tâches administratives et de synthèse complexes, vous permettant de vous concentrer sur votre cœur de métier : **la décision thérapeutique**.
+Preparing an MDT session involves collecting heterogeneous medical reports, verifying that mandatory exams are available, synthesizing longitudinal patient history, and scheduling specialist attendance. MedSyntis structures this workflow into four seamless stages:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Le Flux de Travail MedDataSyntis                  │
-├────────────────────────────────────────────────────────────────────────┤
-│  [1] Dépôt PDF ──► [2] Analyse & OCR ──► [3] Triage ──► [4] Aide TNCD  │
-│    (Dossiers)       (Pièces manquantes)  (Priorisation) (Décisions)    │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                            The MedSyntis Pre-MDT & Live-MDT Workflow                   │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  [1] Multi-PDF Upload ──► [2] Dossier Review & ──► [3] Session Agenda ──► [4] Live MDT │
+│      & 3-Wave AI              Human Verification       & Quorum Triage        & TNCD / │
+│      Extraction               (manual_edits)           (4 Strategies)         PNDS RAG │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 💡 Fonctionnalités Clés pour le Praticien
+## 🔒 Data Sovereignty & Medico-Legal Guarantees
 
-### 1. Synthèse Automatisée du Dossier Patient
-Dès que les documents médicaux (comptes-rendus d'anatomopathologie, d'imagerie, de chirurgie) sont importés, MedDataSyntis en extrait les informations cruciales :
-* **Identité et Contexte général** (Âge, antécédents, état général OMS/ECOG).
-* **Données Oncologiques** (Localisation tumorale, type histologique, classification TNM/pTNM).
-* **Marqueurs Biologiques** et examens d'imagerie clés (TDM, IRM, TEP-scan).
+> [!CAUTION] **100% Local-First — Zero Cloud Data Transmission**
+> Patient records never leave the hospital's internal network. All PDF parsing, OCR, vector indexing, and LLM reasoning execute **100% locally** on hospital hardware (zero calls to OpenAI, Anthropic, Google Cloud, or external servers), ensuring full compliance with **GDPR (RGPD)**, **CNIL**, and **HDS** (*Hébergement de Données de Santé*).
 
-### 2. Détection Préventive des Dossiers Incomplets (Missing Records)
-Pour éviter de reporter l'examen d'un patient lors de la réunion par manque d'informations :
-* L'IA analyse la présence de toutes les pièces requises selon le type de pathologie suspecté.
-* Une **alerte visuelle immédiate** est émise si un document ou une donnée obligatoire (ex. taille tumorale, statut de la biopsie) fait défaut.
-
-### 3. Triage et Priorisation des Dossiers
-Les réunions RCP disposent d'un temps limité. MedDataSyntis analyse la complexité clinique intrinsèque de chaque cas et propose :
-* Un **ordre de passage optimisé** afin de traiter en priorité les cas hautement urgents ou complexes nécessitant un débat approfondi.
-* Un gain de temps sur les dossiers standards dont la prise en charge est balisée.
-
-### 4. Alignement Scientifique : Le Référentiel TNCD
-MedDataSyntis intègre nativement le **Thésaurus National de Cancérologie Digestive (TNCD)**, la référence scientifique officielle en France :
-* L'IA interroge en temps réel le référentiel TNCD en fonction des caractéristiques du patient.
-* Elle vous suggère des propositions de schémas thérapeutiques (chirurgie première, chimiothérapie péri-opératoire, radio-chimiothérapie) conformes aux recommandations à jour, servant de garde-fou clinique.
+> [!IMPORTANT] **Human Oversight (*Garantie Humaine* — Art. L. 4001-2 CSP) & Non-Prescriptive Positioning**
+> * **Strictly Non-Prescriptive**: MedSyntis provides a pre-MDT documentary synthesis and care orientation proposal (`CareOrientationProposal`). It never issues a medical prescription and never replaces the collegial discussion of the MDT board.
+> * **Traceable & Reversible**: Every AI-extracted field cites its source document and page, can be edited manually by a clinician or secretary (`manual_edits`), and is permanently protected against being overwritten during subsequent AI re-analyses.
 
 ---
 
-## 🔒 Confidentialité & Sécurité des Données (Souveraineté Totale)
+## 👩‍💼 Stage 1: Uploading Patient Records & 3-Wave Local AI Extraction (`/ingest`)
 
-> [!CAUTION] **Zéro Cloud — Zéro Fuite de Données**
-> Les données de vos patients ne quittent **jamais** l'établissement de santé. MedDataSyntis est une solution **local-first** :
-> * Aucun appel à des serveurs tiers ou des API publiques (type OpenAI, Google ou Anthropic).
-> * Les modèles de traitement du langage (LLM) s'exécutent **localement** sur l'infrastructure sécurisée de l'hôpital.
-> * Conformité totale avec le **RGPD** et les exigences de l'**Hébergement de Données de Santé (HDS)**.
+ primarily used by **MDT Medical Secretaries** and referring clinicians prior to the meeting.
 
----
+### 1. Multi-PDF Drag-and-Drop Upload
+Navigate to **Import PDF (`/ingest`)** or trigger **Import PDF** directly from the Worklist or a Patient Dossier:
+* **Single or Batch Upload**: Drop one or multiple PDF reports (pathology reports, CT/MRI/PET-scan reports, operative notes, biological panels, genetic *SMN1*/*SMN2* reports, or HFMSE / CHOP-INTEND / RULM motor assessments).
+* **Automatic SHA-256 Duplicate Detection**: MedSyntis computes a cryptographic hash of every uploaded PDF. If an identical document is already registered in the domain, MedSyntis immediately notifies you and links to the existing record instead of creating duplicates.
+* **Automatic or Manual Patient Association**:
+  * **Automatic Mode (Default)**: Local AI extracts the patient's administrative identity (`nom`, `prenom`, `date_naissance`) and automatically links the new MDT form to an existing longitudinal patient record—or creates a new patient dossier if none matches.
+  * **Manual Association**: You can explicitly select an existing patient dossier before uploading, or re-link a form later from the dossier header.
 
-## 🖥️ Navigation dans la Nouvelle Interface Web Material Design 3 (`web/`)
-
-La nouvelle interface web **DataSyntis Material Design 3** a été pensée pour offrir une lisibilité hospitalière immédiate (zéro éblouissement en salle de projection grâce aux thèmes **Auto / Clair / Sombre**, conformité accessibilité **WCAG 2.2 AA**, et ergonomie adaptée aussi bien aux grands écrans de RCP qu'aux tablettes et mobiles).
-
-### 📋 1. Worklist RCP (`/worklist`)
-* **Indicateurs clés (KPI) cliquables** : visualisez en un coup d'œil le nombre de dossiers structurés, les cas en **Priorité haute**, les **Dossiers incomplets** et les **Adaptations suggérées**. Cliquez sur un KPI pour filtrer instantanément la liste.
-* **Vue Tableau dense ou Grille de cartes** :
-  * Tri multi-colonnes (Priorité, Patient, Complétude, Orientation pré-RCP, Spécialités requises, Dernière RCP).
-  * **Double-clic** sur n'importe quelle ligne pour ouvrir directement le dossier longitudinal du patient.
-  * **Menu d'actions rapides (`...`)** sur chaque patient pour ouvrir le dossier, consulter directement les avis pré-RCP, importer une nouvelle pièce PDF ou signaler une anomalie.
-
-### 🗓️ 2. Ordre du Jour de la Prochaine Séance RCP (`/agenda`)
-* **Programmation en 1 clic (`Programmer une nouvelle réunion`)** : choisissez la date de la réunion RCP, le mode d'organisation, les spécialistes présents et les dossiers inscrits.
-* **2 stratégies d'organisation automatique** :
-  * **Regroupement par spécialité & urgence** : regroupe les dossiers mobilisant les mêmes spécialistes dans des créneaux contigus afin de minimiser le temps de présence requis de chaque praticien, tout en plaçant les urgences en tête de chaque groupe.
-  * **Urgence clinique stricte** : classe tous les dossiers par niveau de priorité décroissant.
-* **Suivi du quorum et filtre visuel par spécialité** :
-  * Visualisez les créneaux de passage de chaque expert (`Dossiers #1 à #3`) et les éventuelles alertes de quorum si un spécialiste requis est absent.
-  * Mettez en évidence en temps réel tous les dossiers d'une spécialité (via le sélecteur ou en cliquant sur un badge de spécialité) et réordonnez/épinglez manuellement n'importe quel dossier.
-* **Conduite de la séance RCP** : cliquez sur **`Ouvrir le 1er dossier (#1)`** pour démarrer la séance et passer d'un patient au suivant grâce à la barre de navigation **`← Dossier précédent` / `Dossier suivant →`**.
-
-### 📁 3. Dossier Patient Longitudinal (`/patients/:id`)
-* **Carte synoptique unifiée & Frise chronologique RCP** :
-  * Bandeau supérieur regroupant l'identité, l'urgence, la complétude (avec infobulle des pièces manquantes), l'orientation pré-RCP et les spécialités requises.
-  * **Repères cliniques longitudinaux** toujours visibles avec calcul automatique des variations (**deltas** : ex. évolution du CA 19-9 en oncologie ou des scores moteurs HFMSE / CHOP-INTEND / RULM en SMA).
-  * **Frise chronologique RCP repliable** permettant de naviguer entre toutes les séances passées du patient ou d'ajouter une pièce pour la **`Prochaine séance`**.
-* **Vue scindée (Liseuse PDF + Synthèse structurée)** :
-  * **À gauche** : liseuse PDF native extensible en un clic (`Agrandir le PDF`).
-  * **À droite — Onglet `Données cliniques`** : rubriques cliniques regroupées par pôles, **repliées par défaut** avec leur conclusion visible dès le titre (`Tout déplier / Tout replier`).
-  * **Édition manuelle préservée (`✍️ Modifié manuellement`)** : chaque rubrique peut être corrigée manuellement par le clinicien ; toute modification humaine est tracée et **protégée contre l'écrasement** lors des relances IA ultérieures.
-  * **À droite — Onglet `Avis & Orientation pré-RCP`** :
-    * **Liste interactive des éléments manquants** : masquez ou restaurez individuellement les éléments signalés par l'IA une fois vérifiés par le secrétariat.
-    * **Proposition d'orientation pré-RCP & Avis par spécialité** : propositions argumentées et sourcées avec liens directs vers la page exacte du référentiel PDF (**TNCD** ou **PNDS**) ou du compte rendu patient.
-* **Tiroir latéral Assistant IA (`Co-Pilot Side Sheet`)** :
-  * Accessible à tout moment via le bouton flottant **`Assistant IA`** en bas à droite sans masquer la lecture du dossier.
-  * Permet de choisir la **spécialité médicale consultée**, le périmètre (**Tout le suivi longitudinal** ou **Séance courante**), et d'insérer des **questions cliniques suggérées** via le bouton partagé.
-
-### 📚 4. Référentiels (`/guidelines`), Experts IA (`/agents`) & Supervision
-* **Référentiels (`/guidelines`)** : consultation en plein écran des thésaurus scientifiques (**TNCD** en oncologie digestive, **PNDS** en SMA) accompagnée de l'Assistant IA documentaire sourcé.
-* **Catalogue des Experts IA (`/agents`)** : transparence complète sur les instructions système, les prompts d'extraction par rubrique et les référentiels rattachés à chaque agent.
-* **Import PDF par lot (`/ingest`)** : dépôt glisser-déposer de plusieurs comptes rendus PDF avec rattachement automatique ou manuel au patient et suivi d'avancement en direct.
-* **Supervision de la file GPU (`/admin/queue`) & Signalements (`/feedback`)** : suivi temps réel (SSE) des analyses en cours, relance des tâches en échec, libération des verrous GPU et remontée d'anomalies cliniques ou d'interface.
+### 2. OCR & 3-Wave Asynchronous GPU Extraction
+Once uploaded, documents enter the local **GPU PriorityQueue** and are processed through three progressive extraction waves:
+* **Wave 1 — Administrative & Identity Reconciliation (`PatientAdministrative`)**: Extracts `nom`, `prenom`, birth name, `date_naissance`, gender, and MDT date (`date_rcp`) to consolidate the patient's identity immediately.
+* **Wave 2 — Structured Clinical & Completeness Extraction (`PatientMDTForm`)**:
+  * **In Digestive Oncology**: Extracts WHO/ECOG performance status (`PatientPerformanceStatus`), tumor site and histology, clinical/pathological TNM staging, surgical history, chemotherapy/radiotherapy regimens, biology/biomarkers (ACE, CA 19-9, MMR/MSI, *RAS*/*BRAF*, DPD), and imaging findings.
+  * **In Spinal Muscular Atrophy (SMA)**: Extracts *SMN1* deletion/mutation status and *SMN2* copy number, SMA clinical type (Type 0–4), motor function scores (`HFMSE`, `CHOP-INTEND`, `RULM`, 6MWT), respiratory and bulbar/nutritional assessments, orthopedic/scoliosis status, and disease-modifying therapy history (Nusinersen, Risdiplam, Onasemnogene abeparvovec).
+  * **Completeness Check (`MTDCompleted`)**: Identifies missing mandatory documents or biological/genetic results required before the MDT board can deliberate.
+* **Wave 3 — Pre-MDT Orientation & Specialist Opinions (`CareOrientationProposal` & `ExpertAnswer`)**: Synthesizes case urgency, required medical specialties, and guideline-grounded specialist opinions cross-referenced against **TNCD** or **PNDS**.
 
 ---
 
-## 🖥️ Navigation dans l'Interface Historique Streamlit (`application/app-ui.py`)
+## 📋 Stage 2: Reviewing the Worklist & Structured `PatientMDTForm` (`/worklist` & `/patients/:id`)
 
-L'interface est structurée pour être simple et intuitive, accessible depuis n'importe quel navigateur interne à l'hôpital.
+Used jointly by **MDT Medical Secretaries** (to verify identity and chase missing exams) and **MDT Physicians** (to review clinical syntheses before the board).
 
-### 📇 1. Dossiers Patients (Cards)
-* **Votre tableau de bord central** : structuré en deux sections complémentaires :
-  * **📁 Dossiers Patients (en haut)** : affiche une carte par patient, synthétisée à partir de sa **dernière fiche RCP analysée** (urgence, statut d'exhaustivité, intervention conseillée, experts pertinents et nombre total de RCP du patient).
-  * **📄 Dernières RCP scannées (en dessous)** : présente les dernières fiches RCP individuelles par ordre chronologique de numérisation/import.
+### 1. Clinical Worklist (`/worklist`)
+* **Interactive KPI Cards**: Filter the worklist in one click by **Total Dossiers**, **High Urgency**, **Incomplete Dossiers**, or **Suggested Care Adaptations**.
+* **High-Density Table & Card Views**: Sort cases by Priority, Patient Name, Completeness Status, Pre-MDT Orientation, Required Specialties, or Last MDT Date. Double-click any row to open the patient's longitudinal dossier.
 
-### 📝 2. Dossier Patient (Datas)
-* Vue détaillée unifiée du **Dossier Patient**, organisée en **3 onglets principaux** en haut de page :
-  * **👤 Données patient** : affiche le bandeau d'identité administrative du patient ainsi que la **dernière fiche RCP analysée** (PDF à gauche et onglets *Données Cliniques*, *Assistant IA sur la fiche* et *Aperçu du document* à droite).
-  * **🕰️ Historique des fiches RCP** : permet de remonter dans le temps sur toutes les fiches RCP du patient via un sélecteur chronologique, avec la même vue détaillée par fiche (PDF + *Données Cliniques*, *Assistant IA sur la fiche* isolé sur la fiche courante, et *Aperçu du document*).
-  * **💬 Assistant IA sur le dossier** : onglet de chat interrogeant l'agent expert sur **l'intégralité du dossier patient** (toutes ses fiches RCP passées et présentes, l'historique complet des informations IA extraites via le tool `get_patient_ai_history`, et les référentiels TNCD).
-  * **🔄 Relance IA (Rerun) fiche par fiche** : la relance de l'analyse IA (`🔄 Relancer cette RCP`, `:material/robot: AI exec` par rubrique, ou `:repeat: AI process` en Power mode) est sélectionnable et exécutée **exclusivement RCP par RCP** (jamais sur l'ensemble du dossier simultanément).
+### 2. Longitudinal Patient Dossier (`/patients/:id`)
+The dossier view combines longitudinal context with side-by-side source verification:
+* **Synoptic Header & Longitudinal Clinical Deltas**: Displays patient identity, urgency badge, completeness indicator, pre-MDT orientation, required specialties, and automated **longitudinal deltas** across MDT sessions (e.g., CA 19-9 trend in oncology or ΔHFMSE / ΔRULM motor score evolution in SMA).
+* **Collapsible Multi-MDT Timeline**: Switch effortlessly between all historical MDT forms (`rcps`) for the patient to compare disease evolution over time.
+* **Side-by-Side Native PDF Viewer with Bounding-Box Highlights**:
+  * The left pane displays the original PDF report (with a one-click **Expand PDF** toggle).
+  * Switch between the plain PDF and the **Bounding-Box (`bbox`) Highlight** view, or click any citation badge in the clinical synthesis to jump directly to the corresponding page in the PDF.
 
-### 🚀 3. Charger le/les fichier(s) (Upload)
-* Espace de dépôt sécurisé supportant l'import **unitaire ou par lot (batch)** de plusieurs fiches PDF RCP.
-* **Association à un patient** :
-  * **Mode Automatique (par défaut)** : lance l'indexation RAG et l'extraction administrative par l'IA (`Prénom`, `Nom`, `Date de naissance`) pour créer automatiquement le patient ou rattacher la fiche à un dossier patient existant.
-  * **Association manuelle** : permet de sélectionner un patient existant (globalement pour le lot ou fichier par fichier avant de lancer l'import).
+### 3. Missing-Document Warnings & Checklist Management
+* Under the **Pre-MDT Orientation & Opinions** tab, MedSyntis highlights every missing exam or data point flagged by `MTDCompleted` (for example, a missing definitive EUS biopsy pathology report or a missing anti-AAV9 antibody titer).
+* **Secretary Checklist**: Once a missing report is obtained or verified as non-applicable, the medical secretary or clinician can **hide/restore individual missing items** (`toggle_item`) or clear the warning banner—all actions are attributed (`edited_by`) and persisted.
 
-### 🤖 4. Agents and Ressources
-* Vue transparente sur l'activité des "agents" IA spécialisés à l'œuvre. Vous pouvez voir quel agent (le "Docteur virtuel" ou le "Spécialiste TNCD") a extrait et validé les données.
+### 4. Human-in-the-Loop Manual Editing (`manual_edits`) & Section Rollback
+Clinicians and secretaries have full editorial control over every section of the `PatientMDTForm`:
+* **Administrative Identity Correction**: Edit `nom`, `prenom`, `date_naissance`, gender, or MDT date, with the option to propagate the correction across all forms belonging to the patient (`apply_to_all_patient_forms`) or re-link the form to another existing patient dossier.
+* **Clinical Section Editing (`manual_edits`)**: Click **Edit** on any clinical, completeness, or orientation section to refine extracted values.
+* **Unconditional Preservation Across Re-Analyses**: Manually edited sections display a **`✍️ Manually Edited`** badge (`manual_edits`). Whenever you trigger a full or partial AI re-analysis (`preserve_manual_edits=true` by default), **MedSyntis never overwrites human edits**.
+* **One-Click Section Rollback**: If you ever wish to discard a manual edit and restore the original AI extraction for a specific section, click **Rollback to AI Extraction** (`/sections/{section_name}/rollback`).
 
 ---
 
-## 🧑‍⚕️ Vos Retours sont Précieux
+## 🗓️ Stage 3: Preparing the Next MDT Session Agenda (`/agenda`)
 
-MedDataSyntis est un projet open-source évolutif. Si vous remarquez des écarts dans les résumés ou si vous souhaitez suggérer l'ajout d'un nouveau référentiel clinique, vous pouvez soumettre un signalement directement via l'onglet **Bug reports (Reports)** dans l'interface, ou vous rapprocher de votre équipe informatique hospitalière.
+Used by the **MDT Coordinator / Session Chair** and **MDT Medical Secretary** to organize the upcoming board meeting.
+
+### 1. Enrolling Cases & Selecting Attending Specialists
+* **One-Click Session Setup (`Schedule New Meeting`)**: Set the upcoming **MDT Session Date**, select the **Attending Specialists** present for the session, and enroll candidate patients from the worklist (individually or in bulk: all candidates, urgent cases, or complete dossiers).
+* **Specialty Quorum Verification**: MedSyntis cross-checks the specialties required by each enrolled patient against the list of attending specialists:
+  * Computes contiguous **Specialist Passage Windows** (e.g., *Pancreas Expert: Cases #1 to #4*) so specialists know exactly when their presence is required.
+  * Raises immediate **Quorum Warnings** (`quorum_warning_count`) on any case where a required specialist is not marked as attending.
+
+### 2. Choosing Among the 4 Sorting Strategies (`sort_strategy`)
+MedSyntis provides four scheduling strategies adaptable to your hospital's MDT organization:
+1. **`hybrid` (Default — Specialty Grouping + Urgency)**: Groups cases requiring the same specialists into contiguous blocks while ordering cases by descending clinical urgency within each block.
+2. **`expert_grouping` (Specialist Attendance Optimization)**: Clusters cases to maximize shared specialist overlap and minimize the time window each specialist must stay in the meeting room.
+3. **`urgency_first` (Strict Clinical Urgency)**: Orders all enrolled patients strictly by descending clinical urgency score (`Critical` → `High` → `Moderate` → `Low`), regardless of specialty grouping.
+4. **`manual` (Full Coordinator Control)**: Locks the exact custom passage order defined by the coordinator or secretary.
+
+### 3. Deferring Incomplete Files & Pinning Cases
+* **Defer Incomplete Files (`defer_incomplete_files`)**: Toggle this option to automatically push incomplete patient files (those with unresolved missing mandatory exams) to the end of the session agenda, ensuring complete and urgent dossiers are discussed first while quorum is full.
+* **Pinning & Manual Reordering**: At any time, you can move a patient up or down (`direction: "up" | "down"`) or **Pin (`📌`)** a patient to a fixed slot. Pinned cases keep their exact slot even when automatic sorting strategies recalculate the rest of the agenda.
+
+---
+
+## 🧑‍⚕️ Stage 4: Live MDT Session, Specialist Opinions & Guidelines RAG
+
+Used by **MDT Physicians** and the **Session Chair** during the multidisciplinary board meeting.
+
+### 1. Conducting the Live MDT Session
+* From `/agenda`, click **`Open 1st Dossier (#1)`** to launch the live session view.
+* Use the top session navigation bar (**`← Previous Dossier` / `Next Dossier →`**) to step smoothly through the scheduled passage order without returning to the worklist.
+* Switch to the **Dark Theme** in one click for comfortable, glare-free projection in the MDT room.
+
+### 2. Consulting Grounded Pre-MDT Orientation & Specialist Opinions
+Inside each patient's **Pre-MDT Orientation & Opinions** tab:
+* Review the structured **`CareOrientationProposal`** (e.g., upfront surgery, neoadjuvant FOLFIRINOX chemotherapy, radiochemotherapy, or intrathecal/oral SMA therapy adjustment) and individual **`ExpertAnswer`** cards for each involved specialty.
+* Every recommendation includes **clickable citation badges** linking directly to:
+  * The exact page of the patient's medical PDF report where the clinical finding was documented.
+  * The exact chapter and page of the national scientific guideline (**TNCD** for Digestive Oncology or **PNDS** for SMA).
+
+### 3. Querying the AI Co-Pilot & National Reference Guidelines (`/guidelines`)
+* **Contextual Dossier AI Co-Pilot (Floating Side Sheet)**: Click the **`AI Assistant`** button at the bottom right of any patient dossier to open the non-blocking side sheet:
+  * Select the **target specialist agent** (e.g., `pancreas expert`, `colon expert`, `sma neurologist`).
+  * Choose the **query scope**: **Current MDT Form Only** or **Full Longitudinal Patient Dossier** (which synthesizes all historical MDT forms and AI extractions).
+  * Click any **suggested clinical question** or ask a free-text question to verify a detail during the board discussion.
+* **Dedicated Scientific Guidelines Library (`/guidelines`)**: Browse all indexed **TNCD** and **PNDS** PDF reference guidelines in full screen and query the **Resource Assistant** to retrieve verbatim guideline recommendations with page citations at any time.
+
+---
+
+## 🛠️ Reporting Clinical or Interface Feedback (`/feedback`)
+
+If you spot an extraction inaccuracy, a missing guideline chapter, or an ergonomic improvement idea, open **Feedback / Bug Reports (`/feedback`)** from the navigation bar (or from a patient's quick-action menu) to log a report linked directly to the relevant page or patient dossier for your hospital IT and clinical AI team.

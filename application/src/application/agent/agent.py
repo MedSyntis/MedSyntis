@@ -143,7 +143,7 @@ class DebateTurn(BaseModel):
     )
 
 
-class OncowflowAgent:
+class MedSyntisAgent:
     """
     Agent responsible for handling interactions with the LLM to answer questions
     based on medical technical documents (MTD) and resources.
@@ -238,7 +238,7 @@ class OncowflowAgent:
         patient_readers: list[DocumentReader] | None = None,
     ):
         """
-        Initialize the OncowflowAgent.
+        Initialize the MedSyntisAgent.
 
         Args:
             config (AppConfig): Application configuration.
@@ -385,7 +385,7 @@ class OncowflowAgent:
         )
 
         # Create the LangChain agent with specific tools and context.
-        # Model-level retries are handled by OncowflowAgent.ask() (3 attempts, each
+        # Model-level retries are handled by MedSyntisAgent.ask() (3 attempts, each
         # resetting the conversation context from scratch) so a single attempt never
         # loops 4x on a polluted or oversized context window.
         self.agent = create_agent(

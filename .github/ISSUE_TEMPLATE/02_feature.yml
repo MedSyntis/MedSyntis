@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         > [!NOTE]
-        > **DataSyntis Feature Golden Rule**:
+        > **MedSyntis Feature Golden Rule**:
         > Every Feature **MUST be linked to a parent Story** (Issue `#XX` + GitHub Milestone) and written in **English**.
         > It must be **clear, concise, and directly reusable by both a human developer and an AI coding agent**.
         > ⚠️ **If the ticket is incomplete (missing parent Story, `[TBD]` placeholders in DoD, or unresolved `❓` / `🩺` questions), it MUST be marked as `status:to-complete`.**

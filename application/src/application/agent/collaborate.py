@@ -11,7 +11,7 @@ from src.application.config import AppConfig
 
 # Legacy import to support existing patch-based unit tests
 from src.application.reader import DocumentReader
-from src.application.agent.agent import OncowflowAgent, DebateTurn
+from src.application.agent.agent import MedSyntisAgent, DebateTurn
 from src.domain.agents import Agents, get_domain_agents_cls
 
 _DEBATE_CACHE_MAXSIZE: int = 32
@@ -31,7 +31,7 @@ def _build_debate_checkpoint_key(
     mtd: Any,
     output_format: Any,
     question: str | None,
-    agents_classes: list[type[OncowflowAgent]],
+    agents_classes: list[type[MedSyntisAgent]],
 ) -> tuple[Any, ...] | None:
     doc_name = getattr(mtd, "document", None) if mtd is not None else None
     if not isinstance(doc_name, str) or not doc_name.strip():
@@ -85,13 +85,13 @@ def _evict_debate_checkpoint(key: tuple[Any, ...] | None) -> None:
 
 
 def collaborative_debate(
-    agents_classes: list[type[OncowflowAgent]],
+    agents_classes: list[type[MedSyntisAgent]],
     question: str | None,
     output_format: type[BaseModel],
     config: AppConfig,
     mtd: DocumentReader,
     logger: Any,
-    coordinator_agent_cls: type["OncowflowAgent"] | None = None,
+    coordinator_agent_cls: type["MedSyntisAgent"] | None = None,
     callbacks: list | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:

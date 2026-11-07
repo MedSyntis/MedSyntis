@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
-import { HttpOncoflowApiAdapter } from "../../src/infrastructure/api/http-oncoflow-api.adapter.js";
-import { InMemoryOncoflowApiFake } from "../../src/infrastructure/api/in-memory-oncoflow-api.fake.js";
+import { HttpMedsyntisApiAdapter } from "../../src/infrastructure/api/http-medsyntis-api.adapter.js";
+import { InMemoryMedsyntisApiFake } from "../../src/infrastructure/api/in-memory-medsyntis-api.fake.js";
 import { buildServer } from "../../src/ui/server.js";
 
 describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
   it("renders the agenda builder page with enrolled patients, attending experts, and passage windows", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const config = loadConfig({ APP_DEV_MODE: "true" });
     const app = await buildServer({ config, api });
 
@@ -45,7 +45,7 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
   });
 
   it("hides settings when no meeting is scheduled and renders Dossier précédent / Dossier suivant when opening a dossier from the agenda", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const config = loadConfig({ APP_DEV_MODE: "true" });
     const app = await buildServer({ config, api });
 
@@ -77,7 +77,7 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
   });
 
   it("supports direct onboarding via POST /agenda/schedule ('Programmer une nouvelle réunion')", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const config = loadConfig({ APP_DEV_MODE: "true" });
     const app = await buildServer({ config, api });
 
@@ -104,7 +104,7 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
   });
 
   it("toggles expert attendance, updates sort strategy and sessionDate, moves/pins patients, and removes/enrolls patients", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const config = loadConfig({ APP_DEV_MODE: "true" });
     const app = await buildServer({ config, api });
 
@@ -182,7 +182,7 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     expect(enrolledAll.items.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("maps FastAPI snake_case payload in HttpOncoflowApiAdapter", async () => {
+  it("maps FastAPI snake_case payload in HttpMedsyntisApiAdapter", async () => {
     const mockFetch: typeof fetch = async () =>
       new Response(
         JSON.stringify({
@@ -243,7 +243,7 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
 
-    const adapter = new HttpOncoflowApiAdapter({
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       apiToken: "test-token",
       fetchImpl: mockFetch,
