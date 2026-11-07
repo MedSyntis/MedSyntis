@@ -2725,9 +2725,11 @@ input[type="search"].ds-input::-webkit-search-decoration {
 /* 12. M3 Session Timeline Cards & Compact Collapsible Timeline Drawer ===== */
 .ds-synoptic__row--timeline {
   padding-top: var(--ds-space-2) !important;
+  min-width: 0;
 }
 .ds-timeline-drawer {
   width: 100%;
+  min-width: 0;
 }
 .ds-timeline-drawer__summary {
   list-style: none;
@@ -2768,17 +2770,22 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-timeline-drawer__body {
   padding-top: var(--ds-space-2);
+  min-width: 0;
 }
 
 .ds-timeline {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: var(--ds-space-2);
   margin: 0;
-  padding: 0;
+  padding: 0 0 var(--ds-space-1) 0;
   list-style: none;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 .ds-timeline__link--upcoming {
   border-style: dashed;
@@ -2792,15 +2799,15 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-timeline__item {
   position: relative;
-  flex: 0 1 14rem;
+  flex: 0 0 14rem;
   display: flex;
 }
 .ds-timeline__item + .ds-timeline__item::before {
   content: "";
   position: absolute;
   top: 50%;
-  left: calc(-1 * var(--ds-space-3));
-  width: var(--ds-space-3);
+  left: calc(-1 * var(--ds-space-2));
+  width: var(--ds-space-2);
   height: 2px;
   background: var(--ds-color-border);
   transform: translateY(-50%);
@@ -2844,8 +2851,8 @@ a.ds-timeline__link:hover {
 .ds-timeline__marker--medium { background: var(--ds-urgency-medium-bg); color: var(--ds-urgency-medium-fg); }
 .ds-timeline__marker--low    { background: var(--ds-urgency-low-bg);    color: var(--ds-urgency-low-fg); }
 .ds-timeline__content { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0; flex: 1; }
-.ds-timeline__date { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-sm); }
-.ds-timeline__date-main { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; }
+.ds-timeline__date { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-sm); white-space: nowrap; }
+.ds-timeline__date-main { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; white-space: nowrap; }
 .ds-timeline__duration {
   display: inline-flex;
   align-items: center;
@@ -2870,7 +2877,7 @@ a.ds-timeline__link:hover {
   font-variant-numeric: tabular-nums;
   opacity: 0.82;
 }
-.ds-timeline__meta { display: block; font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); }
+.ds-timeline__meta { display: block; font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ds-timeline__link[aria-current="step"] {
   background: var(--ds-color-primary-soft);
   border: 0;
