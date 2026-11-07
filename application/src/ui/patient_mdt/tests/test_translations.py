@@ -47,7 +47,7 @@ def test_translation_french():
     assert translate_domain_fr("sma") == "Amyotrophie spinale"
 
     svg_onco = get_logo_svg("oncology")
-    assert "Data" in svg_onco
+    assert "Med" in svg_onco
     assert "Syntis" in svg_onco
     assert "- Oncologie" in svg_onco
 
