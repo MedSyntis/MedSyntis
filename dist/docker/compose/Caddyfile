@@ -23,7 +23,7 @@
 
         @unauthorized status 401
         handle_response @unauthorized {
-            redir * https://sso.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr}/oauth2/start?rd={scheme}://{host}{uri}
+            redir * https://sso.{$PROD_BASE_DOMAIN:medsyntis.fr}/oauth2/start?rd={scheme}://{host}{uri}
         }
     }
 }
@@ -45,16 +45,16 @@
     }
 }
 
-sso.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
+sso.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
     import oauth_guard
 
     handle {
-        redir * https://oncologic.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr}{uri}
+        redir * https://oncologic.{$PROD_BASE_DOMAIN:medsyntis.fr}{uri}
     }
 }
 
-oncologic.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
+oncologic.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
     import oauth_guard
     import error_pages
@@ -86,7 +86,7 @@ oncologic.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
     }
 }
 
-sma.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
+sma.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
     import oauth_guard
     import error_pages
@@ -119,7 +119,7 @@ sma.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
 }
 
 # Déploiements Streamlit optionnels (--profile streamlit)
-oncologic-st.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
+oncologic-st.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
     import oauth_guard
     import error_pages
@@ -149,7 +149,7 @@ oncologic-st.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
     }
 }
 
-sma-st.{$PROD_BASE_DOMAIN:medsyntis.bricks-it.fr} {
+sma-st.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
     import oauth_guard
     import error_pages
