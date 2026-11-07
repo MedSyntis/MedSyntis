@@ -4,7 +4,7 @@ import type {
   Language,
   ResourceDocument,
 } from "../../domain/types.js";
-import type { ChatReply, OncoflowApiPort } from "../ports/oncoflow-api.port.js";
+import type { ChatReply, MedsyntisApiPort } from "../ports/medsyntis-api.port.js";
 
 export interface GuidelinesOverview {
   resources: ResourceDocument[];
@@ -13,7 +13,7 @@ export interface GuidelinesOverview {
 }
 
 export class GuidelinesUseCase {
-  constructor(private readonly api: OncoflowApiPort) {}
+  constructor(private readonly api: MedsyntisApiPort) {}
 
   async getOverview(
     domain: ClinicalDomain,

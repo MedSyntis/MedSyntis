@@ -280,7 +280,7 @@ def translate_domain_fr(domain: str) -> str:
 
 def get_icon_svg() -> str:
     """
-    Generate the DataSyntis application icon (favicon and hospital desktop shortcut):
+    Generate the MedSyntis application icon (favicon and hospital desktop shortcut):
     layered document sheets, structured synthesis lines, and clinical validation badge.
     """
     return (
@@ -317,7 +317,7 @@ def get_icon_svg() -> str:
 
 
 def get_logo_svg(domain: str) -> str:
-    """Generate the DataSyntis SVG logotype dynamically integrating the medical domain in French."""
+    """Generate the MedSyntis SVG logotype dynamically integrating the medical domain in French."""
     domain_fr = translate_domain_fr(domain)
     subtitle_line = (
         f"  <text x=\"114\" y=\"92\" font-family=\"'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif\" "
@@ -355,7 +355,7 @@ def get_logo_svg(domain: str) -> str:
         '    <path d="M64.5 68 L68.5 72 L76 64" fill="none" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />\n'
         "  </g>\n"
         f'  <text x="112" y="{brand_y}" font-family="\'Inter\', \'Segoe UI\', \'Helvetica Neue\', Arial, sans-serif" font-size="52" font-weight="800" letter-spacing="-1">\n'
-        '    <tspan fill="#E2E8F0">Data</tspan><tspan fill="#72A8A2">Syntis</tspan>\n'
+        '    <tspan fill="#E2E8F0">Med</tspan><tspan fill="#72A8A2">Syntis</tspan>\n'
         "  </text>\n"
         f"{subtitle_line}"
         "</svg>"
@@ -461,7 +461,7 @@ def apply_card_surface_style() -> None:
             box-shadow: none !important;
             border: none !important;
         }
-        /* Destructive & irreversible actions -> DataSyntis Rose (#B83B5E / #F43F5E) */
+        /* Destructive & irreversible actions -> MedSyntis Rose (#B83B5E / #F43F5E) */
         div[class*="st-key-btn_del_"] button {
             background-color: light-dark(#FDF2F5, rgba(184, 59, 94, 0.15)) !important;
             border: 1px solid light-dark(#E5A4B4, #9F1239) !important;

@@ -11,14 +11,14 @@ class TestMilvusVectorialDB(unittest.TestCase):
     def setUp(self):
         self.mock_config = MagicMock()
         self.mock_config.dbvec.type = "milvus"
-        self.mock_config.dbvec.collection = "oncoflowDocs"
+        self.mock_config.dbvec.collection = "medsyntisDocs"
         self.mock_config.llm.type = "ollama"
         self.mock_config.llm.embeddings = "all-MiniLM-L6-v2"
         self.mock_config.milvus.host = "localhost"
         self.mock_config.milvus.port = "19530"
         self.mock_config.milvus.scheme = "http"
         self.mock_config.milvus.token = "root:Milvus"
-        self.mock_config.milvus.database = "oncowflow"
+        self.mock_config.milvus.database = "medsyntis"
 
         self.mock_logger = MagicMock()
         self.mock_config.set_logger.return_value = self.mock_logger
@@ -48,10 +48,10 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_connections.connect.assert_called_once_with(
             host="localhost", port="19530", token="root:Milvus"
         )
-        mock_db.create_database.assert_called_once_with("oncowflow")
-        mock_db.using_database.assert_called_once_with("oncowflow", using="default")
-        self.assertEqual(db_wrapper.database, "oncowflow")
-        self.assertEqual(db_wrapper.coll_name, "oncoflowDocs_all_MiniLM_L6_v2")
+        mock_db.create_database.assert_called_once_with("medsyntis")
+        mock_db.using_database.assert_called_once_with("medsyntis", using="default")
+        self.assertEqual(db_wrapper.database, "medsyntis")
+        self.assertEqual(db_wrapper.coll_name, "medsyntisDocs_all_MiniLM_L6_v2")
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.milvus.Milvus")
@@ -67,12 +67,12 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["default", "oncowflow"]
+        mock_db.list_database.return_value = ["default", "medsyntis"]
 
         MilvusDB(self.mock_config)
 
         mock_db.create_database.assert_not_called()
-        mock_db.using_database.assert_called_once_with("oncowflow", using="default")
+        mock_db.using_database.assert_called_once_with("medsyntis", using="default")
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.milvus.Milvus")
@@ -90,7 +90,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
 
         # Fail once, then succeed
         mock_connections.connect.side_effect = [
@@ -117,18 +117,18 @@ class TestMilvusVectorialDB(unittest.TestCase):
             client = MilvusClient(
                 uri="http://localhost:19530",
                 token="root:Milvus",
-                db_name="oncowflow",
+                db_name="medsyntis",
             )
 
             # Handler and db_name should be registered under client._using
             self.assertIn(client._using, connections._alias_handlers)
             self.assertEqual(connections._alias_handlers[client._using], mock_handler)
             self.assertEqual(
-                connections._alias_config[client._using], {"db_name": "oncowflow"}
+                connections._alias_config[client._using], {"db_name": "medsyntis"}
             )
             self.assertEqual(connections._fetch_handler(client._using), mock_handler)
             ctx = connections._generate_call_context(client._using)
-            self.assertEqual(ctx.get_db_name(), "oncowflow")
+            self.assertEqual(ctx.get_db_name(), "medsyntis")
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.milvus.Milvus")
@@ -144,7 +144,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
 
         mock_milvus_instance = MagicMock()
         mock_milvus_cls.return_value = mock_milvus_instance
@@ -171,7 +171,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
 
         mock_milvus_instance = MagicMock()
         mock_milvus_cls.return_value = mock_milvus_instance
@@ -204,7 +204,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
 
         mock_milvus_instance = MagicMock()
         mock_milvus_cls.return_value = mock_milvus_instance
@@ -231,7 +231,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
 
         mock_milvus_instance = MagicMock()
         mock_milvus_cls.return_value = mock_milvus_instance
@@ -266,7 +266,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
 
         mock_milvus_instance = MagicMock()
         mock_milvus_cls.return_value = mock_milvus_instance
@@ -299,7 +299,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
         mock_utility.has_collection.return_value = True
 
         db_wrapper = MilvusDB(self.mock_config)
@@ -322,7 +322,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
         mock_utility.get_server_version.return_value = "2.6.24"
 
         db_wrapper = MilvusDB(self.mock_config)

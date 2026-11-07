@@ -13,7 +13,7 @@ class TestVectorialDatabases(unittest.TestCase):
         # Configure a generic mock config
         self.mock_config = MagicMock()
         self.mock_config.dbvec.type = "milvus"
-        self.mock_config.dbvec.collection = "oncoflowDocs"
+        self.mock_config.dbvec.collection = "medsyntisDocs"
         self.mock_config.llm.type = "ollama"
         self.mock_config.llm.embeddings = "all-MiniLM-L6-v2"
         self.mock_config.set_logger.return_value = MagicMock()
@@ -28,14 +28,14 @@ class TestVectorialDatabases(unittest.TestCase):
         self.mock_config.milvus.port = "19530"
         self.mock_config.milvus.scheme = "http"
         self.mock_config.milvus.token = "root:Milvus"
-        self.mock_config.milvus.database = "oncowflow"
+        self.mock_config.milvus.database = "medsyntis"
 
         # MongoDB config
         self.mock_config.mongodb.user = "root"
         self.mock_config.mongodb.password = "password"
         self.mock_config.mongodb.host = "127.0.0.1"
         self.mock_config.mongodb.port = "27017"
-        self.mock_config.mongodb.vectordatabase = "OncoflowVector"
+        self.mock_config.mongodb.vectordatabase = "MedSyntisVector"
 
         # Mock Ollama embedding (spec=Embeddings resolves Chroma isinstance checking)
         self.mock_embeddings = MagicMock(spec=Embeddings)
@@ -56,14 +56,14 @@ class TestVectorialDatabases(unittest.TestCase):
         mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
-        mock_db.list_database.return_value = ["oncowflow"]
+        mock_db.list_database.return_value = ["medsyntis"]
         mock_utility.get_server_version.return_value = "2.5.0"
 
         self.mock_config.dbvec.type = "milvus"
         db_wrapper = MilvusDB(self.mock_config)
 
         # Assert correct collection name and client parameters
-        self.assertEqual(db_wrapper.coll_name, "oncoflowDocs_all_MiniLM_L6_v2")
+        self.assertEqual(db_wrapper.coll_name, "medsyntisDocs_all_MiniLM_L6_v2")
         mock_connections.connect.assert_called_once_with(
             host="localhost", port="19530", token="root:Milvus"
         )
@@ -81,7 +81,7 @@ class TestVectorialDatabases(unittest.TestCase):
         self.mock_config.dbvec.type = "chromadb"
         db_wrapper = Chromadb(self.mock_config, coll_prefix="test")
 
-        self.assertEqual(db_wrapper.coll_name, "test_oncoflowDocs_all_MiniLM_L6_v2")
+        self.assertEqual(db_wrapper.coll_name, "test_medsyntisDocs_all_MiniLM_L6_v2")
         mock_chroma_client_cls.assert_called_once()
         mock_chroma_cls.assert_called_once()
 
@@ -100,7 +100,7 @@ class TestVectorialDatabases(unittest.TestCase):
             self.mock_config.dbvec.type = "mongodb"
             db_wrapper = MongoDBVectorDB(self.mock_config)
 
-            self.assertEqual(db_wrapper.coll_name, "oncoflowDocs_all_MiniLM_L6_v2")
+            self.assertEqual(db_wrapper.coll_name, "medsyntisDocs_all_MiniLM_L6_v2")
             mock_mongo_client_cls.assert_called_once_with(
                 "mongodb://root:password@127.0.0.1:27017"
             )

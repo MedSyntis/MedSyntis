@@ -1,4 +1,4 @@
-name: CI/CD Oncoflow
+name: CI/CD MedSyntis
 
 on:
   push:
@@ -73,7 +73,7 @@ jobs:
           files: ./application/coverage.xml
           flags: application
           fail_ci_if_error: false
-          slug: oncoflow/oncoflow
+          slug: MedSyntis/MedSyntis
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Detect CVEs (Trivy FS)
@@ -203,7 +203,7 @@ jobs:
           files: ./web/coverage/lcov.info
           flags: web
           fail_ci_if_error: false
-          slug: oncoflow/oncoflow
+          slug: MedSyntis/MedSyntis
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Detect CVEs in Web (Trivy FS)

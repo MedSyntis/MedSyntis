@@ -5,10 +5,10 @@ import type {
   MdtAgendaUpdateInput,
   MdtAgendaView,
 } from "../../domain/types.js";
-import type { OncoflowApiPort } from "../ports/oncoflow-api.port.js";
+import type { MedsyntisApiPort } from "../ports/medsyntis-api.port.js";
 
 export class AgendaUseCase {
-  constructor(private readonly api: OncoflowApiPort) {}
+  constructor(private readonly api: MedsyntisApiPort) {}
 
   async getAgenda(domain: ClinicalDomain): Promise<MdtAgendaView> {
     return this.api.getMdtAgenda(domain);

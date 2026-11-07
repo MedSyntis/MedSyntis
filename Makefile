@@ -1,5 +1,5 @@
 # ==============================================================================
-# Oncoflow Makefile
+# MedSyntis Makefile
 # Outil de gestion des services, du développement et de l'infrastructure locale
 # ==============================================================================
 
@@ -26,7 +26,7 @@ CLOUDRUN_PORT ?= 8080
 
 # Configuration Production (Scaleway L4 24G - Multi-Domaines oncologic & sma)
 ENV_PROD ?= $(CURDIR)/.env.prod
-PROD_BASE_DOMAIN ?= meddatasyntis.bricks-it.fr
+PROD_BASE_DOMAIN ?= medsyntis.bricks-it.fr
 COMPOSE_MILVUS := dist/docker/compose/milvus-standalone-docker-compose.yml
 COMPOSE_DEV := dist/docker/compose/docker-compose.yml
 COMPOSE_PROD := dist/docker/compose/docker-compose.prod.yml
@@ -70,8 +70,8 @@ help:
 	@echo ""
 	@echo -e "$(GREEN)Commandes de Production (Scaleway L4 24G + OAuth2 Proxy GitHub + Multi-Domaines) :$(RESET)"
 	@echo -e "  $(YELLOW)make init-prod$(RESET)           Initialise l'environnement prod (sudoers, .env.prod, volumes, init Milvus v3.0, logrotate, modèles)"
-	@echo -e "  $(YELLOW)make sudoers-prod$(RESET)        Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour $(DEPLOY_USER)"
-	@echo -e "  $(YELLOW)make logrotate-prod$(RESET)      Génère et installe la configuration logrotate (/etc/logrotate.d/meddatasyntis)"
+	@echo -e "  $(YELLOW)make sudoers-prod$(RESET)        Installe /etc/sudoers.d/medsyntis (Ubuntu 24.04+) pour $(DEPLOY_USER)"
+	@echo -e "  $(YELLOW)make logrotate-prod$(RESET)      Génère et installe la configuration logrotate (/etc/logrotate.d/medsyntis)"
 	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Télécharge Ornith-1.5-35B-A3B (IQ4_XS) et bge-m3 (Q4_K_M)"
 	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre la stack prod (Milvus, Mongo, LLM L4, Web UI M3 oncologic/sma, OAuth2, Caddy)"
 	@echo -e "  $(YELLOW)make start-prod-st$(RESET)       Démarre la stack prod + les frontaux Streamlit optionnels (oncologic-st/sma-st)"
@@ -220,7 +220,7 @@ cloudrun-proxy:
 		echo -e "  [$(GREEN)OK$(RESET)] Proxy Cloud Run déjà actif sur le port $(CLOUDRUN_PORT)"; \
 	else \
 		echo -e "$(CYAN)--> Lancement du proxy Cloud Run vers $(CLOUDRUN_SERVICE) sur le port $(CLOUDRUN_PORT) en arrière-plan...$(RESET)"; \
-		nohup $(GCLOUD) run services proxy $(CLOUDRUN_SERVICE) --port=$(CLOUDRUN_PORT) --quiet > /tmp/oncoflow-cloudrun-proxy.log 2>&1 & \
+		nohup $(GCLOUD) run services proxy $(CLOUDRUN_SERVICE) --port=$(CLOUDRUN_PORT) --quiet > /tmp/medsyntis-cloudrun-proxy.log 2>&1 & \
 		echo -n "  Attente de la disponibilité du proxy"; \
 		for i in {1..15}; do \
 			if ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
@@ -231,8 +231,8 @@ cloudrun-proxy:
 			sleep 1; \
 		done; \
 		if ! ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
-			echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le proxy n'a pas encore répondu sur le port $(CLOUDRUN_PORT). Logs (/tmp/oncoflow-cloudrun-proxy.log) :"; \
-			cat /tmp/oncoflow-cloudrun-proxy.log 2>/dev/null || true; \
+			echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le proxy n'a pas encore répondu sur le port $(CLOUDRUN_PORT). Logs (/tmp/medsyntis-cloudrun-proxy.log) :"; \
+			cat /tmp/medsyntis-cloudrun-proxy.log 2>/dev/null || true; \
 		fi; \
 	fi
 
@@ -262,7 +262,7 @@ dev:
 	@echo -e "$(CYAN)--> Démarrage du mode développement complet (API + Worker + UI)...$(RESET)"
 	@$(MAKE) stop >/dev/null 2>&1
 	@echo -e "  Démarrage de l'API en tâche de fond..."
-	@nohup bash -c "cd $(APP_DIR) && $(UV) run python app-api.py" > /tmp/oncoflow-api.log 2>&1 &
+	@nohup bash -c "cd $(APP_DIR) && $(UV) run python app-api.py" > /tmp/medsyntis-api.log 2>&1 &
 	@sleep 2
 	@$(MAKE) start-ui
 
@@ -359,20 +359,20 @@ build-web:
 
 ## Construit l'image Docker dédiée de l'API FastAPI Cross-Domains (dist/docker/Dockerfile.api)
 docker-build-api:
-	@echo -e "$(CYAN)--> Construction de l'image Docker API ($${ONCOFLOW_API_IMAGE:-ghcr.io/oncoflow/oncoflow-api}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
-	docker build -f dist/docker/Dockerfile.api -t $${ONCOFLOW_API_IMAGE:-ghcr.io/oncoflow/oncoflow-api}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(CYAN)--> Construction de l'image Docker API ($${MEDSYNTIS_API_IMAGE:-ghcr.io/medsyntis/medsyntis-api}:$${MEDSYNTIS_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile.api -t $${MEDSYNTIS_API_IMAGE:-ghcr.io/medsyntis/medsyntis-api}:$${MEDSYNTIS_TAG:-latest} .
 	@echo -e "$(GREEN)--> Image Docker API construite avec succès !$(RESET)"
 
 ## Construit l'image Docker Streamlit optionnelle (dist/docker/Dockerfile)
 docker-build-ui:
-	@echo -e "$(CYAN)--> Construction de l'image Docker Streamlit ($${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
-	docker build -f dist/docker/Dockerfile -t $${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(CYAN)--> Construction de l'image Docker Streamlit ($${MEDSYNTIS_IMAGE:-ghcr.io/medsyntis/medsyntis}:$${MEDSYNTIS_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile -t $${MEDSYNTIS_IMAGE:-ghcr.io/medsyntis/medsyntis}:$${MEDSYNTIS_TAG:-latest} .
 	@echo -e "$(GREEN)--> Image Docker Streamlit construite avec succès !$(RESET)"
 
 ## Construit l'image Docker durcie de l'interface web Node.js (dist/docker/Dockerfile.web)
 docker-build-web:
-	@echo -e "$(CYAN)--> Construction de l'image Docker Web ($${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
-	docker build -f dist/docker/Dockerfile.web -t $${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(CYAN)--> Construction de l'image Docker Web ($${MEDSYNTIS_WEB_IMAGE:-ghcr.io/medsyntis/medsyntis-web}:$${MEDSYNTIS_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile.web -t $${MEDSYNTIS_WEB_IMAGE:-ghcr.io/medsyntis/medsyntis-web}:$${MEDSYNTIS_TAG:-latest} .
 	@echo -e "$(GREEN)--> Image Docker Web construite avec succès !$(RESET)"
 
 ## Récupère et affiche les rapports de bugs stockés dans MongoDB
@@ -421,7 +421,7 @@ docker-update:
 		echo -e "$(CYAN)--> Recréation des conteneurs Milvus actifs...$(RESET)"; \
 		DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) up -d; \
 	fi
-	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-mongod$$'; then \
+	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-mongod$$'; then \
 		echo -e "$(CYAN)--> Recréation des conteneurs MongoDB actifs...$(RESET)"; \
 		DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) up -d; \
 	fi
@@ -443,9 +443,9 @@ pull-models:
 	ollama pull granite3.2-vision
 	ollama pull mistral-nemo
 
-## Affiche le statut d'écoute des différents ports et processus Oncoflow
+## Affiche le statut d'écoute des différents ports et processus MedSyntis
 status:
-	@echo -e "$(CYAN)=== État des services Oncoflow ===$(RESET)"
+	@echo -e "$(CYAN)=== État des services MedSyntis ===$(RESET)"
 	@echo -n "FastAPI (port $(PORT_API)) : "
 	@ss -tlnp 2>/dev/null | grep -q ":$(PORT_API) " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "Streamlit (port $(PORT_UI)) : "
@@ -488,11 +488,11 @@ init-prod:
 	fi
 	@echo -e "$(CYAN)--> Création des répertoires de volumes persistants et des dossiers de domaines (oncology & sma)...$(RESET)"
 	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config}
-	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
-	@mkdir -p /data/meddatasyntis/oncologic/{mtd,documents} /data/meddatasyntis/sma/{mtd,documents} 2>/dev/null || true
+	@mkdir -p /data/medsyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
 	@mkdir -p application/ressources/PatientMDTForm/{oncology,sma} application/ressources/documents/{oncology,sma}
 	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
-	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
+	@chmod 777 /data/medsyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "$(CYAN)--> Génération de $(ENV_PROD) depuis .env.prod.example...$(RESET)"; \
 		cp .env.prod.example "$(ENV_PROD)"; \
@@ -513,32 +513,32 @@ init-prod:
 	@$(MAKE) pull-models-prod
 	@echo -e "$(GREEN)--> Initialisation de production terminée.$(RESET)"
 
-## Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour l'utilisateur courant
+## Installe /etc/sudoers.d/medsyntis (Ubuntu 24.04+) pour l'utilisateur courant
 sudoers-prod:
 	@echo -e "$(CYAN)--> Configuration sudoers (Ubuntu 24.04+) pour l'utilisateur '$(DEPLOY_USER)'...$(RESET)"
 	@mkdir -p dist/docker/compose/volumes/logs
-	@sed "s|__DEPLOY_USER__|$(DEPLOY_USER)|g" dist/sudoers/meddatasyntis > dist/docker/compose/volumes/logs/meddatasyntis.sudoers
-	@if sudo visudo -cf dist/docker/compose/volumes/logs/meddatasyntis.sudoers >/dev/null 2>&1; then \
-		sudo cp dist/docker/compose/volumes/logs/meddatasyntis.sudoers /etc/sudoers.d/meddatasyntis && \
-		sudo chown root:root /etc/sudoers.d/meddatasyntis && \
-		sudo chmod 0440 /etc/sudoers.d/meddatasyntis && \
-		echo -e "  [$(GREEN)OK$(RESET)] Règle sudoers installée et validée dans /etc/sudoers.d/meddatasyntis (mode 0440)."; \
+	@sed "s|__DEPLOY_USER__|$(DEPLOY_USER)|g" dist/sudoers/medsyntis > dist/docker/compose/volumes/logs/medsyntis.sudoers
+	@if sudo visudo -cf dist/docker/compose/volumes/logs/medsyntis.sudoers >/dev/null 2>&1; then \
+		sudo cp dist/docker/compose/volumes/logs/medsyntis.sudoers /etc/sudoers.d/medsyntis && \
+		sudo chown root:root /etc/sudoers.d/medsyntis && \
+		sudo chmod 0440 /etc/sudoers.d/medsyntis && \
+		echo -e "  [$(GREEN)OK$(RESET)] Règle sudoers installée et validée dans /etc/sudoers.d/medsyntis (mode 0440)."; \
 	else \
-		echo -e "  [$(YELLOW)INFO$(RESET)] Fichier généré : dist/docker/compose/volumes/logs/meddatasyntis.sudoers"; \
-		echo -e "  [$(YELLOW)INFO$(RESET)] Pour l'installer : sudo cp $(CURDIR)/dist/docker/compose/volumes/logs/meddatasyntis.sudoers /etc/sudoers.d/meddatasyntis && sudo chmod 0440 /etc/sudoers.d/meddatasyntis"; \
+		echo -e "  [$(YELLOW)INFO$(RESET)] Fichier généré : dist/docker/compose/volumes/logs/medsyntis.sudoers"; \
+		echo -e "  [$(YELLOW)INFO$(RESET)] Pour l'installer : sudo cp $(CURDIR)/dist/docker/compose/volumes/logs/medsyntis.sudoers /etc/sudoers.d/medsyntis && sudo chmod 0440 /etc/sudoers.d/medsyntis"; \
 	fi
 
-## Génère et installe la configuration logrotate pour les logs applicatifs MedDataSyntis
+## Génère et installe la configuration logrotate pour les logs applicatifs MedSyntis
 logrotate-prod:
-	@echo -e "$(CYAN)--> Configuration de logrotate pour MedDataSyntis...$(RESET)"
+	@echo -e "$(CYAN)--> Configuration de logrotate pour MedSyntis...$(RESET)"
 	@mkdir -p dist/docker/compose/volumes/logs
 	@chmod 777 dist/docker/compose/volumes/logs 2>/dev/null || true
-	@sed "s|__MEDDATASYNTIS_LOG_DIR__|$(CURDIR)/dist/docker/compose/volumes/logs|g" dist/logrotate/meddatasyntis > dist/docker/compose/volumes/logs/meddatasyntis.logrotate
-	@if sudo cp dist/docker/compose/volumes/logs/meddatasyntis.logrotate /etc/logrotate.d/meddatasyntis 2>/dev/null && sudo chown root:root /etc/logrotate.d/meddatasyntis 2>/dev/null && sudo chmod 644 /etc/logrotate.d/meddatasyntis 2>/dev/null; then \
-		echo -e "  [$(GREEN)OK$(RESET)] Configuration installée dans /etc/logrotate.d/meddatasyntis"; \
+	@sed "s|__MEDSYNTIS_LOG_DIR__|$(CURDIR)/dist/docker/compose/volumes/logs|g" dist/logrotate/medsyntis > dist/docker/compose/volumes/logs/medsyntis.logrotate
+	@if sudo cp dist/docker/compose/volumes/logs/medsyntis.logrotate /etc/logrotate.d/medsyntis 2>/dev/null && sudo chown root:root /etc/logrotate.d/medsyntis 2>/dev/null && sudo chmod 644 /etc/logrotate.d/medsyntis 2>/dev/null; then \
+		echo -e "  [$(GREEN)OK$(RESET)] Configuration installée dans /etc/logrotate.d/medsyntis"; \
 	else \
-		echo -e "  [$(GREEN)OK$(RESET)] Fichier généré : dist/docker/compose/volumes/logs/meddatasyntis.logrotate"; \
-		echo -e "  [$(YELLOW)INFO$(RESET)] Pour l'activer au niveau système : sudo cp $(CURDIR)/dist/docker/compose/volumes/logs/meddatasyntis.logrotate /etc/logrotate.d/meddatasyntis && sudo chmod 644 /etc/logrotate.d/meddatasyntis"; \
+		echo -e "  [$(GREEN)OK$(RESET)] Fichier généré : dist/docker/compose/volumes/logs/medsyntis.logrotate"; \
+		echo -e "  [$(YELLOW)INFO$(RESET)] Pour l'activer au niveau système : sudo cp $(CURDIR)/dist/docker/compose/volumes/logs/medsyntis.logrotate /etc/logrotate.d/medsyntis && sudo chmod 644 /etc/logrotate.d/medsyntis"; \
 	fi
 
 ## Télécharge les modèles GGUF de production (Ornith-1.5-35B-A3B IQ4_XS & bge-m3 Q4_K_M)
@@ -563,12 +563,12 @@ pull-models-prod:
 mongo-init-prod:
 	@echo -e "$(CYAN)--> Initialisation / vérification du Replica Set MongoDB (rs0) en prod...$(RESET)"
 	@for i in {1..15}; do \
-		if docker exec oncoflow-mongod mongosh --quiet --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1; then \
+		if docker exec medsyntis-mongod mongosh --quiet --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1; then \
 			break; \
 		fi; \
 		sleep 1; \
 	done
-	@docker exec oncoflow-mongod mongosh --quiet -u "$${APP_MONGODB_USER:-root}" -p "$${APP_MONGODB_PASSWORD:-root}" --authenticationDatabase admin --eval ' \
+	@docker exec medsyntis-mongod mongosh --quiet -u "$${APP_MONGODB_USER:-root}" -p "$${APP_MONGODB_PASSWORD:-root}" --authenticationDatabase admin --eval ' \
 		try { \
 			var s = rs.status(); \
 			if (s.ok === 1) { print("  [OK] MongoDB Replica Set (rs0) déjà actif."); quit(0); } \
@@ -605,18 +605,18 @@ docker-up-prod:
 	@if grep -q "votre_github_client_id" "$(ENV_PROD)"; then \
 		echo -e "  [$(YELLOW)ATTENTION$(RESET)] OAUTH2_PROXY_CLIENT_ID contient encore la valeur par défaut dans $(ENV_PROD) !"; \
 	fi
-	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
-	@mkdir -p /data/meddatasyntis/oncologic/{mtd,documents} /data/meddatasyntis/sma/{mtd,documents} 2>/dev/null || true
-	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
+	@mkdir -p /data/medsyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
+	@chmod 777 /data/medsyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + API + Web M3 Oncology/SMA + OAuth2 Proxy + Caddy)...$(RESET)"
+	@echo -e "$(CYAN)--> Démarrage de la stack de production MedSyntis (L4 GPU + API + Web M3 Oncology/SMA + OAuth2 Proxy + Caddy)...$(RESET)"
 	@if [ "$(WITH_STREAMLIT)" = "1" ]; then \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-build; \
 	else \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-build; \
 	fi
-	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
+	@docker exec medsyntis-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
 
 ## Démarre la stack de production avec les déploiements Streamlit optionnels (oncologic-st & sma-st)
 start-prod-st:
@@ -645,10 +645,10 @@ start-prod: docker-up-prod
 	@BASE_DOM=$$(grep -E '^PROD_BASE_DOMAIN=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2 || echo "$(PROD_BASE_DOMAIN)"); \
 	BASE_DOM=$${BASE_DOM:-$(PROD_BASE_DOMAIN)}; \
 	echo -e "$(GREEN)======================================================================$(RESET)"; \
-	echo -e "  🚀 MedDataSyntis Production actif sur :"; \
+	echo -e "  🚀 MedSyntis Production actif sur :"; \
 	echo -e "     • Oncologie (Web M3)            : $(CYAN)https://oncologic.$${BASE_DOM}$(RESET)"; \
 	echo -e "     • Amyotrophie spinale (Web M3)  : $(CYAN)https://sma.$${BASE_DOM}$(RESET)"; \
-	if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+	if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
 		echo -e "     • Oncologie (Streamlit opt.)    : $(CYAN)https://oncologic-st.$${BASE_DOM}$(RESET)"; \
 		echo -e "     • Amyotrophie spinale (ST opt.) : $(CYAN)https://sma-st.$${BASE_DOM}$(RESET)"; \
 	fi; \
@@ -656,7 +656,7 @@ start-prod: docker-up-prod
 
 ## Arrête tous les conteneurs de la stack de production (conserve les volumes de données)
 stop-prod:
-	@echo -e "$(YELLOW)--> Arrêt de la stack de production MedDataSyntis...$(RESET)"
+	@echo -e "$(YELLOW)--> Arrêt de la stack de production MedSyntis...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit down --remove-orphans
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) down --remove-orphans
 	@echo -e "$(GREEN)--> Stack de production arrêtée.$(RESET)"
@@ -670,9 +670,9 @@ pprod: start-prod
 ## Redémarre uniquement les services applicatifs et proxy (sans décharger le LLM de la VRAM L4)
 restart-prod:
 	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (Web M3 oncologic/sma, API Cross-Domains, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-web oncoflow-api oauth2-proxy caddy
-	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit restart oncoflow-ui-oncology oncoflow-ui-sma; \
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm medsyntis-web medsyntis-api oauth2-proxy caddy
+	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit restart medsyntis-ui-oncology medsyntis-ui-sma; \
 	fi
 	@echo -e "$(GREEN)--> Services applicatifs redémarrés.$(RESET)"
 
@@ -683,15 +683,15 @@ prod-update:
 	@echo -e "$(CYAN)--> [2/5] Mise à jour de Milvus Standalone (v3.0)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> [3/5] Téléchargement des dernières images applicatives (oncoflow-api, oncoflow-web, oauth2-proxy, caddy, litellm)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-api oncoflow-web oauth2-proxy caddy litellm
+	@echo -e "$(CYAN)--> [3/5] Téléchargement des dernières images applicatives (medsyntis-api, medsyntis-web, oauth2-proxy, caddy, litellm)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull medsyntis-api medsyntis-web oauth2-proxy caddy litellm
 	@echo -e "$(CYAN)--> [4/5] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-web oncoflow-api oauth2-proxy caddy litellm
-	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit pull oncoflow-ui-oncology oncoflow-ui-sma; \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma; \
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps medsyntis-web medsyntis-api oauth2-proxy caddy litellm
+	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit pull medsyntis-ui-oncology medsyntis-ui-sma; \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-deps medsyntis-ui-oncology medsyntis-ui-sma; \
 	fi
-	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
+	@docker exec medsyntis-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@echo -e "$(CYAN)--> [5/5] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
@@ -702,24 +702,24 @@ prod-update-all:
 	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + Web M3)...$(RESET)"
 	git pull --ff-only
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
-	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit pull; \
 	else \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull; \
 	fi
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-build; \
 	else \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-build; \
 	fi
-	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
+	@docker exec medsyntis-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
 
 ## Affiche l'état complet des services de production et de la VRAM GPU L4
 status-prod:
-	@echo -e "$(CYAN)=== État des services MedDataSyntis (PRODUCTION) ===$(RESET)"
+	@echo -e "$(CYAN)=== État des services MedSyntis (PRODUCTION) ===$(RESET)"
 	@echo -n "Caddy HTTPS (port 443)            : "
 	@ss -tlnp 2>/dev/null | grep -q ":443 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "OAuth2 Proxy GitHub SSO (4180)    : "

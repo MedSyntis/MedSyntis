@@ -5,7 +5,7 @@ description: "Manages continuous integration configurations, Ruff lint/formattin
 
 # CI Expert Skill
 
-This skill governs testing pipelines, syntax style validations, and environment checks for the Oncoflow project.
+This skill governs testing pipelines, syntax style validations, and environment checks for the MedSyntis project.
 
 ## Verification & Pipelines
 

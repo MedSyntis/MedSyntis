@@ -48,7 +48,7 @@ def list_resources(config: DomainConfigDep):
     try:
         files = manager.list_ressources()
     except Exception as err:
-        config.set_logger("oncoflow.api").exception("Failed to list resources")
+        config.set_logger("medsyntis.api").exception("Failed to list resources")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Impossible de lister les ressources.",
@@ -178,7 +178,7 @@ def index_resource(filename: str, config: DomainConfigDep):
             "message": "Ressource indexée avec succès.",
         }
     except Exception as err:
-        config.set_logger("oncoflow.api").exception(
+        config.set_logger("medsyntis.api").exception(
             "Failed to index resource %s", filename
         )
         raise HTTPException(
@@ -372,7 +372,7 @@ def chat_with_resource_agent(
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
     except Exception as err:
-        config.set_logger("oncoflow.api").exception(
+        config.set_logger("medsyntis.api").exception(
             "Resource agent error on %s", filename
         )
         raise HTTPException(

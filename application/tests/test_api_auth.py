@@ -89,7 +89,7 @@ def test_cors_preflight_and_allowed_origin(client):
         headers={
             "Origin": "http://localhost:3000",
             "Access-Control-Request-Method": "GET",
-            "Access-Control-Request-Headers": "Authorization,X-Oncoflow-Domain",
+            "Access-Control-Request-Headers": "Authorization,X-MedSyntis-Domain",
         },
     )
     assert preflight.status_code == 200

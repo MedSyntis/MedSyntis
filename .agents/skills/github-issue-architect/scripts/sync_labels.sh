@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Synchronizes the DataSyntis GitHub label taxonomy from `.github/labels.yml`
+# Synchronizes the MedSyntis GitHub label taxonomy from `.github/labels.yml`
 # Requires: `gh` CLI authenticated (`gh auth status`) and `python3` + PyYAML/regex.
 
 set -euo pipefail
 
-REPO="${1:-oncoflow/oncoflow}"
+REPO="${1:-MedSyntis/MedSyntis}"
 LABELS_FILE=".github/labels.yml"
 
 if [[ ! -f "$LABELS_FILE" ]]; then

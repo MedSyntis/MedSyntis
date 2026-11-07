@@ -5,7 +5,7 @@ description: Enforces 100% English docstrings and comments across the codebase, 
 
 # Ubiquitous Language & English Documentation Standard (`ubiquitous-language-english`)
 
-This skill enforces strict linguistic and Domain-Driven Design (DDD) Ubiquitous Language conventions across the **Oncoflow / MedDataSyntis** codebase.
+This skill enforces strict linguistic and Domain-Driven Design (DDD) Ubiquitous Language conventions across the **MedSyntis** codebase.
 
 ---
 

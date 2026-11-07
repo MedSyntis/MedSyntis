@@ -28,7 +28,7 @@ def test_openapi_endpoint_is_versioned(client):
     assert resp.status_code == 200
     spec = resp.json()
     assert spec["openapi"].startswith("3.")
-    assert spec["info"]["title"] == "Oncoflow Cross-Domain API"
+    assert spec["info"]["title"] == "MedSyntis Cross-Domain API"
 
 
 def test_every_json_endpoint_declares_a_response_schema(client):

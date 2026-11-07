@@ -62,7 +62,7 @@ class InMemoryQueueManager:
         executor: QueueJobExecutor | None = None,
     ) -> None:
         self.base_config = base_config or AppConfig()
-        self.logger = self.base_config.set_logger("oncoflow.queue")
+        self.logger = self.base_config.set_logger("medsyntis.queue")
         self._executor = executor
         self._pq: queue.PriorityQueue[tuple[int, float, int, str]] = (
             queue.PriorityQueue()
@@ -1422,7 +1422,7 @@ class InMemoryQueueManager:
         hb_thread = threading.Thread(
             target=_heartbeat,
             daemon=True,
-            name=f"oncoflow-lease-hb-{lease_id}",
+            name=f"medsyntis-lease-hb-{lease_id}",
         )
         hb_thread.start()
         try:
@@ -1520,7 +1520,7 @@ class InMemoryQueueManager:
                     target=self._worker_loop,
                     args=(worker_id,),
                     daemon=True,
-                    name=f"oncoflow-pq-worker-{idx}",
+                    name=f"medsyntis-pq-worker-{idx}",
                 )
                 thread.start()
                 self._worker_threads.append(thread)
@@ -1596,7 +1596,7 @@ class QueueBroker:
     """
     Domain-scoped queue broker facade.
     - When `config.queue.api_url` is set and reachable, delegates to the central
-      cross-domain FastAPI container (`oncoflow-api`) via HTTP (`httpx`).
+      cross-domain FastAPI container (`medsyntis-api`) via HTTP (`httpx`).
     - Otherwise, delegates directly to the in-process `InMemoryQueueManager`
       (`queue.PriorityQueue`).
     """

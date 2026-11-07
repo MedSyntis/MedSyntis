@@ -57,7 +57,7 @@ class VllmConnect(LLMConnect):
         )
         self.test_connection()
 
-        # In Oncoflow's local-first architecture, the vLLM engine on port 8080 is
+        # In MedSyntis's local-first architecture, the vLLM engine on port 8080 is
         # dedicated solely to text generation to maximize performance and conserve GPU VRAM.
         # Embedding models are offloaded to the local Ollama instance running on port 11434.
         import urllib.parse

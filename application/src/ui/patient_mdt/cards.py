@@ -625,7 +625,7 @@ def cards_view():
         with st.container(border=True):
             st.subheader("📋 Aucun dossier préparé pour la séance RCP")
             st.markdown(
-                "**DataSyntis** libère du temps médical utile en transformant le chaos documentaire "
+                "**MedSyntis** libère du temps médical utile en transformant le chaos documentaire "
                 "en dossiers directement exploitables pour la décision RCP :"
             )
             p1, p2, p3 = st.columns(3)

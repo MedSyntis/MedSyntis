@@ -63,7 +63,7 @@ def format_bugs_report(bugs: list[dict]) -> str:
     )
 
     lines = [
-        f"{BOLD}{CYAN}=== Rapports de bugs Oncoflow ({len(bugs)} total : "
+        f"{BOLD}{CYAN}=== Rapports de bugs MedSyntis ({len(bugs)} total : "
         f"{RED}{open_count} ouvert(s){CYAN}, "
         f"{YELLOW}{in_progress_count} en cours{CYAN}, "
         f"{GREEN}{resolved_count} résolu(s)/fermé(s){CYAN}) ==={RESET}",

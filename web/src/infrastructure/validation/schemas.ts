@@ -196,7 +196,7 @@ export const QueueCleanBodySchema = z.object({
 });
 
 /**
- * 3. FastAPI Upstream Response Schemas (`http-oncoflow-api.adapter.ts`)
+ * 3. FastAPI Upstream Response Schemas (`http-medsyntis-api.adapter.ts`)
  */
 const NOT_GIVEN_VALUES = new Set(["Not_given", "not_given", "Non spécifié", "None", "null", ""]);
 

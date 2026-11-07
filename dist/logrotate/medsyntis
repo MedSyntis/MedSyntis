@@ -1,9 +1,9 @@
-# Configuration logrotate pour MedDataSyntis
-# Installée automatiquement dans /etc/logrotate.d/meddatasyntis via :
+# Configuration logrotate pour MedSyntis
+# Installée automatiquement dans /etc/logrotate.d/medsyntis via :
 #   make logrotate-prod (ou make init-prod)
 
-__MEDDATASYNTIS_LOG_DIR__/*.log
-/tmp/meddatasyntis-*.log
+__MEDSYNTIS_LOG_DIR__/*.log
+/tmp/medsyntis-*.log
 {
     daily
     rotate 14

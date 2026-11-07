@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import BaseModel
 
-from src.application.agent.agent import OncowflowAgent
+from src.application.agent.agent import MedSyntisAgent
 from src.application.reader import DocumentReader
 
 
@@ -29,7 +29,7 @@ class MockOutputSchema(BaseModel):
     response: str
 
 
-class TestOncowflowAgent(unittest.TestCase):
+class TestMedSyntisAgent(unittest.TestCase):
     def setUp(self):
         self.mock_config = MagicMock()
         self.mock_config.llm.type = "ollama"
@@ -49,7 +49,7 @@ class TestOncowflowAgent(unittest.TestCase):
         mock_ollama_instance = mock_get_llm_client.return_value
         mock_ollama_instance.chat.return_value = "mock_llm_model"
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -66,7 +66,7 @@ class TestOncowflowAgent(unittest.TestCase):
         self.mock_config.llm.type = "gpt-4"
 
         with self.assertRaises(ValueError) as cm:
-            OncowflowAgent(
+            MedSyntisAgent(
                 config=self.mock_config,
                 mtd=self.mock_reader,
                 output_format=self.output_format,
@@ -83,7 +83,7 @@ class TestOncowflowAgent(unittest.TestCase):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -114,7 +114,7 @@ class TestOncowflowAgent(unittest.TestCase):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -145,7 +145,7 @@ class TestOncowflowAgent(unittest.TestCase):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -172,7 +172,7 @@ class TestOncowflowAgent(unittest.TestCase):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -209,7 +209,7 @@ class TestOncowflowAgent(unittest.TestCase):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -249,7 +249,7 @@ class TestOncowflowAgent(unittest.TestCase):
         reader1 = MagicMock(spec=DocumentReader)
         reader2 = MagicMock(spec=DocumentReader)
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             patient_readers=[reader1, reader2],
             output_format=self.output_format,
@@ -303,7 +303,7 @@ class TestOncowflowAgent(unittest.TestCase):
     ):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -326,7 +326,7 @@ class TestOncowflowAgent(unittest.TestCase):
     ):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -352,8 +352,8 @@ class TestOncowflowAgent(unittest.TestCase):
         # ...but neither tool outputs nor the full invalid answer are replayed.
         self.assertNotIn("PATIENT RECORD", retry_prompt)
         max_len = (
-            OncowflowAgent.RETRY_MAX_OUTPUT_CHARS
-            + OncowflowAgent.RETRY_MAX_ERROR_CHARS
+            MedSyntisAgent.RETRY_MAX_OUTPUT_CHARS
+            + MedSyntisAgent.RETRY_MAX_ERROR_CHARS
             + 1000
         )
         self.assertLess(len(retry_prompt), max_len)
@@ -366,7 +366,7 @@ class TestOncowflowAgent(unittest.TestCase):
     ):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -401,7 +401,7 @@ class TestOncowflowAgent(unittest.TestCase):
     ):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=self.output_format,
@@ -438,7 +438,7 @@ class TestOncowflowAgent(unittest.TestCase):
 
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=RootSchema,
@@ -474,7 +474,7 @@ class TestOncowflowAgent(unittest.TestCase):
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
 
-        agent = OncowflowAgent(
+        agent = MedSyntisAgent(
             config=self.mock_config,
             mtd=self.mock_reader,
             output_format=ChatResponse,

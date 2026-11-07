@@ -1,8 +1,8 @@
 import type { BatchStatus, ClinicalDomain, PatientListItem } from "../../domain/types.js";
-import type { OncoflowApiPort, UploadFileInput } from "../ports/oncoflow-api.port.js";
+import type { MedsyntisApiPort, UploadFileInput } from "../ports/medsyntis-api.port.js";
 
 export class IngestUseCase {
-  constructor(private readonly api: OncoflowApiPort) {}
+  constructor(private readonly api: MedsyntisApiPort) {}
 
   async listExistingPatients(domain: ClinicalDomain): Promise<PatientListItem[]> {
     return this.api.listPatients(domain, false);

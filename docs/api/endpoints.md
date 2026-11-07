@@ -1,369 +1,252 @@
-# Spécification de l'API REST versionnée (v1) — MedDataSyntis
+# 🔌 REST & SSE API v1 Specification — MedSyntis
 
-Cette documentation détaille l'ensemble des points d'entrée de l'API REST de MedDataSyntis versionnée sous `/api/v1`.
-
-L'API permet de gérer les dossiers RCP (Réunions de Concertation Pluridisciplinaire) des patients, de piloter les agents experts d'intelligence artificielle, d'interroger les guides scientifiques (TNCD) de référence et de discuter avec les agents.
+This document specifies all versioned REST and Server-Sent Events (SSE) endpoints exposed by the **MedSyntis Cross-Domain FastAPI Backend** (`application/app-api.py`).
 
 ---
 
-## Démarrage rapide
+## 🚀 Quickstart & Interactive OpenAPI Documentation
 
-Pour démarrer le serveur d'API localement avec le rechargement automatique :
+Start the FastAPI backend locally from `application/`:
 
 ```bash
+cd application
+uv run python app-api.py
+# Or with hot-reload during development:
 uv run uvicorn app-api:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Une fois démarré, la documentation interactive Swagger UI est disponible sur : [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+When `APP_API_DOCS_ENABLED=true` (default), interactive documentation is available at:
+* **Swagger UI**: `http://127.0.0.1:8000/docs`
+* **ReDoc**: `http://127.0.0.1:8000/redoc`
+* **OpenAPI 3.1 JSON Schema**: `GET /api/v1/openapi.json`
+
+### Source Code Structure
+* **Application Entrypoint & Middlewares**: [`application/app-api.py`](../../application/app-api.py)
+* **Security, Auth & Domain Routing Dependencies**: [`application/src/routers/dependencies.py`](../../application/src/routers/dependencies.py)
+* **Versioned Routers (`/api/v1/*`)**:
+  * [`application/src/routers/patientmdtform.py`](../../application/src/routers/patientmdtform.py) (`/api/v1/patientmdtform`)
+  * [`application/src/routers/mdt_agenda.py`](../../application/src/routers/mdt_agenda.py) (`/api/v1/mdt-agenda`)
+  * [`application/src/routers/agents.py`](../../application/src/routers/agents.py) (`/api/v1/agents`)
+  * [`application/src/routers/resources.py`](../../application/src/routers/resources.py) (`/api/v1/resources`)
+  * [`application/src/routers/queue.py`](../../application/src/routers/queue.py) (`/api/v1/queue`)
+  * [`application/src/routers/bug_reports.py`](../../application/src/routers/bug_reports.py) (`/api/v1/bug-reports`)
+* **Pydantic Request/Response Schemas**: [`application/src/models/`](../../application/src/models/)
 
 ---
 
-## Structure du Code de l'API
+## 🔐 Authentication, Zero-Trust Headers & Multi-Domain Routing
 
-L'API est structurée de manière modulaire au sein du dossier `application/` :
-* **Point d'entrée principal** : [app-api.py](file:///home/guillaume/git/oncoflow/application/app-api.py) (configuration de FastAPI, lifespan, et inclusion des routeurs).
-* **Routeurs** : [src/routers/](file:///home/guillaume/git/oncoflow/application/src/routers/) (`rcp.py`, `agents.py`, `resources.py`, `queue.py`), dépendances partagées dans [db_interface.py](file:///home/guillaume/git/oncoflow/application/src/infrastructure/documents/db_interface.py).
-* **Modèles Pydantic / Schémas** : [src/models/](file:///home/guillaume/git/oncoflow/application/src/models/) (`rcp.py`, `agents.py`, `resources.py`, `queue.py`). Chaque endpoint déclare un `response_model`.
+### 1. API Token Authentication (`verify_api_token`)
+Every `/api/v1/*` endpoint requires the shared `APP_API_TOKEN` (mandatory whenever `APP_DEV_MODE=false`), passed via either:
+* `Authorization: Bearer <APP_API_TOKEN>`
+* `X-API-Key: <APP_API_TOKEN>`
 
----
+### 2. Zero-Trust User Identity & Admin Authorization (`get_current_user_info` & `require_admin`)
+When requests are forwarded by the Fastify BFF (`web/`) or OAuth2-Proxy / Caddy in `oauth_proxy` mode, user identity is resolved from:
+* `X-MedSyntis-User`: Authenticated username or email.
+* `X-MedSyntis-User-Name`: Optional display name.
+* `X-MedSyntis-Proxy-Secret`: Shared secret compared in constant time (`hmac.compare_digest`) against `APP_PROXY_SECRET`.
 
-## 1. Spécification OpenAPI
+Destructive endpoints protected by `require_admin` (`DELETE /api/v1/patientmdtform/patients/{patient_id}`, queue retry/cancel/clean/lock release) verify that the authenticated user belongs to `APP_ADMIN_USERS` whenever user headers are present.
 
-### Obtenir la spécification OpenAPI
-* **URL** : `/api/v1/openapi.json`
-* **Méthode** : `GET`
-* **Description** : Renvoie le schéma de configuration OpenAPI v3 de l'API au format JSON (schémas de requête **et** de réponse de tous les endpoints).
-* **Interfaces interactives** : `/docs` (Swagger UI) et `/redoc` s'appuient sur cette même URL.
-* **Exemple** : `curl -s http://localhost:8000/api/v1/openapi.json -o openapi.json`
+### 3. Multi-Domain Routing (`AllowedDomainMiddleware`)
+All `/api/v1/*` endpoints dynamically scope MongoDB (`MedSyntis_{domain}`), Milvus (`medsyntisDocs_{domain}_{embedding}`), file storage (`ressources/PatientMDTForm/{domain}`), and specialist agents to the requested clinical domain (`oncology` or `sma`), resolved in priority order from:
+1. Query parameter: `?domain=oncology` or `?domain=sma`
+2. HTTP header: `X-MedSyntis-Domain: oncology` or `X-MedSyntis-Domain: sma`
+3. Instance default: `APP_DOMAIN` (defaults to `oncology`)
 
----
-
-## 2. Gestion des Dossiers Patients & Fiches RCP (`/api/v1/rcp`)
-
-### Lister les dossiers patients (synthèse sur la dernière RCP analysée)
-* **URL** : `/api/v1/rcp/patients`
-* **Méthode** : `GET`
-* **Description** : Récupère la liste des dossiers patients, où chaque carte reflète les indicateurs cliniques de la **dernière fiche RCP analysée** du patient.
-* **Réponse de succès (200 OK)** :
-  ```json
-  [
-    {
-      "patient_id": "roussel_marion_1968_04_12",
-      "patient": "Marion ROUSSEL",
-      "first_name": "Marion",
-      "last_name": "ROUSSEL",
-      "date_birth": "1968-04-12T00:00:00",
-      "rcp_count": 2,
-      "latest_file": "ROUSSEL-Marion_2026-07.pdf",
-      "date_refresh": "2026-07-14T16:00:00",
-      "date": "2026-07-20T00:00:00",
-      "experts": ["pancreas expert"],
-      "missing": [],
-      "urgency": "Urgent",
-      "urgency_score": 2,
-      "intervention_required": true,
-      "intervention_type": "chirurgie"
-    }
-  ]
-  ```
-
-### Obtenir le détail d'un dossier patient et l'historique de ses RCP
-* **URL** : `/api/v1/rcp/patients/{patient_id}`
-* **Méthode** : `GET`
-* **Description** : Récupère les informations d'identité du patient, le nom de sa dernière fiche RCP analysée (`latest_file`), ainsi que la liste chronologique complète de ses fiches RCP (`rcps`).
-
-### Supprimer un dossier patient complet
-* **URL** : `/api/v1/rcp/patients/{patient_id}`
-* **Méthode** : `DELETE`
-* **Description** : Supprime le dossier patient ainsi que toutes ses fiches RCP associées en base et sur le disque.
-
-### Poser une question à un agent expert sur l'ensemble du dossier patient
-* **URL** : `/api/v1/rcp/patients/{patient_id}/chat`
-* **Méthode** : `POST`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "agent_name": "pancreas expert",
-    "message": "Quelle est l'évolution du patient entre ses différentes RCP ?"
-  }
-  ```
-* **Description** : Dialogue avec un agent expert en lui fournissant le contexte complet de toutes les fiches RCP du dossier patient (`PatientContext` / `get_patient_mtds_markdown`).
-
-### Lister les fiches RCP scannées
-* **URL** : `/api/v1/rcp`
-* **Méthode** : `GET`
-* **Description** : Récupère la liste synthétique de toutes les fiches RCP disponibles en base, triées par date de scan décroissante.
-* **Réponse de succès (200 OK)** :
-  ```json
-  [
-    {
-      "file": "ROUSSEL-Marion_anon.pdf",
-      "patient_id": "roussel_marion_1968_04_12",
-      "patient": "Marion ROUSSEL",
-      "date_refresh": "2026-07-14T16:00:00",
-      "date": "2026-07-20T00:00:00",
-      "experts": ["pancreas expert"],
-      "missing": [],
-      "urgency": "Urgent",
-      "urgency_score": 2,
-      "intervention_required": true,
-      "intervention_type": "chirurgie"
-    }
-  ]
-  ```
-
-### Obtenir le détail complet d'une fiche RCP
-* **URL** : `/api/v1/rcp/{filename}`
-* **Méthode** : `GET`
-* **Description** : Récupère l'intégralité du document structuré MongoDB pour un fichier RCP spécifique.
-* **Réponse de succès (200 OK)** : renvoie l'objet JSON contenant les extractions faites par chaque agent expert (`PatientAdministrative`, `ExpertAnswer`, `MTDCompleted`, etc.).
-
-### Supprimer une fiche RCP
-* **URL** : `/api/v1/rcp/{filename}`
-* **Méthode** : `DELETE`
-* **Description** : Supprime la fiche de la base de données MongoDB (et la retire de la liste `files` du patient associé) ainsi que le PDF correspondant du disque.
-* **Réponse de succès (200 OK)** :
-  ```json
-  {
-    "message": "Dossier 'ROUSSEL-Marion_anon.pdf' supprimé avec succès."
-  }
-  ```
-
-### Téléverser une nouvelle fiche RCP (PDF) et l'associer à un patient
-* **URL** : `/api/v1/rcp/upload`
-* **Méthode** : `POST`
-* **Type de contenu** : `multipart/form-data`
-* **Corps de la requête** :
-  * `file` : Le fichier PDF de la RCP (binaire)
-  * `patient_id` *(optionnel)* : Identifiant d'un patient existant auquel rattacher la fiche. Si omis (par défaut : mode automatique), l'indexation RAG et l'agent administratif IA extraient `first_name`, `last_name` et `date_birth` pour créer ou rattacher automatiquement le dossier patient.
-* **Description** : Enregistre le PDF, exécute le RAG + l'extraction administrative IA, et associe la fiche au dossier patient.
-* **Réponse de succès (200 OK)** :
-  ```json
-  {
-    "filename": "ROUSSEL-Marion_anon.pdf",
-    "patient_id": "roussel_marion_1968_04_12",
-    "patient": {
-      "patient_id": "roussel_marion_1968_04_12",
-      "first_name": "Marion",
-      "last_name": "ROUSSEL",
-      "date_birth": "1968-04-12T00:00:00",
-      "files": ["ROUSSEL-Marion_anon.pdf"]
-    },
-    "message": "Fichier téléversé, indexé et associé au patient avec succès."
-  }
-  ```
-
-### Lancer/Relancer le traitement IA d'une fiche RCP
-* **URL** : `/api/v1/rcp/{filename}/process`
-* **Méthode** : `POST`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "model_name": "PatientPerformanceStatus"
-  }
-  ```
-  *(Note : passez `model_name: null` ou omettez le paramètre pour lancer l'analyse complète).*
-* **Description** : Déclenche l'extraction des données médicales par les agents d'IA pour le dossier ciblé.
-* **Réponse de succès (200 OK)** :
-  ```json
-  {
-    "message": "Modèle 'PatientPerformanceStatus' retraité avec succès pour 'ROUSSEL-Marion_anon.pdf'."
-  }
-  ```
-
-### Poser une question à un agent expert sur une fiche RCP
-* **URL** : `/api/v1/rcp/{filename}/chat`
-* **Méthode** : `POST`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "agent_name": "pancreas expert",
-    "message": "Quel est le statut OMS du patient ?"
-  }
-  ```
-* **Description** : Dialogue directement avec un agent expert dans le cadre d'une fiche RCP spécifique.
-* **Réponse de succès (200 OK)** :
-  ```json
-  {
-    "response": "Le statut WHO/OMS du patient est de 1, comme documenté dans la lettre d'admission."
-  }
-  ```
-
-### Enregistrer une modification manuelle sur une rubrique clinique
-* **URL** : `/api/v1/rcp/{filename}/manual-edit`
-* **Méthode** : `PUT`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "section": "Chemotherapy",
-    "values": {
-      "chemotherapy_name": "FOLFIRINOX modifié (8 cures validées RCP)"
-    },
-    "edited_by": "Dr. Martin"
-  }
-  ```
-* **Description** : Enregistre une édition humaine traçable sur une rubrique extraite (`manual_edits`). Cette rubrique est automatiquement protégée contre l'écrasement lors des relances IA (`preserve_manual_edits=true`).
-
-### Masquer ou restaurer des éléments manquants d'une fiche RCP
-* **URL** : `/api/v1/rcp/{filename}/missing-items`
-* **Méthode** : `PUT`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "toggle_item": "Compte rendu d'anatomopathologie définitif (biopsie EUS)",
-    "hide_missing_items": false,
-    "edited_by": "Secrétariat RCP"
-  }
-  ```
-* **Description** : Permet au secrétariat RCP ou au clinicien de masquer/restaurer individuellement un élément manquant ou de masquer/afficher toute la liste sur une fiche donnée.
-
-### Télécharger le PDF original
-* **URL** : `/api/v1/rcp/{filename}/pdf`
-* **Méthode** : `GET`
-* **Description** : Télécharge directement le document source PDF d'un patient.
-* **Réponse** : Flux binaire `application/pdf`.
+Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain` response header. If an unauthorized domain is requested (not in `APP_ALLOWED_DOMAINS`), the middleware returns `HTTP 400 Bad Request`.
 
 ---
 
-## 3. Gestion des Agents (`/api/v1/agents`)
+## 1. System & Identity Endpoints
 
-### Lister les agents configurés
-* **URL** : `/api/v1/agents`
-* **Méthode** : `GET`
-* **Description** : Liste tous les agents disponibles dans le domaine configuré (ex: oncology), leur prompt système, leurs ressources et leurs modèles LLM.
-* **Réponse de succès (200 OK)** :
-  ```json
-  [
-    {
-      "name": "pancreas expert",
-      "system_prompt": "You are a distinguished medical expert specializing in pancreas diseases...",
-      "models": ["mistral-nemo"],
-      "resources": ["TNCDPANCREAS.pdf"]
-    }
-  ]
-  ```
-
-### Obtenir les détails d'un agent
-* **URL** : `/api/v1/agents/{agent_name}`
-* **Méthode** : `GET`
-* **Description** : Récupère la configuration détaillée d'un agent spécifique.
+| Method | Path | Auth | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/health` | Public | Returns API liveness (`status: "ok"`), `allowed_domains`, and live `PriorityQueue` stats (`HealthResponse`). |
+| `GET` | `/api/v1/me` | `APP_API_TOKEN` | Returns `{username, display_name, is_admin}` resolved from `X-MedSyntis-User` and `X-MedSyntis-Proxy-Secret` (`MeResponse`). |
+| `GET` | `/api/v1/patients` | `APP_API_TOKEN` | Returns the raw list of `Patient` records for the active domain (`list[PatientListItemResponse]`). Query param: `identified_only: bool = false`. |
 
 ---
 
-## 4. Gestion des Ressources Cliniques (`/api/v1/resources`)
+## 2. Patient Records & `PatientMDTForm` Endpoints (`/api/v1/patientmdtform`)
 
-### Lister les guides scientifiques (ressources)
-* **URL** : `/api/v1/resources`
-* **Méthode** : `GET`
-* **Description** : Liste l'ensemble des fichiers PDF scientifiques configurés et indique s'ils sont déjà indexés dans la base vectorielle.
-* **Réponse de succès (200 OK)** :
-  ```json
-  [
-    {
-      "filename": "TNCDPANCREAS.pdf",
-      "is_indexed": true
-    },
-    {
-      "filename": "TNCDOESOPHAGE.pdf",
-      "is_indexed": false
-    }
-  ]
-  ```
+### Summary Table
 
-### Indexer un guide scientifique
-* **URL** : `/api/v1/resources/{filename}/index`
-* **Méthode** : `POST`
-* **Description** : Charge, découpe en chunks et injecte le document scientifique dans la base de données vectorielle (Chroma/Milvus) pour permettre aux agents IA de s'y référer.
-* **Réponse de succès (200 OK)** :
-  ```json
-  {
-    "filename": "TNCDOESOPHAGE.pdf",
-    "message": "Ressource indexée avec succès."
-  }
-  ```
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/patientmdtform` | List all `PatientMDTForm` cards (`list[RCPCardResponse]`) for the active domain. |
+| `GET` | `/api/v1/patientmdtform/patients` | List longitudinal patient summary cards (`list[PatientCardResponse]`) synthesized from each patient's latest analyzed MDT form. |
+| `GET` | `/api/v1/patientmdtform/patients/{patient_id}` | Get full patient dossier details (`patient`, `latest_file`, and chronological `rcps` list) (`PatientDetailResponse`). |
+| `DELETE` | `/api/v1/patientmdtform/patients/{patient_id}` | Delete a patient dossier and all its associated MDT forms and PDF files (`require_admin`). |
+| `POST` | `/api/v1/patientmdtform/patients/{patient_id}/chat` | Chat with a specialist agent across the **entire longitudinal patient dossier** (`PatientContext`). |
+| `GET` | `/api/v1/patientmdtform/schema` | Return the domain's `PatientMDTForm` schema (clinical sections, editability, specialist agents, and enums) (`DomainFormSchemaResponse`). |
+| `GET` | `/api/v1/patientmdtform/resolve` | Resolve a `PatientRecord`, its enriched chronological `rcps`, `selected_file`, and `latest_file` by `?patient_id=...` and/or `?file=...` (`PatientResolveResponse`). |
+| `GET` | `/api/v1/patientmdtform/batches/{batch_id}` | Get per-file processing status and progress percentage for an upload `batch_id` (`BatchStatusResponse`). |
+| `GET` | `/api/v1/patientmdtform/{filename}` | Retrieve the complete structured `PatientMDTForm` document enriched with `metrics` and `mdt_date` (`PatientMDTFormDetailResponse`). |
+| `GET` | `/api/v1/patientmdtform/{filename}/status` | Retrieve lightweight extraction status (`processing_status`, `processing_step`, `processing_progress_pct`, `processing_error`, `patient_id`) (`PatientMDTFormStatusResponse`). |
+| `GET` | `/api/v1/patientmdtform/{filename}/jobs-state` | Retrieve active `PriorityQueue` jobs and currently running model names for `{filename}` (`ActiveJobsStateResponse`). |
+| `GET` | `/api/v1/patientmdtform/{filename}/pdf` | Download or stream inline (`?inline=true`) the source PDF or its bounding-box highlighted variant (`?variant=bbox`). |
+| `POST` | `/api/v1/patientmdtform/upload` | Upload a PDF (`multipart/form-data`), check SHA-256 duplicates, and enqueue 3-wave extraction (`UploadResponse`). |
+| `POST` | `/api/v1/patientmdtform/{filename}/process` | Enqueue or run full-form or single-section (`model_name`) AI extraction while respecting `preserve_manual_edits` (`ProcessResponse`). |
+| `POST` | `/api/v1/patientmdtform/{filename}/chat` | Chat with a specialist agent scoped to a single `PatientMDTForm` document (`ChatResponse`). |
+| `PATCH` | `/api/v1/patientmdtform/{filename}/sections/{section_name}` | Save a human-in-the-loop manual edit (`manual_edits`) on a clinical, completeness, or orientation section (`PatientMDTFormDetailResponse`). |
+| `POST` | `/api/v1/patientmdtform/{filename}/sections/{section_name}/rollback` | Rollback a manually edited section back to its original AI extraction (`PatientMDTFormDetailResponse`). |
+| `PATCH` | `/api/v1/patientmdtform/{filename}/missing-items` | Toggle visibility of individual missing items (`toggle_item`) or hide/restore all missing items (`PatientMDTFormDetailResponse`). |
+| `PATCH` | `/api/v1/patientmdtform/{filename}/administrative` | Update patient administrative identity (`first_name`, `last_name`, `born_name`, `date_birth`, `date_rcp`, `gender`) and synchronize `PatientRecord` (`AdministrativeUpdateResponse`). |
+| `POST` | `/api/v1/patientmdtform/{filename}/link-patient` | Re-link a `PatientMDTForm` to an existing `target_patient_id` (`AdministrativeUpdateResponse`). |
+| `DELETE` | `/api/v1/patientmdtform/{filename}` | Delete a single `PatientMDTForm` record from MongoDB and disk (`MessageResponse`). |
 
-### Interroger un guide scientifique (Chat Ressource)
-* **URL** : `/api/v1/resources/{filename}/chat`
-* **Méthode** : `POST`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "message": "Quelles sont les recommandations pour une tumeur du pancréas résécable ?"
-  }
-  ```
-* **Description** : Interroge le guide scientifique via l'agent "Ressource Assistant" (RAG).
-* **Réponse de succès (200 OK)** :
-  ```json
-  {
-    "response": "Selon le TNCD Chapitre Pancréas, pour une tumeur résécable, une résection chirurgicale d'emblée suivie d'une chimiothérapie adjuvante par FOLFIRINOX est recommandée..."
-  }
-  ```
+### Key Payload Examples
 
----
+#### Upload a Patient MDT PDF (`POST /api/v1/patientmdtform/upload`)
+* **Content-Type**: `multipart/form-data`
+* **Form Fields**:
+  * `file`: PDF binary (max 50 MB, validated for `%PDF-` magic header).
+  * `patient_id` *(optional)*: Target patient ID (if omitted, Wave 1 administrative extraction automatically links or creates the patient).
+  * `run_full_ai` *(optional, default `true`)*: Run all 3 extraction waves (`true`) or Wave 1 identification only (`false`).
+  * `batch_id` *(optional)*: Client or batch correlation identifier.
 
-## 5. Ordre du Jour de la Prochaine Séance RCP (`/api/v1/mdt/agenda`)
+#### Trigger Full or Single-Section Reprocessing (`POST /api/v1/patientmdtform/{filename}/process`)
+```json
+{
+  "model_name": "Chemotherapy",
+  "preserve_manual_edits": true
+}
+```
+*(Pass `"model_name": null` to re-run all sections of the form).*
 
-Ces endpoints permettent de préparer, d'ordonner et de piloter la prochaine réunion RCP par domaine clinique (`?domain=oncology` ou `?domain=sma`).
+#### Manually Edit a Section (`PATCH /api/v1/patientmdtform/{filename}/sections/{section_name}`)
+```json
+{
+  "section_data": {
+    "chemotherapy_name": "Modified FOLFIRINOX (8 cycles validated by MDT)"
+  },
+  "edited_by": "Dr. Martin"
+}
+```
 
-### Obtenir l'ordre du jour complet de la prochaine séance RCP
-* **URL** : `/api/v1/mdt/agenda`
-* **Méthode** : `GET`
-* **Description** : Retourne l'ordre de passage calculé (`items`), les créneaux de passage par spécialiste (`expert_windows`), les dossiers candidats restants dans la worklist (`candidates`) et les compteurs de séance (`total_enrolled`, `urgent_count`, `incomplete_count`, `quorum_warning_count`).
+#### Update Missing Items Visibility (`PATCH /api/v1/patientmdtform/{filename}/missing-items`)
+```json
+{
+  "toggle_item": "Definitive EUS biopsy pathology report",
+  "hide_missing_items": false,
+  "edited_by": "MDT Secretariat"
+}
+```
 
-###Programmer directement une nouvelle réunion RCP (Onboarding)
-* **URL** : `/api/v1/mdt/agenda/schedule`
-* **Méthode** : `POST`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "session_date": "2026-12-10",
-    "sort_strategy": "expert_grouping",
-    "attending_experts": ["pancreas expert", "oesophagus expert"],
-    "patient_ids": ["A-1042", "A-1037"]
-  }
-  ```
-* **Description** : Initialise ou remplace en une seule opération la date de la réunion RCP, la stratégie de tri (`expert_grouping` ou `urgency_first`), les spécialistes présents et la liste des patients inscrits.
+#### Update Administrative Identity (`PATCH /api/v1/patientmdtform/{filename}/administrative`)
+```json
+{
+  "first_name": "Marion",
+  "last_name": "ROUSSEL",
+  "born_name": "DUPONT",
+  "date_birth": "1968-04-12",
+  "date_rcp": "2026-07-20",
+  "gender": "F",
+  "apply_to_all_patient_forms": true,
+  "edited_by": "MDT Secretariat"
+}
+```
 
-### Mettre à jour le paramétrage de la séance RCP
-* **URL** : `/api/v1/mdt/agenda/options`
-* **Méthode** : `PUT`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "session_date": "2026-11-20",
-    "sort_strategy": "urgency_first",
-    "toggle_expert": "pancreas expert"
-  }
-  ```
-* **Description** : Modifie la date, la stratégie d'organisation ou la présence d'un spécialiste et recalcule instantanément l'ordre de passage et le quorum.
-
-### Inscrire un ou plusieurs patients à l'ordre du jour
-* **URL** : `/api/v1/mdt/agenda/patients` (unitaire) ou `/api/v1/mdt/agenda/patients/batch` (lot)
-* **Méthode** : `POST`
-* **Description** : Ajoute un dossier patient (`patient_id`) ou un lot filtré (`all`, `urgent`, `complete`) à la séance RCP.
-
-### Déplacer ou épingler manuellement un dossier dans l'ordre de passage
-* **URL** : `/api/v1/mdt/agenda/patients/{patient_id}/position`
-* **Méthode** : `PUT`
-* **Corps de la requête (application/json)** :
-  ```json
-  {
-    "direction": "up",
-    "pinned": true
-  }
-  ```
-* **Description** : Déplace un dossier vers le haut/bas (`direction: "up" | "down"` ou `target_index`) et l'épingle (`pinned: true`) pour conserver sa position manuelle.
-
-### Retirer un patient ou vider l'ordre du jour
-* **URL** : `/api/v1/mdt/agenda/patients/{patient_id}` ou `/api/v1/mdt/agenda/patients`
-* **Méthode** : `DELETE`
-* **Description** : Retire un patient spécifique de la séance (il redevient candidat dans la worklist) ou réinitialise la liste de passage de la séance.
+#### Link Form to Existing Patient (`POST /api/v1/patientmdtform/{filename}/link-patient`)
+```json
+{
+  "target_patient_id": "roussel_marion_1968_04_12",
+  "override_date_rcp": "2026-07-20",
+  "edited_by": "MDT Secretariat"
+}
+```
 
 ---
 
-## 6. File d'Analyse GPU & Flux Temps Réel (`/api/v1/queue`)
+## 3. Specialist AI Agents Endpoints (`/api/v1/agents`)
 
-* **`GET /api/v1/queue/stats` & `GET /api/v1/queue/jobs`** : Statistiques et liste des tâches d'extraction/indexation GPU (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`).
-* **`GET /api/v1/queue/stream`** : Flux **Server-Sent Events (SSE)** temps réel consommant l'avancement des tâches et l'aperçu du raisonnement IA (`thinking_preview`).
-* **`POST /api/v1/queue/jobs/{job_id}/retry`** : Relance une tâche en échec.
-* **`POST /api/v1/queue/locks/release` & `POST /api/v1/queue/jobs/clean`** : Libère les verrous GPU orphelins et nettoie les tâches terminées.
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/agents` | List all configured specialist agents for the active domain (`name`, `system_prompt`, `models`, `resources`) (`list[AgentDetailResponse]`). |
+| `GET` | `/api/v1/agents/{agent_name}` | Retrieve full metadata and system prompt for a specific agent (`AgentDetailResponse`). |
+| `POST` | `/api/v1/agents/chat` / `/api/v1/patientmdtform/{filename}/chat` / `/api/v1/patientmdtform/patients/{patient_id}/chat` | Interactive chat with a specialist agent (`agent_name`, `message`, optional `language`) scoped to a single MDT form or an entire longitudinal patient dossier (`ChatResponse`). |
+
+---
+
+## 4. Clinical Reference Guidelines Endpoints (`/api/v1/resources`)
+
+Used to manage, view, index, and query national scientific guidelines (**TNCD** in Digestive Oncology, **PNDS** in SMA).
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/resources` | List all guideline PDFs in the domain's resources directory with `is_indexed`, `size_bytes`, and `updated_at` (`list[ResourceIndexResponse]`). |
+| `GET` | `/api/v1/resources/{filename}/chunks` | Inspect vector-indexed text chunks and metadata for a guideline resource. |
+| `GET` | `/api/v1/resources/{filename}/file` | Serve a clinical guideline PDF (or dynamically resolved citation target, with optional `?form_file=...` fallback) inline (`application/pdf`). |
+| `POST` | `/api/v1/resources/upload` | Upload a new scientific reference PDF (`multipart/form-data`, max 50 MB) into the domain's resources directory (`ResourceIndexResponse`). |
+| `POST` | `/api/v1/resources/ingest` / `/api/v1/resources/{filename}/index` | Parse, chunk, and index a clinical reference PDF into the domain's Milvus/Chroma vector store (`ResourceIndexedResponse`). |
+| `POST` | `/api/v1/resources/{filename}/chat` | Query an indexed clinical guideline via the `Ressource Assistant` RAG agent (`ResourceChatRequest` -> `ChatResponse`). |
+| `DELETE` | `/api/v1/resources/{filename}` | Delete a clinical reference PDF from the domain's resources directory (`ResourceDeleteResponse`). |
+
+---
+
+## 5. Next MDT Session Agenda Endpoints (`/api/v1/mdt-agenda`)
+
+Manages pre-MDT session scheduling, specialist quorum calculation, and passage-order optimization (`MDTAgendaDetailResponse`).
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/mdt-agenda` | Get the active Next MDT Agenda (`session_date`, `sort_strategy`, `defer_incomplete_files`, `attending_experts`, scheduled `items`, `expert_windows`, `candidates`, and quorum counters). |
+| `PATCH` | `/api/v1/mdt-agenda` | Update agenda options (`session_date`, `clear_session_date`, `sort_strategy`, `defer_incomplete_files`, `attending_experts`, `toggle_expert`, `patient_ids`, `reset_enrolled_patients`). |
+| `POST` | `/api/v1/mdt-agenda/schedule` | One-click session onboarding: initializes `session_date`, `sort_strategy` (defaults to `"hybrid"`), `defer_incomplete_files`, `attending_experts`, and enrolled `patient_ids`. |
+| `POST` | `/api/v1/mdt-agenda/patients` | Enroll one (`patient_id`), several (`patient_ids`), or filtered candidate patients (`add_all_candidates`, `enroll_all_candidates`, `filter_mode`: `"all" \| "urgent" \| "complete"`). |
+| `DELETE` | `/api/v1/mdt-agenda/patients/{patient_id}` | Remove a single patient from the Next MDT Agenda (returns them to the candidate pool). |
+| `DELETE` | `/api/v1/mdt-agenda/patients` | Clear all enrolled patients from the Next MDT Agenda. |
+| `POST` | `/api/v1/mdt-agenda/patients/{patient_id}/move` | Move an enrolled patient (`direction`: `"up" \| "down"`, or `target_position`) and/or pin/unpin their slot (`pinned: true \| false`). |
+| `PUT` | `/api/v1/mdt-agenda/reorder` | Explicitly reorder enrolled patients (`patient_ids` array, `switch_to_manual: bool = true`). |
+
+### Agenda Options Update Example (`PATCH /api/v1/mdt-agenda`)
+```json
+{
+  "session_date": "2026-11-20",
+  "sort_strategy": "hybrid",
+  "defer_incomplete_files": true,
+  "attending_experts": ["pancreas expert", "colon expert"]
+}
+```
+Supported `sort_strategy` values:
+* `"hybrid"`: Specialty grouping with urgent cases prioritized at the top of each group.
+* `"expert_grouping"`: Contiguous specialist passage windows to minimize physician attendance time.
+* `"urgency_first"`: Strict descending clinical urgency score.
+* `"manual"`: Custom coordinator order.
+
+---
+
+## 6. GPU PriorityQueue & Live SSE Streaming Endpoints (`/api/v1/queue`)
+
+Coordinates multi-domain 3-wave extraction jobs across shared GPU hardware and streams real-time LLM reasoning tokens via Server-Sent Events (`EventSourceResponse`).
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/queue/status` & `GET /api/v1/queue/stats` | Retrieve `PriorityQueue` metrics (`pending`, `running`, `completed`, `failed`, `active_leases`, `batch_size`, `hardware_profile`) (`QueueStatsResponse`). Optional `?domain=...`. |
+| `GET` | `/api/v1/queue/domains` | Return `{default_domain, allowed_domains}` configured on the Cross-Domain Queue (`QueueDomainsResponse`). |
+| `GET` | `/api/v1/queue/jobs` | List queue jobs filterable by `?domain=...`, `?status=...`, `?batch_id=...`, `?filename=...`, and `?limit=100` (`list[QueueJobResponse]`). |
+| `GET` | `/api/v1/queue/jobs/{job_id}` | Retrieve details of a specific queue job (`QueueJobResponse`). |
+| `GET` | `/api/v1/queue/thinking` | Get a snapshot of live AI reasoning tokens for the active job (or `?job_id=...` / `?domain=...`) (`QueueThinkingResponse`). |
+| `GET` | `/api/v1/queue/thinking/stream` | **SSE Stream (`text/event-stream`)** emitting live `QueueThinkingStreamEvent` reasoning tokens for the active task or `?job_id=...`. |
+| `GET` | `/api/v1/queue/jobs/{job_id}/thinking` | Get a snapshot of live AI reasoning tokens for `{job_id}` (`QueueThinkingResponse`). |
+| `GET` | `/api/v1/queue/jobs/{job_id}/thinking/stream` | **SSE Stream (`text/event-stream`)** emitting live `QueueThinkingStreamEvent` reasoning tokens for `{job_id}`. |
+| `POST` | `/api/v1/queue/enqueue-import` | Enqueue an imported `PatientMDTForm` (`Wave 1` + `Wave 2` + `Wave 3`) into the `PriorityQueue` (`EnqueueResponse`). |
+| `POST` | `/api/v1/queue/rerun` | Enqueue a full-form or single-section (`model_name`) rerun while preserving `manual_edits` (`EnqueueResponse`). |
+| `POST` | `/api/v1/queue/jobs/retry` & `POST /api/v1/queue/jobs/{job_id}/retry` | Re-enqueue a failed or cancelled job by `?job_id=...` or path `{job_id}` (`require_admin`, `QueueJobResponse`). |
+| `DELETE` | `/api/v1/queue/jobs` & `DELETE /api/v1/queue/jobs/{job_id}` | Cancel or delete a job by `?job_id=...` or path `{job_id}` and release its GPU lease (`require_admin`, `JobDeletedResponse`). |
+| `POST` | `/api/v1/queue/clean` | Clean queue jobs according to `mode` (`"finished"`, `"failed"`, `"completed"`, `"cancelled"`, or `"all"`) (`require_admin`, `QueueCleanResponse`). |
+| `GET` | `/api/v1/queue/locks` | List active GPU hardware execution leases (`list[GpuLeaseResponse]`). |
+| `DELETE` | `/api/v1/queue/locks` | Force-release GPU leases by `?lease_id=...`, `?job_id=...`, `?domain=...`, or `?force_all=true` (`require_admin`, `ReleaseLocksResponse`). |
+
+---
+
+## 7. Clinical & UI Bug Reports Endpoints (`/api/v1/bug-reports`)
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/bug-reports` | List bug reports and clinical feedback for the active domain, optionally filtered by `?status=...`, `?severity=...`, or `?category=...` (`list[BugReportResponse]`). |
+| `POST` | `/api/v1/bug-reports` | Create a new bug report (`title`, `description`, `category`, `severity`, `page`, `patient_id`, `rcp_file`, `steps_to_reproduce`, `reporter`) (`BugReportResponse`). |
+| `PATCH` | `/api/v1/bug-reports/{report_id}/status` | Update the resolution status of a bug report (`status`: `"open"`, `"in_progress"`, `"resolved"`, `"closed"`) (`BugReportResponse`). |
+| `DELETE` | `/api/v1/bug-reports/{report_id}` | Delete a bug report by its `report_id` (`BugReportDeleteResponse`). |

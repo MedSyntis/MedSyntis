@@ -1,7 +1,7 @@
 [project]
-name = "application"
+name = "medsyntis"
 version = "0.1.0"
-description = "MedDataSyntis / Oncoflow - analyse locale de fiches RCP par LLM et RAG"
+description = "MedSyntis — Local-first clinical MDT/RCP synthesis powered by LLMs and RAG"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

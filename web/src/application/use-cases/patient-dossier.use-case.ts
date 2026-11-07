@@ -39,9 +39,9 @@ import type {
 } from "../../domain/types.js";
 import type {
   ChatReply,
+  MedsyntisApiPort,
   MissingItemsUpdateInput,
-  OncoflowApiPort,
-} from "../ports/oncoflow-api.port.js";
+} from "../ports/medsyntis-api.port.js";
 
 export interface DossierSubCardView {
   title: string;
@@ -162,7 +162,7 @@ const LONG_TEXT_KEYS = new Set([
 ]);
 
 export class PatientDossierUseCase {
-  constructor(private readonly api: OncoflowApiPort) {}
+  constructor(private readonly api: MedsyntisApiPort) {}
 
   async getDossier(
     target: string,

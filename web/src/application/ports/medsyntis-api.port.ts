@@ -37,7 +37,7 @@ export interface MissingItemsUpdateInput {
   editedBy?: string;
 }
 
-export interface OncoflowApiPort {
+export interface MedsyntisApiPort {
   // Worklist & Patients
   listPatientCards(domain: ClinicalDomain): Promise<MdtFormCard[]>;
   listRcpCards(domain: ClinicalDomain): Promise<MdtFormCard[]>;

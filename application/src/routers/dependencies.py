@@ -242,7 +242,7 @@ class ApiSecurityMiddleware(BaseHTTPMiddleware):
 class AllowedDomainMiddleware(BaseHTTPMiddleware):
     """
     FastAPI / Starlette Middleware validating the target medical domain (`?domain=...`
-    or `X-Oncoflow-Domain` header) against `APP_ALLOWED_DOMAINS` for all `/api/` routes,
+    or `X-MedSyntis-Domain` header) against `APP_ALLOWED_DOMAINS` for all `/api/` routes,
     and attaching `request.state.requested_domain`, `request.state.domain`, and
     `request.state.domain_config`.
     """
@@ -251,7 +251,7 @@ class AllowedDomainMiddleware(BaseHTTPMiddleware):
         if request.method != "OPTIONS" and request.url.path.startswith("/api/"):
             base_conf = get_base_config()
             raw_domain = request.query_params.get("domain") or request.headers.get(
-                "X-Oncoflow-Domain"
+                "X-MedSyntis-Domain"
             )
             requested_domain = raw_domain.strip().lower() if raw_domain else None
 
@@ -284,7 +284,7 @@ class AllowedDomainMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
         if hasattr(request.state, "domain"):
-            response.headers["X-Oncoflow-Domain"] = request.state.domain
+            response.headers["X-MedSyntis-Domain"] = request.state.domain
         return response
 
 
@@ -297,7 +297,7 @@ def get_domain_config(
     x_domain: Annotated[
         str | None,
         Header(
-            alias="X-Oncoflow-Domain",
+            alias="X-MedSyntis-Domain",
             description="En-tête optionnel pour sélectionner le domaine médical",
         ),
     ] = None,
@@ -347,28 +347,28 @@ def get_current_user_info(
     x_user: Annotated[
         str | None,
         Header(
-            alias="X-Oncoflow-User",
+            alias="X-MedSyntis-User",
             description="Trusted user identifier forwarded by the reverse proxy / BFF",
         ),
     ] = None,
     x_user_name: Annotated[
         str | None,
         Header(
-            alias="X-Oncoflow-User-Name",
+            alias="X-MedSyntis-User-Name",
             description="Optional display name forwarded by the reverse proxy / BFF",
         ),
     ] = None,
     x_proxy_secret: Annotated[
         str | None,
         Header(
-            alias="X-Oncoflow-Proxy-Secret",
+            alias="X-MedSyntis-Proxy-Secret",
             description="Shared secret authenticating reverse proxy / BFF identity headers",
         ),
     ] = None,
 ) -> dict[str, str | bool | None]:
     """
-    Resolve `{username, display_name, is_admin}` from `X-Oncoflow-User` (+ optional
-    `X-Oncoflow-User-Name`), honoured only when `X-Oncoflow-Proxy-Secret` matches
+    Resolve `{username, display_name, is_admin}` from `X-MedSyntis-User` (+ optional
+    `X-MedSyntis-User-Name`), honoured only when `X-MedSyntis-Proxy-Secret` matches
     `APP_PROXY_SECRET` via `hmac.compare_digest`.
     """
     base_conf = get_base_config()
@@ -396,24 +396,24 @@ def get_current_user_info(
 def require_admin(
     x_user: Annotated[
         str | None,
-        Header(alias="X-Oncoflow-User"),
+        Header(alias="X-MedSyntis-User"),
     ] = None,
     x_user_name: Annotated[
         str | None,
-        Header(alias="X-Oncoflow-User-Name"),
+        Header(alias="X-MedSyntis-User-Name"),
     ] = None,
     x_proxy_secret: Annotated[
         str | None,
-        Header(alias="X-Oncoflow-Proxy-Secret"),
+        Header(alias="X-MedSyntis-Proxy-Secret"),
     ] = None,
 ) -> None:
     """
     Enforce admin privileges on destructive endpoints.
 
-    - When user headers (`X-Oncoflow-User`) are present (e.g. requests coming through the
+    - When user headers (`X-MedSyntis-User`) are present (e.g. requests coming through the
       BFF / OAuth2 reverse proxy on behalf of a human user), the proxy secret must be
       valid AND the user must be listed in `APP_ADMIN_USERS` (`AppConfig.is_admin`).
-    - When `X-Oncoflow-User` is absent, internal service-to-service calls (`QueueBroker`,
+    - When `X-MedSyntis-User` is absent, internal service-to-service calls (`QueueBroker`,
       worker, BFF service client) already authenticated via `APP_API_TOKEN` are permitted.
     """
     if x_user is None:

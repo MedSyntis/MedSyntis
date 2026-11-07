@@ -1,9 +1,9 @@
 import type {
   ChatReply,
+  MedsyntisApiPort,
   MissingItemsUpdateInput,
-  OncoflowApiPort,
   UploadFileInput,
-} from "../../application/ports/oncoflow-api.port.js";
+} from "../../application/ports/medsyntis-api.port.js";
 import {
   buildDefaultDomainFormSchema,
   buildStrictBackendSectionPayload,
@@ -40,27 +40,27 @@ import {
   RawResourceSchema,
 } from "../validation/schemas.js";
 
-export interface HttpOncoflowApiAdapterOptions {
+export interface HttpMedsyntisApiAdapterOptions {
   baseUrl: string;
   apiToken?: string;
   proxySecret?: string;
   fetchImpl?: typeof fetch;
-  fallbackPort?: OncoflowApiPort;
+  fallbackPort?: MedsyntisApiPort;
   timeoutMs?: number;
   chatTimeoutMs?: number;
 }
 
-export class HttpOncoflowApiAdapter implements OncoflowApiPort {
+export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
   private readonly baseUrl: string;
   private readonly apiToken: string;
   private readonly proxySecret: string;
   private readonly fetchImpl: typeof fetch;
-  private readonly fallback?: OncoflowApiPort;
+  private readonly fallback?: MedsyntisApiPort;
   private readonly timeoutMs: number;
   private readonly chatTimeoutMs: number;
   private readonly domainSchemaCache = new Map<ClinicalDomain, DomainFormSchema>();
 
-  constructor(options: HttpOncoflowApiAdapterOptions) {
+  constructor(options: HttpMedsyntisApiAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.apiToken = options.apiToken ?? "";
     this.proxySecret = options.proxySecret ?? "";
@@ -76,7 +76,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   ): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/json",
-      "X-Oncoflow-Domain": domain,
+      "X-MedSyntis-Domain": domain,
       ...extra,
     };
     if (this.apiToken) {
@@ -85,7 +85,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       headers["X-App-Token"] = this.apiToken;
     }
     if (this.proxySecret) {
-      headers["X-Oncoflow-Proxy-Secret"] = this.proxySecret;
+      headers["X-MedSyntis-Proxy-Secret"] = this.proxySecret;
     }
     return headers;
   }
