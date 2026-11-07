@@ -389,7 +389,7 @@ services:
 
   # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.medsyntis.bricks-it.fr)
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
     container_name: medsyntis-oauth2-proxy
     restart: unless-stopped
     logging: *default-logging
