@@ -1,5 +1,5 @@
 import type { BugReportItem, ClinicalDomain } from "../../domain/types.js";
-import type { OncoflowApiPort } from "../ports/oncoflow-api.port.js";
+import type { MedsyntisApiPort } from "../ports/medsyntis-api.port.js";
 
 export interface BugFilter {
   status?: string;
@@ -17,7 +17,7 @@ export interface BugListResult {
 }
 
 export class FeedbackUseCase {
-  constructor(private readonly api: OncoflowApiPort) {}
+  constructor(private readonly api: MedsyntisApiPort) {}
 
   async listBugs(domain: ClinicalDomain, filter: BugFilter = {}): Promise<BugListResult> {
     const all = await this.api.listBugs(domain);

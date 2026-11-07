@@ -1,5 +1,5 @@
 import { Marked } from "marked";
-import type { ChatReply } from "../../application/ports/oncoflow-api.port.js";
+import type { ChatReply } from "../../application/ports/medsyntis-api.port.js";
 import type { AgentModuleInfo, ClinicalDomain } from "../../domain/types.js";
 
 function esc(value: unknown): string {

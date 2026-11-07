@@ -472,12 +472,12 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert resp_invalid.status_code == 400
         assert "non autorisé" in resp_invalid.json()["detail"]
 
-        # Check X-Oncoflow-Domain header validation in AllowedDomainMiddleware
+        # Check X-MedSyntis-Domain header validation in AllowedDomainMiddleware
         resp_invalid_header = client.get(
-            "/api/v1/patientmdtform", headers={"X-Oncoflow-Domain": "neurology"}
+            "/api/v1/patientmdtform", headers={"X-MedSyntis-Domain": "neurology"}
         )
         assert resp_invalid_header.status_code == 400
-        assert resp_sma_agents.headers.get("X-Oncoflow-Domain") == "sma"
+        assert resp_sma_agents.headers.get("X-MedSyntis-Domain") == "sma"
 
         # 3. Enqueue via API for SMA domain and verify domain-filtered stats
         resp_enq = client.post(
@@ -513,10 +513,10 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert len(resp_jobs_sma.json()) == 3
 
         resp_rcp_onco = client.get(
-            "/api/v1/patientmdtform", headers={"X-Oncoflow-Domain": "oncology"}
+            "/api/v1/patientmdtform", headers={"X-MedSyntis-Domain": "oncology"}
         )
         assert resp_rcp_onco.status_code == 200
-        assert resp_rcp_onco.headers.get("X-Oncoflow-Domain") == "oncology"
+        assert resp_rcp_onco.headers.get("X-MedSyntis-Domain") == "oncology"
 
         resp_clean = client.post(
             "/api/v1/queue/clean",
@@ -529,7 +529,7 @@ class TestPriorityQueueAndCrossDomainAPI:
     def test_startup_recovery_and_dev_standalone_fallback(self, mock_mongo_Env):
         conf, mongo_client = mock_mongo_Env
         # Seed an unfinished RCP in oncology and one in sma
-        mongo_client["Oncoflow_oncology"]["rcp_info"].update_one(
+        mongo_client["MedSyntis_oncology"]["rcp_info"].update_one(
             {"file": "recover_onco.pdf"},
             {
                 "$set": {
@@ -539,7 +539,7 @@ class TestPriorityQueueAndCrossDomainAPI:
             },
             upsert=True,
         )
-        mongo_client["Oncoflow_sma"]["rcp_info"].update_one(
+        mongo_client["MedSyntis_sma"]["rcp_info"].update_one(
             {"file": "recover_sma.pdf"},
             {
                 "$set": {

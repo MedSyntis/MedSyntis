@@ -1,11 +1,11 @@
 ---
 name: ddd-tdd-architect
-description: "Enforces Domain-Driven Design (DDD), Hexagonal/Clean Architecture boundaries, and strict Test-Driven Development (TDD: Red -> Green -> Refactor) across the Oncoflow / MedDataSyntis codebase."
+description: "Enforces Domain-Driven Design (DDD), Hexagonal/Clean Architecture boundaries, and strict Test-Driven Development (TDD: Red -> Green -> Refactor) across the MedSyntis codebase."
 ---
 
 # DDD & TDD Architect Skill (`ddd-tdd-architect`)
 
-This skill defines the architectural rules, tactical patterns, and strict Test-Driven Development (TDD) workflow for designing, refactoring, and implementing features in **Oncoflow / MedDataSyntis**.
+This skill defines the architectural rules, tactical patterns, and strict Test-Driven Development (TDD) workflow for designing, refactoring, and implementing features in **MedSyntis**.
 
 ---
 

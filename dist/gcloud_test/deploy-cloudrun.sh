@@ -92,12 +92,12 @@ fi
 # ─── Configuration variables ───────────────────────────────────────────────────
 REGION="europe-west1"
 SERVICE_NAME="llama-cpp-chat"
-BUCKET_NAME="oncoflow-models-cache"
-REPO_NAME="oncoflow-images"
+BUCKET_NAME="medsyntis-models-cache"
+REPO_NAME="medsyntis-images"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║         Oncoflow — Cloud Run LLM Deployment                  ║"
+echo "║         MedSyntis — Cloud Run LLM Deployment                 ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 printf "║  Model   : %-50s ║\n" "$MODEL_LABEL"
 printf "║  YAML    : %-50s ║\n" "$SERVICE_YAML"
@@ -151,7 +151,7 @@ if ! gcloud artifacts repositories describe "${REPO_NAME}" --location="${REGION}
     gcloud artifacts repositories create "${REPO_NAME}" \
         --repository-format=docker \
         --location="${REGION}" \
-        --description="Docker images for Oncoflow"
+        --description="Docker images for MedSyntis"
 fi
 echo "  ✅ Repository ready."
 

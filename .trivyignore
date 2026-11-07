@@ -1,3 +1,6 @@
 # Trivy ignore file
-# CVE-2025-64513: Milvus Proxy authentication bypass (server-side vulnerability in Milvus proxy; local Docker runs patched v2.6.19)
-CVE-2025-64513
+
+# CVE-2026-76844 & CVE-2026-85091: zlib1g vulnerabilities in distroless runtime base image (gcr.io/distroless/nodejs24-debian13).
+# Temporary 1-month exception while waiting for upstream Google distroless image rebuild.
+CVE-2026-76844 exp:2026-12-07
+CVE-2026-85091 exp:2026-12-07

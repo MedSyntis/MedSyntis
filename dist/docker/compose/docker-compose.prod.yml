@@ -30,12 +30,12 @@ x-ui-env: &ui-env
   APP_QUEUE_ENABLED: ${APP_QUEUE_ENABLED:-true}
   APP_QUEUE_HARDWARE_PROFILE: ${APP_QUEUE_HARDWARE_PROFILE:-l4_24gb}
   APP_QUEUE_BATCH_SIZE: ${APP_QUEUE_BATCH_SIZE:-1}
-  APP_QUEUE_API_URL: ${APP_QUEUE_API_URL:-http://oncoflow-api:8000}
+  APP_QUEUE_API_URL: ${APP_QUEUE_API_URL:-http://medsyntis-api:8000}
   APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
   APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
 
 x-ui-common: &ui-common
-  image: ${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:${ONCOFLOW_TAG:-latest}
+  image: ${MEDSYNTIS_IMAGE:-ghcr.io/medsyntis/medsyntis}:${MEDSYNTIS_TAG:-latest}
   restart: unless-stopped
   logging: *default-logging
   userns_mode: "keep-id"
@@ -44,7 +44,7 @@ x-ui-common: &ui-common
   security_opt:
     - no-new-privileges:true
   volumes:
-    - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/logs:/var/log/meddatasyntis
+    - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/logs:/var/log/medsyntis
   depends_on:
     mongod:
       condition: service_healthy
@@ -58,7 +58,7 @@ services:
 
   mongod:
     image: mongodb/mongodb-community-server:9.0-ubuntu2204
-    container_name: oncoflow-mongod
+    container_name: medsyntis-mongod
     oom_score_adj: 200
     restart: unless-stopped
     logging: *default-logging
@@ -79,8 +79,8 @@ services:
       MONGODB_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
       GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb:/data/db
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb_config:/data/configdb
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/mongodb:/data/db
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/mongodb_config:/data/configdb
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
       interval: 10s
@@ -107,7 +107,7 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/models:/models
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/models:/models
       - ./model-config:/models-config:ro
     ipc: host
     # devices:
@@ -202,7 +202,7 @@ services:
       - "127.0.0.1:8081:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/models:/models
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/models:/models
     ipc: host
     entrypoint:
       - /bin/sh
@@ -264,44 +264,44 @@ services:
     networks:
       - search-community
 
-  # ─── Applications MedDataSyntis Streamlit UI (Déploiement optionnel : --profile streamlit) ──
-  oncoflow-ui-oncology:
+  # ─── Applications MedSyntis Streamlit UI (Déploiement optionnel : --profile streamlit) ──
+  medsyntis-ui-oncology:
     <<: *ui-common
-    container_name: oncoflow-ui-oncology
+    container_name: medsyntis-ui-oncology
     ports:
       - "127.0.0.1:8501:8501"
     environment:
       <<: *ui-env
       APP_DOMAIN: "oncology"
-      APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-oncology.log"
+      APP_LOG_FILE: "/var/log/medsyntis/medsyntis-oncology.log"
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
-      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
-      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/documents:/app/application/ressources/documents/oncology
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis}/logs:/var/log/medsyntis
+      - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
+      - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/documents:/app/application/ressources/documents/oncology
     profiles:
       - "streamlit"
 
-  oncoflow-ui-sma:
+  medsyntis-ui-sma:
     <<: *ui-common
-    container_name: oncoflow-ui-sma
+    container_name: medsyntis-ui-sma
     ports:
       - "127.0.0.1:8502:8501"
     environment:
       <<: *ui-env
       APP_DOMAIN: "sma"
-      APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-sma.log"
+      APP_LOG_FILE: "/var/log/medsyntis/medsyntis-sma.log"
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
-      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
-      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/documents:/app/application/ressources/documents/sma
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis}/logs:/var/log/medsyntis
+      - ${HOST_SMA_DIR:-/data/medsyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
+      - ${HOST_SMA_DIR:-/data/medsyntis/sma}/documents:/app/application/ressources/documents/sma
     profiles:
       - "streamlit"
 
   # ─── API Cross-Domains & File de Traitement intégrée (queue.PriorityQueue) ──
-  oncoflow-api:
+  medsyntis-api:
     <<: *ui-common
-    image: ${ONCOFLOW_API_IMAGE:-ghcr.io/oncoflow/oncoflow-api}:${ONCOFLOW_TAG:-latest}
-    container_name: oncoflow-api
+    image: ${MEDSYNTIS_API_IMAGE:-ghcr.io/medsyntis/medsyntis-api}:${MEDSYNTIS_TAG:-latest}
+    container_name: medsyntis-api
     command: ["uv", "run", "--no-sync", "python", "app-api.py"]
     ports:
       - "127.0.0.1:8000:8000"
@@ -309,7 +309,7 @@ services:
       <<: *ui-env
       APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
       APP_QUEUE_API_URL: ""
-      APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-api.log"
+      APP_LOG_FILE: "/var/log/medsyntis/medsyntis-api.log"
       APP_ADMIN_USERS: ${APP_ADMIN_USERS:-}
       APP_ALLOW_REMOTE_LLM: ${APP_ALLOW_REMOTE_LLM:-false}
       APP_API_HOST: ${APP_API_HOST:-0.0.0.0}
@@ -321,14 +321,14 @@ services:
       APP_API_DOCS_ENABLED: ${APP_API_DOCS_ENABLED:-false}
       APP_API_DOCS_REQUIRE_AUTH: ${APP_API_DOCS_REQUIRE_AUTH:-true}
       APP_API_CORS_ENABLED: ${APP_API_CORS_ENABLED:-true}
-      APP_API_CORS_ORIGINS: ${APP_API_CORS_ORIGINS:-https://oncologic.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://oncologic-st.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma-st.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}}
+      APP_API_CORS_ORIGINS: ${APP_API_CORS_ORIGINS:-https://oncologic.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr},https://sma.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr},https://oncologic-st.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr},https://sma-st.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}}
       APP_API_CORS_ORIGIN_REGEX: ${APP_API_CORS_ORIGIN_REGEX:-}
       APP_API_CORS_ALLOW_CREDENTIALS: ${APP_API_CORS_ALLOW_CREDENTIALS:-true}
       APP_API_CORS_ALLOW_METHODS: ${APP_API_CORS_ALLOW_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
-      APP_API_CORS_ALLOW_HEADERS: ${APP_API_CORS_ALLOW_HEADERS:-Authorization,Content-Type,X-API-Key,X-Oncoflow-Domain,X-Oncoflow-User,X-Oncoflow-User-Name,X-Oncoflow-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With}
-      APP_API_CORS_EXPOSE_HEADERS: ${APP_API_CORS_EXPOSE_HEADERS:-X-Oncoflow-Domain,X-Request-ID,Content-Disposition}
+      APP_API_CORS_ALLOW_HEADERS: ${APP_API_CORS_ALLOW_HEADERS:-Authorization,Content-Type,X-API-Key,X-MedSyntis-Domain,X-MedSyntis-User,X-MedSyntis-User-Name,X-MedSyntis-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With}
+      APP_API_CORS_EXPOSE_HEADERS: ${APP_API_CORS_EXPOSE_HEADERS:-X-MedSyntis-Domain,X-Request-ID,Content-Disposition}
       APP_API_CORS_MAX_AGE: ${APP_API_CORS_MAX_AGE:-600}
-      APP_API_TRUSTED_HOSTS: ${APP_API_TRUSTED_HOSTS:-127.0.0.1,localhost,oncoflow-api,*.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}}
+      APP_API_TRUSTED_HOSTS: ${APP_API_TRUSTED_HOSTS:-127.0.0.1,localhost,medsyntis-api,*.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}}
       APP_API_FORCE_HTTPS: ${APP_API_FORCE_HTTPS:-false}
       APP_API_GZIP_ENABLED: ${APP_API_GZIP_ENABLED:-true}
       APP_API_GZIP_MINIMUM_SIZE: ${APP_API_GZIP_MINIMUM_SIZE:-1000}
@@ -348,16 +348,16 @@ services:
       APP_API_RATE_LIMIT_REQUESTS: ${APP_API_RATE_LIMIT_REQUESTS:-1200}
       APP_API_RATE_LIMIT_WINDOW_SECONDS: ${APP_API_RATE_LIMIT_WINDOW_SECONDS:-60}
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
-      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
-      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/documents:/app/application/ressources/documents/oncology
-      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
-      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/documents:/app/application/ressources/documents/sma
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis}/logs:/var/log/medsyntis
+      - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
+      - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/documents:/app/application/ressources/documents/oncology
+      - ${HOST_SMA_DIR:-/data/medsyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
+      - ${HOST_SMA_DIR:-/data/medsyntis/sma}/documents:/app/application/ressources/documents/sma
 
   # ─── Interface Web Material Design 3 (Fastify BFF Multi-Domaines) ───────────
-  oncoflow-web:
-    image: ${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:${ONCOFLOW_TAG:-latest}
-    container_name: oncoflow-web
+  medsyntis-web:
+    image: ${MEDSYNTIS_WEB_IMAGE:-ghcr.io/medsyntis/medsyntis-web}:${MEDSYNTIS_TAG:-latest}
+    container_name: medsyntis-web
     restart: unless-stopped
     logging: *default-logging
     userns_mode: "keep-id"
@@ -377,20 +377,20 @@ services:
       WEB_FAKE_API_FALLBACK: "false"
       HOST_WEB: "0.0.0.0"
       PORT_WEB: "3000"
-      APP_API_URL: ${APP_QUEUE_API_URL:-http://oncoflow-api:8000}
+      APP_API_URL: ${APP_QUEUE_API_URL:-http://medsyntis-api:8000}
       APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
       APP_LANGUAGE: ${APP_LANGUAGE:-french}
       APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
       APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
     depends_on:
-      - oncoflow-api
+      - medsyntis-api
     networks:
       - search-community
 
-  # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.meddatasyntis.bricks-it.fr)
+  # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.medsyntis.bricks-it.fr)
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
-    container_name: oncoflow-oauth2-proxy
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
+    container_name: medsyntis-oauth2-proxy
     restart: unless-stopped
     logging: *default-logging
     ports:
@@ -399,9 +399,9 @@ services:
       OAUTH2_PROXY_PROVIDER: "github"
       OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
       OAUTH2_PROXY_UPSTREAMS: "static://202"
-      OAUTH2_PROXY_REDIRECT_URL: "${OAUTH2_PROXY_REDIRECT_URL:-https://sso.meddatasyntis.bricks-it.fr/oauth2/callback}"
-      OAUTH2_PROXY_COOKIE_DOMAINS: ".${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}"
-      OAUTH2_PROXY_WHITELIST_DOMAINS: ".${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}"
+      OAUTH2_PROXY_REDIRECT_URL: "${OAUTH2_PROXY_REDIRECT_URL:-https://sso.medsyntis.bricks-it.fr/oauth2/callback}"
+      OAUTH2_PROXY_COOKIE_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}"
+      OAUTH2_PROXY_WHITELIST_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}"
       OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID}
       OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
@@ -417,14 +417,14 @@ services:
       OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
       OAUTH2_PROXY_SILENCE_PING_LOGGING: "true"
     depends_on:
-      - oncoflow-web
+      - medsyntis-web
     networks:
       - search-community
 
   # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic.*, sma.* et optionnellement *-st.*)
   caddy:
     image: caddy:2.11.7-alpine
-    container_name: oncoflow-caddy
+    container_name: medsyntis-caddy
     restart: unless-stopped
     logging: *default-logging
     ports:
@@ -432,15 +432,15 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      PROD_BASE_DOMAIN: ${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}
+      PROD_BASE_DOMAIN: ${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}
       APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/caddy_data:/data
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/caddy_config:/config
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/caddy_data:/data
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/caddy_config:/config
     depends_on:
       - oauth2-proxy
-      - oncoflow-web
+      - medsyntis-web
     networks:
       - search-community
 

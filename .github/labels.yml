@@ -1,4 +1,4 @@
-# Taxonomy of GitHub Labels for DataSyntis / Oncoflow
+# Taxonomy of GitHub Labels for MedSyntis
 # Synchronized via `.agents/skills/github-issue-architect/scripts/sync_labels.sh`
 
 # ------------------------------------------------------------------------------
@@ -36,7 +36,7 @@
   description: "Blocked by an unresolved prerequisite issue (#XX)"
 
 # ------------------------------------------------------------------------------
-# 3. Clinical Domain (DataSyntis Multi-Domain Architecture)
+# 3. Clinical Domain (MedSyntis Multi-Domain Architecture)
 # ------------------------------------------------------------------------------
 - name: "domain:oncology"
   color: "1d76db"

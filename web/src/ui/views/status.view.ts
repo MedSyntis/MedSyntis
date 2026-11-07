@@ -61,8 +61,8 @@ export function renderStatusPage(opts: StatusPageOptions): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title} (${statusCode}) — DataSyntis</title>
-  <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
+  <title>${title} (${statusCode}) — MedSyntis</title>
+  <link rel="icon" href="/public/img/medsyntis-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/public/css/tokens.css?v=29">
   <link rel="stylesheet" href="/public/css/components.css?v=29">
 </head>
@@ -71,9 +71,9 @@ export function renderStatusPage(opts: StatusPageOptions): string {
   <main id="main" style="width:100%;max-width:34rem">
     <section class="ds-card" style="padding:var(--ds-space-6);text-align:center;align-items:center;gap:var(--ds-space-4)" data-testid="status-page-${statusCode}">
       <a class="ds-brand" href="${raw(homeHref)}" style="justify-content:center;margin-bottom:var(--ds-space-1)">
-        <img class="ds-brand__logo" src="/public/img/datasyntis-icon.svg" alt="" width="36" height="36">
+        <img class="ds-brand__logo" src="/public/img/medsyntis-icon.svg" alt="" width="36" height="36">
         <span class="ds-brand__text" style="text-align:left">
-          <span class="ds-brand__name">Data<b>Syntis</b></span>
+          <span class="ds-brand__name">Med<b>Syntis</b></span>
           <span class="ds-brand__domain">${session.domain === "sma" ? "RCP Maladies Rares · SMA" : "RCP Oncologie Digestive"}</span>
         </span>
       </a>

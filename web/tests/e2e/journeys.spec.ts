@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("DataSyntis Material Design 3 Web UI — End-to-End Clinical & Ergonomic Journeys", () => {
+test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergonomic Journeys", () => {
   test("J1 (Secrétaire RCP): Worklist KPIs, M3 ... menu, double-click open, completeness filter, cards view, and PDF batch upload", async ({
     page,
   }) => {

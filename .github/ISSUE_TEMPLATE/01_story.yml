@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         > [!IMPORTANT]
-        > **DataSyntis Story Golden Rule**:
+        > **MedSyntis Story Golden Rule**:
         > This ticket **MUST ONLY contain the business description of the need** (written in English).
         > 🚫 **Strictly forbidden here**: Python/TypeScript code snippets, file paths, API endpoints, database schemas, or technical task breakdowns (those belong in linked **Feature** tickets).
         > A Story must be clear, concise, understandable by both clinicians and the `product-owner` agent, and associated with a matching GitHub **Milestone**.
@@ -41,7 +41,7 @@ body:
   - type: dropdown
     id: promise
     attributes:
-      label: "DataSyntis Product Promise"
+      label: "MedSyntis Product Promise"
       description: "Which core product promise does this Story serve?"
       options:
         - "1. Documentary Exhaustiveness (Multi-PDF ingestion, identity reconciliation, longitudinal multi-MDT consolidation)"
@@ -83,7 +83,7 @@ body:
       options:
         - label: "Pure business scope only (zero technical implementation details, code blocks, or file paths)."
           required: true
-        - label: "Complies with DataSyntis non-prescriptive medico-legal positioning and human-in-the-loop sovereignty."
+        - label: "Complies with MedSyntis non-prescriptive medico-legal positioning and human-in-the-loop sovereignty."
           required: true
         - label: "Validated with the `product-owner` agent (and `doctor` for clinical rules 🩺) — no open questions (`❓`) remain."
         - label: "Linked to a matching GitHub Milestone to group and track child Feature tickets."

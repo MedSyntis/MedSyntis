@@ -1,195 +1,230 @@
-# 🤝 Guide de Contribution — MedDataSyntis
+# 🤝 Contributor & Development Guide — MedSyntis
 
-Merci de l'intérêt que vous portez à **MedDataSyntis** ! C'est un projet open-source et gratuit conçu pour aider les professionnels de santé (chirurgiens, oncologues, spécialistes) dans l'analyse et la synthèse de dossiers patients en RCP.
+Thank you for your interest in contributing to **MedSyntis**! MedSyntis is an open-source, 100% local-first clinical synthesis assistant designed to help healthcare professionals prepare and run Multidisciplinary Team Meetings (**MDT / RCP**) in **Digestive Oncology (TNCD)** and **Spinal Muscular Atrophy — SMA (PNDS)**.
 
-Pour rejoindre la communauté et commencer à contribuer :
-1. Rejoignez notre serveur Discord officiel : [Rejoindre le Discord MedDataSyntis](https://discord.gg/C2RPhyn9x8)
-2. Laissez un court message de salutation dans le salon `#ask-to-join` afin que nous vous donnions les droits d'écriture ! 😊
-
----
-
-## 📋 Étapes pour contribuer
-
-1. **Trouver ou Créer une Issue** : Choisissez une issue existante ou créez-en une nouvelle (`bug`, `feature`, `fix`, etc.).
-2. **Fork & Branche** : Clonez le projet et créez une branche de travail liée à l'issue.
-3. **Convention de Nommage** : Préfixez votre branche et vos commits (ex. `feature/nom-de-la-feature`, `fix/correction-de-bug`).
-4. **Pull Request (PR)** : Ouvrez une PR sur le dépôt principal.
-5. **Revue de Code** : Les administrateurs reliront et valideront vos modifications avant de fusionner.
+To join the community and start contributing:
+1. Join our official Discord server: [Join the MedSyntis Discord Community](https://discord.gg/C2RPhyn9x8)
+2. Introduce yourself in the `#ask-to-join` channel so we can grant contributor permissions.
 
 ---
 
-## 🛡️ Règles d'Or du Développement
+## 📋 Contribution Workflow
 
-> [!CAUTION] **Stricte Confidentialité des Données Patient**
-> * **Aucun appel externe à des API publiques** (comme OpenAI, Anthropic, etc.) n'est toléré dans le code de production.
-> * L'application doit impérativement pouvoir tourner **100% hors-ligne (local-first)**.
-> * Toutes les données médicales doivent rester au sein de l'infrastructure de l'hôpital.
-
-* **Orchestration** : Utilisez autant que possible l'API standard de [LangChain](https://www.langchain.com/).
-* **Modélisation** : Suivez le modèle d'architecture en oignon (Clean Onion Architecture).
-
----
-
-## 💻 Environnement de Développement Local
-
-### Prérequis Matériels & Logiciels
-* **Matériel** : Une carte graphique dédiée (Nvidia) avec au moins **12 Go de VRAM** est vivement recommandée pour faire tourner les modèles de raisonnement locaux.
-* **Système** : Docker & Docker Compose installés et configurés (avec support GPU Nvidia si Ollama est exécuté via Docker).
-* **Langage** : Python **`>=3.13`** (exigence stricte spécifiée dans `pyproject.toml`).
-* **Gestionnaire de Paquets** : Nous recommandons [**`uv`**](https://github.com/astral-sh/uv) pour une installation instantanée et reproductible.
+1. **Find or Open an Issue**: Pick an existing GitHub Issue (Story, Feature, or Bug) or open a new one using our 100% English issue templates (`.github/ISSUE_TEMPLATE/`).
+2. **Branching Convention**: Create a dedicated branch from `main` using a descriptive prefix (`feature/short-description`, `fix/short-description`, `docs/short-description`).
+3. **Architecture & Ubiquitous Language**:
+   * Follow **Domain-Driven Design (DDD)** and **Hexagonal / Clean Architecture** boundaries across both `application/` (Python) and `web/` (TypeScript).
+   * Write **100% English** code identifiers, comments, docstrings, and commit messages.
+   * Use the Ubiquitous Language term **`PatientMDTForm`** (`patient_mdt_form` / `mdt_form`) in code identifiers and domain models.
+   * Never import `streamlit` outside `application/src/ui/`.
+4. **Test-Driven Development (TDD)**: Follow the `Red -> Green -> Refactor` cycle and ensure all linters, type checks, unit tests, WCAG contrast checks, E2E tests, and `prek` hooks pass before opening a Pull Request.
 
 ---
 
-### 1. Démarrage des Services de l'Infrastructure (Docker Compose)
+## 🛡️ Golden Rules for Contributors
 
-Les services d'infrastructure de MedDataSyntis sont divisés en deux fichiers Docker Compose situés dans `dist/docker/compose/`. Lancez-les depuis la **racine du dépôt** :
+> [!CAUTION] **Strict Patient Data Privacy (100% Local-First Execution)**
+> * **Never call external cloud APIs** (such as OpenAI, Anthropic, Google Cloud, or hosted embedding services) in production code.
+> * All document parsing, OCR, vector indexing, and LLM reasoning must run **100% locally** via local Docker services (Milvus, MongoDB) and local LLM inference servers (LiteLLM + `llama.cpp` / `Ollama`).
+> * `AppConfig` enforces local-only LLM hosts by default (`APP_ALLOW_REMOTE_LLM=False`).
 
-#### A. Base de Données Vectorielle (Milvus Standalone)
-Milvus est notre base de données de similarité principale. Elle utilise trois conteneurs locaux (milvus-standalone, etcd, minio) :
+---
+
+## 💻 Prerequisites
+
+Make sure the following tools are installed on your workstation:
+
+* **Python**: **`>=3.13`** (strictly enforced in `application/pyproject.toml`).
+* **Python Package Manager**: [**`uv`**](https://github.com/astral-sh/uv) for fast, deterministic dependency management (`uv.lock`).
+* **Node.js**: **`>=26`** (with `npm`) for the Material Design 3 Web UI (`web/`).
+* **Containers**: **Docker** & **Docker Compose** (with `nvidia-container-toolkit` if running GPU inference inside Docker).
+* **Hardware Recommendation**: A dedicated NVIDIA GPU with at least **12 GB to 24 GB VRAM** (e.g., NVIDIA L4 24 GB) is recommended for local LLM reasoning, or a CPU-only setup / local `WEB_FAKE_API_FALLBACK=true` mode for frontend and API development.
+
+---
+
+## 🚀 1. Quickstart with `Makefile` (Recommended)
+
+From the **repository root**, the `Makefile` automates environment initialization, Docker orchestration, and service startup:
+
 ```bash
-docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
+# 1. Install Python (uv sync) & Node.js (npm) dependencies, prepare Docker volumes, and initialize Milvus v3.0
+make init
+
+# 2. Start local infrastructure containers (Milvus Standalone on :19530 + MongoDB Replica Set on :27017)
+make docker-up
+
+# 3. Start the Cross-Domain FastAPI backend (:8000) + Material Design 3 Web UI (:3000)
+make start-web
+
+# (Optional) Start the Cross-Domain FastAPI backend (:8000) + Legacy Streamlit UI (:8501)
+make start-ui
+
+# 4. Check the live status of all local ports and services
+make status
+
+# 5. Stop all running application processes and Docker containers
+make stop
 ```
-* **Vérification** : Milvus écoute sur le port local `19530`.
 
-#### B. Services Communs (MongoDB & Ollama)
-Ce fichier lance MongoDB (stockage des métadonnées patients et cache) et une instance optionnelle d'Ollama avec support GPU Nvidia :
+---
+
+## 🐳 2. Manual Infrastructure & Dependency Setup
+
+If you prefer running each step manually without `make`:
+
+### A. Start Milvus Standalone & MongoDB via Docker Compose
+From the repository root:
+
 ```bash
+# Prepare local volume directories
+mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,logs}
+
+# 1. Start Milvus Standalone (etcd + minio + milvus-standalone on port 19530)
+docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
+
+# 2. Start MongoDB Replica Set (port 27017) and optional local LLM containers
 docker compose -f dist/docker/compose/docker-compose.yml up -d
 ```
-* **MongoDB** : Écoute sur le port `27017` avec les identifiants par défaut `root:root`.
-* **Ollama (Docker)** : Écoute sur le port `11434` et monte ses modèles sur `/data/ollama`.
-  > [!TIP]
-  > Si vous disposez déjà d'une instance **Ollama locale (native)** installée sur votre système d'exploitation, vous n'avez pas besoin de lancer le service Ollama du Docker Compose. Assurez-vous simplement que votre instance Ollama locale est active en tâche de fond et écoute sur `http://localhost:11434`.
 
-#### C. Validation des Services
-Vérifiez que tous les services requis tournent correctement sur votre machine :
+Verify that the containers are healthy:
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
-Les ports locaux indispensables pour l'application sont :
-* `19530` (Milvus Vector Store)
-* `27017` (MongoDB Document Store)
-* `11434` (Ollama Inference Server)
 
----
-
-### 2. Configuration des Modèles IA locaux (Ollama)
-
-MedDataSyntis nécessite trois types de modèles locaux pour fonctionner. Vous devez les récupérer via le client Ollama avant de démarrer l'application.
-
-Voici les correspondances avec les variables de configuration (`AppConfig`) :
-
-| Rôle dans l'application | Variable d'environnement | Modèle Recommandé (Standard VRAM >= 12Go) | Modèle Léger (Low VRAM < 8Go) |
-| :--- | :--- | :--- | :--- |
-| **Raisonnement Clinique** | `APP_LLM_MODELS` | `mistral-nemo` (12B) | `gemma2:2b` ou `llama3.2:3b` |
-| **Vision & OCR local** | `APP_LLM_OCRMODELS` | `granite3.2-vision` (VLM) | `granite3.2-vision` |
-| **Embeddings Vectoriels** | `APP_LLM_EMBEDDINGS` | `nomic-embed-text` | `all-MiniLM-L6-v2` |
-
-#### Commandes de téléchargement (Ollama local) :
-Exécutez les commandes suivantes dans votre terminal pour charger les modèles recommandés dans votre instance Ollama :
+### B. Install Python Dependencies (`application/`)
 ```bash
-# Téléchargement du modèle d'embeddings vectoriels
-ollama pull nomic-embed-text
-
-# Téléchargement du modèle de raisonnement clinique
-ollama pull mistral-nemo
-
-# Téléchargement du modèle de vision (VLM) pour décoder les PDF et images
-ollama pull granite3.2-vision
-```
-
----
-
-### 3. Installation des Dépendances Python
-
-Placez-vous dans le sous-dossier `/application` :
-```bash
-cd application/
-```
-
-#### Option A : Avec `uv` (Recommandé - Ultra rapide)
-```bash
-# Crée automatiquement l'environnement virtuel et synchronise le fichier de verrouillage uv.lock
+cd application
 uv sync
 ```
 
-#### Option B : Avec `pip` classique & `venv`
+### C. Install Node.js Dependencies (`web/`)
+From the repository root:
 ```bash
-# Créer et activer l'environnement virtuel
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Installer les dépendances en mode éditable
-pip install -e .
+npm --prefix web ci
 ```
 
 ---
 
-### 4. Lancement de l'Interface Utilisateur
+## 🤖 3. Local LLM Setup (LiteLLM Gateway + `llama.cpp` / `Ollama`)
 
-MedDataSyntis propose deux interfaces utilisateur complémentaires :
+By default, MedSyntis connects to an OpenAI-compatible **LiteLLM Gateway** on `http://127.0.0.1:4000` (or directly to a local **Ollama** instance on `http://127.0.0.1:11434`), configured via `APP_CONFIGLLM_*` environment variables.
 
-#### A. Nouvelle Interface Web Material Design 3 (`web/` — Node.js 24 + Fastify)
-1. Depuis la racine du dépôt, installez les dépendances Node.js :
+### Option A: Default LiteLLM Gateway + `llama.cpp` (Port `4000`)
+In production and full-stack Docker environments (`dist/docker/compose/docker-compose.yml` with `--profile llamacpp` or `docker-compose.prod.yml`), LiteLLM routes requests on port `4000` to:
+* `openai/agents` (`APP_CONFIGLLM_MODELS="openai/agents"`): Local `llama.cpp` reasoning server (e.g., `Ornith-1.5-35B-A3B-IQ4_XS.gguf`).
+* `openai/embeddings` (`APP_CONFIGLLM_EMBEDDINGS="openai/embeddings"`): Local CPU/GPU `llama.cpp` embedding server (`bge-m3-Q4_K_M.gguf`).
+
+### Option B: Local Native Ollama (Port `11434`)
+If you run a native **Ollama** server locally:
+1. Pull the recommended models:
    ```bash
-   make install-web
-   # ou directement : npm --prefix web install
+   make pull-models
+   # Equivalent to:
+   ollama pull nomic-embed-text
+   ollama pull granite3.2-vision
+   ollama pull mistral-nemo
    ```
-2. Démarrez le serveur web en mode développement (avec rechargement automatique) :
+2. Export the `APP_CONFIGLLM_*` variables when starting FastAPI or Streamlit:
+   ```bash
+   export APP_CONFIGLLM_TYPE="Ollama"
+   export APP_CONFIGLLM_URL="http://127.0.0.1"
+   export APP_CONFIGLLM_PORT="11434"
+   export APP_CONFIGLLM_MODELS="mistral-nemo"
+   export APP_CONFIGLLM_OCRMODELS="granite3.2-vision"
+   export APP_CONFIGLLM_EMBEDDINGS="nomic-embed-text"
+   export APP_CONFIGLLM_EMBEDDINGS_PORT="11434"
+   ```
+
+| Application Role | Environment Variable | Default (`LiteLLM` on `:4000`) | Local `Ollama` Example (`:11434`) |
+| :--- | :--- | :--- | :--- |
+| **LLM Backend Type** | `APP_CONFIGLLM_TYPE` | `LiteLLM` | `Ollama` |
+| **LLM Server URL** | `APP_CONFIGLLM_URL` | `http://127.0.0.1` | `http://127.0.0.1` |
+| **LLM Server Port** | `APP_CONFIGLLM_PORT` | `4000` | `11434` |
+| **Clinical Reasoning** | `APP_CONFIGLLM_MODELS` | `openai/agents` | `mistral-nemo` |
+| **Vision & Local OCR** | `APP_CONFIGLLM_OCRMODELS` | `granite3.2-vision` | `granite3.2-vision` |
+| **Vector Embeddings** | `APP_CONFIGLLM_EMBEDDINGS` | `openai/embeddings` | `nomic-embed-text` |
+| **Reasoning Mode** | `APP_CONFIGLLM_REASONING` | `True` | `True` |
+
+---
+
+## 🖥️ 4. Running the Application Servers
+
+### A. Cross-Domain FastAPI Backend (`application/app-api.py`)
+```bash
+cd application
+uv run python app-api.py
+# Or with auto-reload during API development:
+uv run uvicorn app-api:app --reload --host 127.0.0.1 --port 8000
+```
+* Interactive Swagger UI: `http://127.0.0.1:8000/docs`
+* OpenAPI v3 JSON Schema: `http://127.0.0.1:8000/api/v1/openapi.json`
+
+### B. Material Design 3 Web UI (`web/`)
+1. **Connected to the Live FastAPI Backend (`http://127.0.0.1:8000`)**:
    ```bash
    npm --prefix web run dev
    ```
-   Ouvrez **`http://localhost:3000`** dans votre navigateur (en mode dev local `APP_DEV_MODE=true`, l'interface utilise un jeu de données cliniques fictives si l'API Python n'est pas démarrée, ou se connecte à `APP_API_URL=http://127.0.0.1:8000` lorsque FastAPI tourne).
-3. Pour exécuter les vérifications qualité, l'audit de contraste WCAG et les tests automatisés (unitaires, intégration et E2E Playwright) :
+   Open **`http://127.0.0.1:3000`** in your browser.
+2. **Standalone Frontend Development Mode (Without FastAPI / Docker)**:
+   Set `WEB_FAKE_API_FALLBACK=true` (or `APP_USE_FAKE_ONLY=true`) to use the deterministic in-memory clinical fixture adapter (`InMemoryMedsyntisApiFake`) covering both Digestive Oncology and SMA:
    ```bash
-   npm --prefix web run lint
-   npm --prefix web run test
-   npm --prefix web run e2e
+   WEB_FAKE_API_FALLBACK=true npm --prefix web run dev
    ```
 
-#### B. Interface Historique Streamlit (`application/app-ui.py`)
-1. Assurez-vous d'être dans le dossier `application/`
-2. Lancez le serveur Streamlit avec votre environnement virtuel actif :
-
+### C. Legacy Streamlit Dashboard (`application/app-ui.py`)
 ```bash
-# Avec uv (Recommandé)
-uv run streamlit run app-ui.py
+cd application
+uv run streamlit run app-ui.py --server.port=8501
+```
+Open **`http://localhost:8501`** in your browser.
 
-# Avec pip classique (environnement virtuel activé)
-streamlit run app-ui.py
+---
+
+## ✅ 5. Quality Gates & Automated Test Suites
+
+Every Pull Request must pass all Python and Web UI quality gates:
+
+### A. Python Backend Quality Gates (`application/`)
+```bash
+# 1. Lint Python code with Ruff
+cd application && uv run ruff check src/
+
+# 2. Check / apply PEP8 formatting with Ruff
+cd application && uv run ruff format --check src/
+
+# 3. Run static type checking with Pyrefly
+cd application && uv run pyrefly check
+
+# 4. Run the full Pytest unit & integration test suite
+cd application && uv run pytest
 ```
 
-Le terminal affichera les adresses d'accès :
-```text
-  You can now view your Streamlit app in your browser.
+### B. Material Design 3 Web UI Quality Gates (`web/`)
+```bash
+# 1. Run Biome linter, TypeScript typechecker (tsc --noEmit), and WCAG 2.2 AA contrast audit
+npm --prefix web run lint
 
-  Local URL: http://localhost:8501
-  Network URL: http://192.168.1.XX:8501
+# 2. Run Vitest unit & Fastify BFF integration tests
+npm --prefix web run test
+
+# 3. Run Playwright End-to-End (E2E) clinical & mobile journeys
+npm --prefix web run e2e
 ```
 
-Ouvrez **`http://localhost:8501`** dans votre navigateur pour accéder à l'application.
+### C. Pre-Commit Hooks (`prek`)
+Run all repository hooks (Ruff, Biome, formatting, and secret checks) before committing:
+```bash
+prek run
+# Or across all repository files:
+make hooks-all
+```
 
 ---
 
-### 5. Options et Diagnostic de Débogage
+## 📚 Further Reading
 
-* **Lister les Variables d'Environnement configurées et leurs valeurs par défaut** :
-  ```bash
-  uv run python -c "import json; from src.application.config import AppConfig; print(json.dumps(AppConfig.model_json_schema(), indent=2))"
-  ```
-* **Lancer l'UI avec un niveau de journalisation détaillé (DEBUG)** :
-  ```bash
-  APP_LOGS_LEVEL=DEBUG uv run streamlit run app-ui.py
-  ```
-
----
-
-
----
-
-## 📚 Plus d'informations
-
-Pour approfondir vos connaissances sur le fonctionnement interne de l'application, reportez-vous aux guides suivants :
-* [🩺 Guide d'utilisation Clinique](docs/guide_clinique.md)
-* [💻 Référence Technique & Variables](docs/guide_technique.md)
-* [🤖 Directives d'Agents IA (AGENTS.md)](AGENTS.md)
+* [🩺 Clinical User Guide (`docs/guide_clinique.md`)](docs/guide_clinique.md)
+* [💻 Technical Architecture & Configuration Reference (`docs/guide_technique.md`)](docs/guide_technique.md)
+* [🔌 REST & SSE API v1 Specification (`docs/api/endpoints.md`)](docs/api/endpoints.md)
+* [🎨 Material Design 3 Web UI Design System (`web/docs/design-system.md`)](web/docs/design-system.md)
+* [🤖 AI Agent & DDD Guidelines (`AGENTS.md`)](AGENTS.md)

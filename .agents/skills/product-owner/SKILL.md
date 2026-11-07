@@ -3,15 +3,15 @@ name: product-owner
 description: "Aligns the technical roadmap, functional specifications, patient dashboard interface, longitudinal multi-RCP workflows, and case prioritization logic with French hospital RCP/MDT standards (Oncology & Rare Diseases / SMA)."
 ---
 
-# DataSyntis Product Owner Skill (`product-owner`)
+# MedSyntis Product Owner Skill (`product-owner`)
 
-This skill defines the product vision, functional requirements, hospital user personas, case triage rules, and medico-legal boundaries for **DataSyntis**, ensuring every feature serves Multidisciplinary Team Meetings (**RCP / MDT**) in French hospitals.
+This skill defines the product vision, functional requirements, hospital user personas, case triage rules, and medico-legal boundaries for **MedSyntis**, ensuring every feature serves Multidisciplinary Team Meetings (**RCP / MDT**) in French hospitals.
 
 ---
 
 ## 1. Product Vision, Positioning & Three Core Promises
 
-- **Brand Name**: **DataSyntis**
+- **Brand Name**: **MedSyntis**
 - **Mission**:
   > *"Libérer du temps médical utile en transformant le chaos documentaire en dossiers directement exploitables pour la décision RCP."*
 - **Positioning**:
@@ -53,7 +53,7 @@ Patients and RCP forms are dynamically prioritized using four levels:
 - `⚪ Non qualifié` (`Indéfini`) : Fiche en attente ou non encore qualifiée.
 
 ### B. Non-Prescriptive Medico-Legal Wording (`CareOrientationProposal`)
-- DataSyntis is a **pre-RCP preparation and decision-support tool**, never an autonomous prescriber.
+- MedSyntis is a **pre-RCP preparation and decision-support tool**, never an autonomous prescriber.
 - Always use `CareOrientationProposal` (`care_adaptation_suggested`, `proposed_care_type`, *"Proposition d'orientation pré-RCP"*, *"Adaptation suggérée"*, *"Suivi habituel"*) rather than prescriptive terms like *"Intervention requise"*.
 
 ### C. Human-in-the-Loop Sovereignty (`manual_edits`)

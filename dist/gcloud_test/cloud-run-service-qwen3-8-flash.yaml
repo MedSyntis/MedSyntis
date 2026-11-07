@@ -119,4 +119,4 @@ spec:
         csi:
           driver: gcsfuse.run.googleapis.com
           volumeAttributes:
-            bucketName: oncoflow-models-cache
+            bucketName: medsyntis-models-cache

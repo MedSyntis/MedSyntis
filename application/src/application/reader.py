@@ -63,7 +63,7 @@ class DocumentReader:
     """
 
     document: str = ""
-    collectionName: str = "oncoflowDocs"
+    collectionName: str = "medsyntisDocs"
     retriever = None
     additional_pdf = None
     docs_pdf: list[str] = []

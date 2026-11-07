@@ -366,7 +366,7 @@ def chat_with_patient_dossier(
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
     except Exception as err:
-        config.set_logger("oncoflow.api").exception(
+        config.set_logger("medsyntis.api").exception(
             "Agent error on patient record %s", patient_id
         )
         raise HTTPException(
@@ -579,7 +579,7 @@ def upload_rcp_file(
     except HTTPException:
         raise
     except Exception as err:
-        config.set_logger("oncoflow.api").exception("Failed to upload RCP file")
+        config.set_logger("medsyntis.api").exception("Failed to upload RCP file")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erreur interne lors de l'enregistrement du fichier.",
@@ -672,7 +672,7 @@ def process_rcp(filename: str, request: ProcessRequest, config: DomainConfigDep)
     except HTTPException:
         raise
     except Exception as err:
-        config.set_logger("oncoflow.api").exception(
+        config.set_logger("medsyntis.api").exception(
             "Failed to process RCP %s", filename
         )
         raise HTTPException(
@@ -713,7 +713,7 @@ def chat_with_patient_agent(
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
     except Exception as err:
-        config.set_logger("oncoflow.api").exception("Agent error on RCP %s", filename)
+        config.set_logger("medsyntis.api").exception("Agent error on RCP %s", filename)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erreur interne lors de la communication avec l'agent.",

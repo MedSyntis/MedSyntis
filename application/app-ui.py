@@ -46,7 +46,7 @@ from src.ui.patient_mdt.translations import (
 
 app_config = AppConfig()
 domain_fr = translate_domain_fr(app_config.domain)
-app_title = f"DataSyntis — {domain_fr}" if domain_fr else "DataSyntis"
+app_title = f"MedSyntis — {domain_fr}" if domain_fr else "MedSyntis"
 
 st.set_page_config(
     page_title=app_title,
@@ -57,12 +57,12 @@ st.set_page_config(
 apply_card_surface_style()
 
 if app_config.dev_mode:
-    logger = app_config.set_logger("oncoflow.ui")
+    logger = app_config.set_logger("medsyntis.ui")
     logger.warning(
         "\n"
         + "=" * 60
         + "\n"
-        + "⚠️  DATASYNTIS EST EN MODE DÉVELOPPEMENT (DEV MODE)  ⚠️".center(60)
+        + "⚠️  MEDSYNTIS EST EN MODE DÉVELOPPEMENT (DEV MODE)  ⚠️".center(60)
         + "\n"
         + "=" * 60
         + "\n"
@@ -81,7 +81,7 @@ if auth_mode == "oauth_proxy":
     # by the reverse proxy (Caddy): a client reaching Streamlit directly cannot forge them.
     expected_secret = app_config.proxy_secret
     proxy_ok = expected_secret is not None and hmac.compare_digest(
-        (headers.get("X-Oncoflow-Proxy-Secret") or "").encode(),
+        (headers.get("X-MedSyntis-Proxy-Secret") or "").encode(),
         expected_secret.get_secret_value().encode(),
     )
     if expected_secret is None:
@@ -114,7 +114,7 @@ else:
             config["cookie"]["expiry_days"],
         )
     except Exception:
-        app_config.set_logger("oncoflow.ui").exception(
+        app_config.set_logger("medsyntis.ui").exception(
             "Failed to load authentication configuration (%s)", auth_config_path
         )
         st.error("Erreur lors du chargement de la configuration d'authentification.")
@@ -280,7 +280,7 @@ else:
             if authenticator is not None:
                 authenticator.login(location="main")
         except Exception:
-            app_config.set_logger("oncoflow.ui").exception(
+            app_config.set_logger("medsyntis.ui").exception(
                 "Authentication widget initialisation failed"
             )
             st.error("Erreur d'initialisation de l'authentification.")

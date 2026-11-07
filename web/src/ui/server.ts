@@ -9,7 +9,7 @@ import fastifyCookie from "@fastify/cookie";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyMultipart from "@fastify/multipart";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
-import type { OncoflowApiPort } from "../application/ports/oncoflow-api.port.js";
+import type { MedsyntisApiPort } from "../application/ports/medsyntis-api.port.js";
 import { AgendaUseCase } from "../application/use-cases/agenda.use-case.js";
 import { FeedbackUseCase } from "../application/use-cases/feedback.use-case.js";
 import { GuidelinesUseCase } from "../application/use-cases/guidelines.use-case.js";
@@ -19,7 +19,7 @@ import { QueueAdminUseCase } from "../application/use-cases/queue-admin.use-case
 import { WorklistUseCase } from "../application/use-cases/worklist.use-case.js";
 import type { WebAppConfig } from "../config.js";
 import type { ClinicalDomain, Language, ThemeMode, UserSession } from "../domain/types.js";
-import { bffRequestContext } from "../infrastructure/api/http-oncoflow-api.adapter.js";
+import { bffRequestContext } from "../infrastructure/api/http-medsyntis-api.adapter.js";
 import {
   AgendaEnrollBodySchema,
   AgendaMoveBodySchema,
@@ -180,7 +180,7 @@ function sendPdfBufferWithRange(
 
 export interface BuildServerOptions {
   config: WebAppConfig;
-  api: OncoflowApiPort;
+  api: MedsyntisApiPort;
 }
 
 export async function buildServer({ config, api }: BuildServerOptions): Promise<FastifyInstance> {
@@ -245,7 +245,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   function isProxyTrusted(req: FastifyRequest): boolean {
     const providedSecret =
-      (req.headers["x-oncoflow-proxy-secret"] as string | undefined) ||
+      (req.headers["x-medsyntis-proxy-secret"] as string | undefined) ||
       (req.headers["x-proxy-secret"] as string | undefined);
     return config.proxySecret
       ? verifyProxySecret(providedSecret, config.proxySecret)
@@ -257,7 +257,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     trustProxyHeaders: boolean,
   ): ClinicalDomain | undefined {
     const headerDomain = trustProxyHeaders
-      ? (req.headers["x-oncoflow-domain"] as string | undefined)?.trim().toLowerCase()
+      ? (req.headers["x-medsyntis-domain"] as string | undefined)?.trim().toLowerCase()
       : undefined;
     if (headerDomain === "sma" || headerDomain === "oncology") {
       return headerDomain;
@@ -296,7 +296,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     if (config.authMode === "oauth_proxy") {
       const providedSecret =
-        (req.headers["x-oncoflow-proxy-secret"] as string | undefined) ||
+        (req.headers["x-medsyntis-proxy-secret"] as string | undefined) ||
         (req.headers["x-proxy-secret"] as string | undefined);
       if (!verifyProxySecret(providedSecret, config.proxySecret)) {
         return reply
@@ -391,10 +391,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const headerUser = trustIdentityHeaders
       ? (req.headers["x-auth-request-preferred-username"] as string | undefined) ||
         (req.headers["x-auth-request-user"] as string | undefined) ||
-        (req.headers["x-oncoflow-user"] as string | undefined)
+        (req.headers["x-medsyntis-user"] as string | undefined)
       : undefined;
     const headerEmailOrName = trustIdentityHeaders
-      ? (req.headers["x-oncoflow-user-name"] as string | undefined) ||
+      ? (req.headers["x-medsyntis-user-name"] as string | undefined) ||
         (req.headers["x-auth-request-email"] as string | undefined) ||
         headerUser
       : undefined;
@@ -445,7 +445,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   });
 
   app.get("/health", async () => {
-    return { status: "ok", service: "datasyntis-web" };
+    return { status: "ok", service: "medsyntis-web" };
   });
 
   app.get("/styleguide", async (_req, reply) => {

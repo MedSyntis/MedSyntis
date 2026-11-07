@@ -9,7 +9,7 @@ services:
 
   mongod:
     image: mongodb/mongodb-community-server:9.0-ubuntu2204
-    container_name: oncoflow-mongod
+    container_name: medsyntis-mongod
     restart: unless-stopped
     logging: *default-logging
     entrypoint:
@@ -29,8 +29,8 @@ services:
       MONGODB_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
       GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb:/data/db
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb_config:/data/configdb
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/mongodb:/data/db
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/mongodb_config:/data/configdb
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
       interval: 10s
@@ -45,7 +45,7 @@ services:
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
   ollama:
-    image: ollama/ollama:0.40.13
+    image: ollama/ollama:0.40.14
     restart: always
     ports:
      - 11434:11434

@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, PastDatetime, ValidationError, model_validator
 
-from src.application.agent.agent import OncowflowAgent
+from src.application.agent.agent import MedSyntisAgent
 from src.domain.common import common_ressources
 from src.domain.common.agents import Agents
 from src.domain.common.common_ressources import *  # noqa: F403
@@ -1006,10 +1006,10 @@ class PatientMDTForm:
 
     class default_model(BaseModel):
         question: ClassVar[str] = ""
-        agents: ClassVar[list[type[OncowflowAgent]]] = [Agents.Administratives_agent]
+        agents: ClassVar[list[type[MedSyntisAgent]]] = [Agents.Administratives_agent]
         agents_memory: ClassVar[bool] = False
         collaborative: ClassVar[bool] = False
-        collaborative_agent: ClassVar[type[OncowflowAgent] | None] = None
+        collaborative_agent: ClassVar[type[MedSyntisAgent] | None] = None
         reasoning_thinking: ClassVar[str | None] = None
         time_execution: ClassVar[int | None] = None
 
@@ -1090,7 +1090,7 @@ class PatientMDTForm:
             """
 
     class ExpertAnswer(default_model):
-        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
 
         expert_relevant: bool = Field(
             description="Is your expertise relevant for this patient's case?"
@@ -1114,7 +1114,7 @@ class PatientMDTForm:
             """
 
     class MTDCompleted(default_model):
-        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
         mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")  # noqa: F405
 
         collaborative = True
@@ -1132,7 +1132,7 @@ class PatientMDTForm:
         of patient care should be discussed by the medical board, its priority, and rationale.
         """
 
-        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
         collaborative = True
 
         care_adaptation_suggested: bool = Field(

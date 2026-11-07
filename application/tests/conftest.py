@@ -1,1 +1,1 @@
-"""Pytest configuration for Oncoflow test suite."""
+"""Pytest configuration for MedSyntis test suite."""

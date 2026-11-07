@@ -1,17 +1,17 @@
 ---
 name: ui-ux-expert
-description: "Enforces DataSyntis UI/UX design system, brand identity, clinical ergonomics, color palette (slate/teal/sage/rose), elevated white card surfaces, and colorful iconography across all Streamlit views (`src/ui/` and `app-ui.py`)."
+description: "Enforces MedSyntis UI/UX design system, brand identity, clinical ergonomics, color palette (slate/teal/sage/rose), elevated white card surfaces, and colorful iconography across all Streamlit views (`src/ui/` and `app-ui.py`)."
 ---
 
-# DataSyntis UI & UX Expert Skill (`ui-ux-expert`)
+# MedSyntis UI & UX Expert Skill (`ui-ux-expert`)
 
-This skill defines the brand identity, visual design system, clinical UX patterns, and Streamlit ergonomic rules for **DataSyntis**. Activate this skill whenever creating, modifying, auditing, or styling any Streamlit page in `application/app-ui.py` or `application/src/ui/`.
+This skill defines the brand identity, visual design system, clinical UX patterns, and Streamlit ergonomic rules for **MedSyntis**. Activate this skill whenever creating, modifying, auditing, or styling any Streamlit page in `application/app-ui.py` or `application/src/ui/`.
 
 ---
 
-## 1. Brand Identity & Positioning (`DataSyntis`)
+## 1. Brand Identity & Positioning (`MedSyntis`)
 
-- **Application Name**: **DataSyntis** (never use the legacy name `MedDataSyntis` in user-facing UI, logos, or titles).
+- **Application Name**: **MedSyntis** (use the unified brand name `MedSyntis` in user-facing UI, logos, and titles).
 - **Mission**:
   > *"Libérer du temps médical utile en transformant le chaos documentaire en dossiers directement exploitables pour la décision RCP."*
 - **Positioning**:
@@ -94,7 +94,7 @@ Configured in `application/.streamlit/config.toml` and `apply_card_surface_style
 2. **Full-Width Compact Filter Toolbar**: Search, completeness segmented control, sort order, `Cartes`/`Liste` toggle, and `🔍 Filtres` popover in a single horizontal bar.
 3. **Equal-Height 3-Column Card Grid & Bottom-Aligned Buttons**:
    - Use `st.container(border=True, height="stretch")` for cards and place `st.space("stretch")` immediately before the footer (missing items expander + action buttons) so buttons align horizontally across all cards in a row.
-4. **Destructive Actions in DataSyntis Rose**:
+4. **Destructive Actions in MedSyntis Rose**:
    - All delete/purge buttons use `key="btn_del_..."` (secondary rose-tinted button) and all irreversible confirmation buttons inside `@st.dialog` use `key="btn_danger_..."` (solid rose primary button + `st.error` warning banner).
 
 ### C. Patient Clinical File View (`src/ui/patient_mdt/datas.py`)

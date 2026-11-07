@@ -1,15 +1,15 @@
-# ✨ MedDataSyntis — L'IA locale au service de la synthèse de données médicales
+# MedSyntis — Local-First Clinical Synthesis Assistant for Multidisciplinary Team Meetings (MDT / RCP)
 
 <p align="left">
-  <a href="https://github.com/oncoflow/oncoflow/actions/workflows/ci.yml"><img src="https://github.com/oncoflow/oncoflow/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI/CD Pipeline" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=oncoflow_oncoflow"><img src="https://sonarcloud.io/api/project_badges/measure?project=oncoflow_oncoflow&metric=alert_status" alt="Quality Gate Status" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=oncoflow_oncoflow"><img src="https://sonarcloud.io/api/project_badges/measure?project=oncoflow_oncoflow&metric=bugs" alt="Bugs" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=oncoflow_oncoflow"><img src="https://sonarcloud.io/api/project_badges/measure?project=oncoflow_oncoflow&metric=vulnerabilities" alt="Vulnerabilities" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=oncoflow_oncoflow"><img src="https://sonarcloud.io/api/project_badges/measure?project=oncoflow_oncoflow&metric=security_rating" alt="Security Rating" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=oncoflow_oncoflow"><img src="https://sonarcloud.io/api/project_badges/measure?project=oncoflow_oncoflow&metric=sqale_rating" alt="Maintainability Rating" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=oncoflow_oncoflow"><img src="https://sonarcloud.io/api/project_badges/measure?project=oncoflow_oncoflow&metric=reliability_rating" alt="Reliability Rating" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=oncoflow_oncoflow"><img src="https://sonarcloud.io/api/project_badges/measure?project=oncoflow_oncoflow&metric=duplicated_lines_density" alt="Duplicated Lines (%)" /></a>
-  <a href="https://codecov.io/gh/oncoflow/oncoflow"><img src="https://codecov.io/gh/oncoflow/oncoflow/branch/main/graph/badge.svg" alt="Codecov Coverage" /></a>
+  <a href="https://github.com/MedSyntis/MedSyntis/actions/workflows/ci.yml"><img src="https://github.com/MedSyntis/MedSyntis/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI/CD Pipeline" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=MedSyntis_MedSyntis"><img src="https://sonarcloud.io/api/project_badges/measure?project=MedSyntis_MedSyntis&metric=alert_status" alt="Quality Gate Status" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=MedSyntis_MedSyntis"><img src="https://sonarcloud.io/api/project_badges/measure?project=MedSyntis_MedSyntis&metric=bugs" alt="Bugs" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=MedSyntis_MedSyntis"><img src="https://sonarcloud.io/api/project_badges/measure?project=MedSyntis_MedSyntis&metric=vulnerabilities" alt="Vulnerabilities" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=MedSyntis_MedSyntis"><img src="https://sonarcloud.io/api/project_badges/measure?project=MedSyntis_MedSyntis&metric=security_rating" alt="Security Rating" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=MedSyntis_MedSyntis"><img src="https://sonarcloud.io/api/project_badges/measure?project=MedSyntis_MedSyntis&metric=sqale_rating" alt="Maintainability Rating" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=MedSyntis_MedSyntis"><img src="https://sonarcloud.io/api/project_badges/measure?project=MedSyntis_MedSyntis&metric=reliability_rating" alt="Reliability Rating" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=MedSyntis_MedSyntis"><img src="https://sonarcloud.io/api/project_badges/measure?project=MedSyntis_MedSyntis&metric=duplicated_lines_density" alt="Duplicated Lines (%)" /></a>
+  <a href="https://codecov.io/gh/MedSyntis/MedSyntis"><img src="https://codecov.io/gh/MedSyntis/MedSyntis/branch/main/graph/badge.svg" alt="Codecov Coverage" /></a>
   <a href="application/tests"><img src="https://img.shields.io/badge/Tests-Pytest%20Passing-brightgreen?style=flat-square&logo=pytest&logoColor=white" alt="Tests Status" /></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square" alt="Ruff Linter" /></a>
   <a href="https://github.com/aquasecurity/trivy"><img src="https://img.shields.io/badge/Security-Trivy%20Scanned-2684FF?style=flat-square&logo=aquasecurity&logoColor=white" alt="Trivy Vulnerabilities" /></a>
@@ -18,146 +18,88 @@
 <p align="left">
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-%3E%3D%203.13-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Version" /></a>
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/Managed%20by-uv-DE5FE9?style=flat-square&logo=astral&logoColor=white" alt="uv Package Manager" /></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Web%20UI-Node.js%2024%20%2B%20Fastify%20M3-386B66?style=flat-square&logo=fastify&logoColor=white" alt="Fastify Material Design 3 Web UI" /></a>
-  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Legacy%20UI-Streamlit%201.57+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Web%20UI-Node.js%2026%20%2B%20Fastify%20M3-386B66?style=flat-square&logo=fastify&logoColor=white" alt="Fastify Material Design 3 Web UI" /></a>
+  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Dashboard-Streamlit%201.66+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit 1.66+" /></a>
   <a href="https://www.langchain.com/"><img src="https://img.shields.io/badge/Orchestration-LangChain-1C3C3C?style=flat-square&logo=chainlink&logoColor=white" alt="LangChain" /></a>
   <a href="https://milvus.io/"><img src="https://img.shields.io/badge/Vector%20DB-Milvus%20Standalone-00b4d8?style=flat-square&logo=vector-store&logoColor=white" alt="Milvus" /></a>
   <a href="https://www.mongodb.com/"><img src="https://img.shields.io/badge/Metadata%20DB-MongoDB%20Cache-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="MongoDB" /></a>
 </p>
 
 <p align="left">
-  <a href="#-souveraineté--sécurité-locale"><img src="https://img.shields.io/badge/Privacy-100%25%20Local%20First-2ea44f?style=flat-square&logo=shield&logoColor=white" alt="Local First" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square&logo=open-source-initiative&logoColor=white" alt="Apache 2.0 License" /></a>
-  <a href="https://discord.gg/C2RPhyn9x8"><img src="https://img.shields.io/badge/Discord-Rejoindre%20la%20communauté-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord Community" /></a>
+  <a href="#-sovereignty-privacy--medico-legal-positioning"><img src="https://img.shields.io/badge/Privacy-100%25%20Local%20First-2ea44f?style=flat-square&logo=shield&logoColor=white" alt="100% Local First" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square&logo=open-source-initiative&logoColor=white" alt="Apache-2.0 License" /></a>
+  <a href="https://discord.gg/C2RPhyn9x8"><img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord Community" /></a>
 </p>
 
-**MedDataSyntis** est une solution logicielle innovante, gratuite, open-source et **100% locale**, conçue spécifiquement pour les professionnels francophones de la santé (chirurgiens, oncologues, gastro-entérologues, spécialistes des maladies rares). Elle exploite les capacités des modèles de langage locaux (LLM) et du RAG (Retrieval-Augmented Generation) pour simplifier et optimiser la préparation et le déroulement des **Réunions de Concertation Pluridisciplinaire (RCP)** (oncologie digestive, amyotrophie spinale, etc.).
+**MedSyntis** is a free, open-source, **100% local-first** clinical synthesis assistant designed for hospital Multidisciplinary Team Meetings (**MDT / RCP — Réunions de Concertation Pluridisciplinaire**). Built in close collaboration with surgeons, medical oncologists, gastroenterologists, neuromuscular specialists, and MDT medical secretaries, MedSyntis structures complex patient files and cross-references national clinical guidelines to streamline pre-MDT preparation and live board discussions across two specialized clinical domains:
+
+* **Digestive Oncology** — grounded in the French **TNCD** (*Thésaurus National de Cancérologie Digestive*) reference guidelines.
+* **Spinal Muscular Atrophy (SMA)** — grounded in the French **PNDS** (*Protocole National de Diagnostic et de Soins*) reference guidelines for rare neuromuscular diseases.
 
 ---
 
-## 🗺️ Vision Clinique vs Solution Technique
+## 🎯 The Three Clinical Promises of MedSyntis
 
-Pour répondre au mieux aux besoins de chacun de nos utilisateurs, la documentation de MedDataSyntis est scindée en deux grands espaces :
+### 1. Documentary Exhaustiveness
+* **Multi-PDF Patient Record Ingestion**: Import single or batch PDF reports (pathology, imaging, surgery, biology, genetic and motor function assessments) with automatic SHA-256 duplicate detection and OCR for scanned documents.
+* **Identity Reconciliation**: Automated extraction and normalization of patient administrative identity (`nom`, `prenom`, `date_naissance`) to link new reports to existing patient files or flag identity discrepancies for secretary verification.
+* **Longitudinal Multi-MDT History Consolidation**: Every patient dossier aggregates all past and current MDT forms along an interactive chronological timeline, automatically computing clinical deltas (such as tumor marker dynamics in oncology or HFMSE / CHOP-INTEND / RULM motor score trajectories in SMA).
 
-```
-                        ┌──────────────────────────────┐
-                        │    PORTAIL MEDDATASYNTIS     │
-                        └──────────────┬───────────────┘
-                                       │
-                ┌──────────────────────┴──────────────────────┐
-                ▼                                             ▼
-      🩺 ESPACE CLINICIENS                          💻 ESPACE TECHNIQUE
- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  • Bénéfices cliniques & RCP                   • Clean Onion Architecture
-  • Détection d'anomalies                       • Milvus & MongoDB Docker
-  • Aide au triage des dossiers                 • LiteLLM & Modèles locaux
-  • Référentiel TNCD                            • Variables d'environnement
-                │                                             │
-      [Lire le Guide Clinique]                      [Lire le Guide Technique]
-      (docs/guide_clinique.md)                      (docs/guide_technique.md)
-```
+### 2. Guideline Compliance
+* **Automated Completeness Checks (`MTDCompleted`)**: Pre-MDT detection of missing mandatory examinations or biological/genetic markers required for a valid board discussion, preventing last-minute case deferrals.
+* **Structured Stage & Gene Extraction**: Domain-specific extraction of TNM/pTNM staging, histology, WHO/ECOG performance status, and biomarkers in Digestive Oncology, or *SMN1*/*SMN2* copy numbers, motor milestones, respiratory/bulbar status, and disease-modifying therapies (Nusinersen, Risdiplam, Onasemnogene abeparvovec) in SMA.
+* **Grounded Specialist Opinions**: Pre-MDT care orientation proposals (`CareOrientationProposal`) and organ/specialty expert opinions systematically backed by verbatim excerpts and clickable page citations from the **TNCD** or **PNDS** guidelines and the patient's own reports.
 
----
-
-## 🩺 1. Espace Cliniciens (Professionnels de Santé)
-
-Vous êtes chirurgien, oncologue, gastro-entérologue ou secrétaire médical de RCP ? MedDataSyntis a été pensé pour réduire votre charge mentale administrative en automatisant la synthèse de vos dossiers patients tout en fiabilisant les processus de prise en charge.
-
-### Ses atouts cliniques majeurs :
-1. **Synthèse de dossier instantanée** : Extraction et structuration des caractéristiques cliniques et tumorales (classification TNM, type histologique, biomarqueurs, bilans génétiques et fonctionnels).
-2. **Alerte de pièces manquantes (Missing Records)** : L'IA détecte si un examen obligatoire (compte-rendu d'anatomopathologie, examen biologique ou d'imagerie) fait défaut avant la réunion, évitant ainsi de reporter le dossier.
-3. **Optimisation de l'ordre de passage** : Triage automatisé priorisant les cas cliniques complexes nécessitant le plus de débats pluridisciplinaires.
-4. **Intégration du TNCD** : Confrontation directe des critères du patient avec les fiches de recommandations cliniques officielles du **Thésaurus National de Cancérologie Digestive (TNCD)** et autres référentiels médicaux.
-
-### 🛡️ Souveraineté & Sécurité Locale
-> [!IMPORTANT] **Respect absolu du Secret Médical (RGPD)**
-> MedDataSyntis fonctionne **intégralement hors-ligne (local-first)**. Vos documents et données médicales ne transitent jamais sur internet ou sur des serveurs cloud tiers (zéro connexion avec OpenAI, Google, etc.). Tout le calcul s'effectue localement au sein de l'infrastructure sécurisée de l'hôpital.
-
-👉 **[Consulter le Guide d'Utilisation Clinique Complet](docs/guide_clinique.md)**
+### 3. Operational Fluidity
+* **Smart MDT Session Agenda Scheduling**: Organize the upcoming MDT session using four configurable passage-order strategies:
+  * `hybrid`: Groups cases by required medical specialty while prioritizing urgent cases at the top of each specialty block.
+  * `urgency_first`: Orders all enrolled cases strictly by descending clinical urgency score.
+  * `expert_grouping`: Clusters cases sharing the same specialists into contiguous passage windows to minimize physician waiting time.
+  * `manual`: Full drag/move and pin control by the MDT coordinator or medical secretary.
+* **Specialty Quorum Verification**: Real-time calculation of specialist attendance windows and visual quorum warnings when a required specialist is absent for an enrolled case.
+* **Interactive PDF Source Viewer with Bounding-Box Highlights**: Side-by-side PDF reader that jumps directly to cited pages and highlights extracted clinical evidence (`bbox` overlay) inside the original medical report.
+* **Unconditional Preservation of Human Edits (`manual_edits`)**: Any correction made by a clinician or medical secretary is explicitly badged, audited, and locked against being overwritten by subsequent AI re-analyses, with one-click section rollback available at any time.
 
 ---
 
-## 💻 2. Espace Technique (Développeurs & Admins IT)
+## 🛡️ Sovereignty, Privacy & Medico-Legal Positioning
 
-Vous êtes ingénieur de recherche, développeur ou administrateur système hospitalier ? MedDataSyntis est conçu selon des standards rigoureux en Python `>=3.13` avec une architecture propre facilitant l'auditabilité et la maintenance.
+> [!IMPORTANT] **100% Local Execution — Zero External Cloud API Calls**
+> MedSyntis operates **entirely within the hospital's secure local infrastructure**. Patient PDFs, extracted clinical data, vector embeddings, and AI reasoning never leave the local network and never call external cloud APIs (zero data transmission to OpenAI, Anthropic, Google Cloud, or any third-party service).
 
-### ⚙️ L'Architecture RAG Multi-Agents locale :
-
-```mermaid
-flowchart TB
-    subgraph UI [Interfaces Utilisateur]
-        WebM3[Web UI Material Design 3 - Node.js / Fastify BFF]
-        Streamlit[Streamlit Dashboard]
-    end
-
-    subgraph APP [API FastAPI & Orchestrateur Applicatif]
-        FastAPI[FastAPI REST & SSE /api/v1]
-        Agent[Multi-Expert Agent LangChain]
-        Reader[Document Reader & RAG]
-        Config[AppConfig - pydantic-settings]
-    end
-
-    subgraph DB [Stockage Local & Vecteurs]
-        Milvus[(Milvus Standalone Vector DB)]
-        Chroma[(Chroma DB Alternative)]
-        Mongo[(MongoDB Metadata Cache)]
-    end
-
-    subgraph AI [Moteur d'Inférence Local]
-        LiteLLM[LiteLLM Proxy - Port 4000]
-        Agents[openai/agents - Raisonnement]
-        Embeddings[openai/embeddings - Embeddings]
-        Backends[Backends : llama.cpp / Ollama / vLLM]
-    end
-
-    WebM3 <--> FastAPI
-    FastAPI <--> Agent
-    Streamlit <--> Agent
-    Agent <--> Reader
-    Reader <--> Config
-    Reader <--> Milvus
-    Reader <--> Mongo
-    Reader <--> LiteLLM
-    Agent <--> LiteLLM
-    LiteLLM <--> Agents
-    LiteLLM <--> Embeddings
-    LiteLLM <--> Backends
-```
-
-### Stack Technique Principale :
-* **Nouvelle Interface Web Clinique (`web/`)** : Node.js 24, TypeScript strict, Fastify 5 (architecture hexagonale BFF), Design System Material Design 3 hospitalier (`ds-*`) 100 % auto-hébergé (CSP `default-src 'self'`), conforme WCAG 2.2 AA (thèmes Auto / Clair / Sombre, responsive Desktop & Mobile, E2E Playwright)
-* **Frontend Dashboard Historique (`application/`)** : Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`)
-* **API Backend (`application/app-api.py`)** : FastAPI REST & Server-Sent Events (SSE) sous `/api/v1` (dossiers longitudinaux, ordre du jour RCP `/api/v1/mdt/agenda`, file GPU prioritaire `/api/v1/queue`)
-* **Moteur d'Inférence & Modèles** : LiteLLM Proxy (`langchain-litellm`, port 4000 par défaut avec `openai/agents` & `openai/embeddings`), compatible multi-moteurs (Ollama, llama.cpp, vLLM, OpenAI)
-* **Orchestration RAG** : LangChain (`langchain-core`, `langchain-litellm`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`)
-* **Indexation Vectorielle** : Milvus standalone (`pymilvus>=3.0.2`, `langchain-milvus>=0.4.0`) ou ChromaDB
-* **Base de données de Cache & Métadonnées** : MongoDB (`pymongo>=4.17.0`)
-* **Parsers de Documents** : Docling, MuPDF, OpenParse & Ollama OCR
-
-### 🔐 Authentification & Sécurité :
-L'application intègre un système d'authentification local sécurisé via `streamlit-authenticator` :
-* **Fichier de configuration** : Les utilisateurs et leurs informations sont gérés localement dans le fichier `application/auth_config.yaml`.
-* **Identifiants par défaut** :
-  * Nom d'utilisateur : `admin`
-  * Mot de passe : `admin`
-* **Gestion des utilisateurs** : Les informations des utilisateurs et leurs mots de passe hachés en Bcrypt sont gérés dans le fichier YAML. Un script d'ajout d'utilisateurs interactif est disponible sous `application/scratch/add_user.py`. Vous pouvez le lancer depuis le dossier `application/` pour ajouter ou modifier des utilisateurs de façon transparente :
-  ```bash
-  uv run python scratch/add_user.py
-  ```
-
-👉 **[Découvrir la Fiche Technique Complète & Variables](docs/guide_technique.md)**
-👉 **[Accéder au Guide de Contribution & Setup local](HOW-TO-CONTRIBUTE.md)**
+* **Regulatory & Privacy Compliance**: Designed in strict alignment with the **European GDPR (RGPD)**, **CNIL** health data protection standards, **HDS** (*Hébergement de Données de Santé* — Art. L. 1111-8 of the French Public Health Code), and **PGSSI-S** security requirements.
+* **Human Oversight (*Garantie Humaine* — Art. L. 4001-2 CSP & EU AI Act)**: Every AI-generated field displays its documentary source and remains editable and reversible by healthcare professionals.
+* **Strictly Non-Prescriptive Pre-MDT Positioning**: MedSyntis is a documentary synthesis and pre-MDT preparation aid. It never replaces the physician and never issues a medical prescription—**the final therapeutic decision always belongs exclusively to the collegial MDT board**.
 
 ---
 
-## 👥 Discord & Communauté
+## 🖥️ User Interface Overview
 
-MedDataSyntis est un projet open-source communautaire. Pour proposer de nouvelles fonctionnalités, poser vos questions techniques ou nous aider à intégrer d'autres thésaurus médicaux, rejoignez notre serveur d'échange :
+MedSyntis provides a hospital-grade **Material Design 3 Web UI** engineered for zero-glare readability in dark projection rooms as well as clinician workstations and tablets (**WCAG 2.2 AA** compliant with **Light, Dark, and Auto** themes, available in French and English):
 
-💬 **[Lien d'accès au Discord Officiel MedDataSyntis](https://discord.gg/C2RPhyn9x8)**
+* **MDT Worklist (`/worklist`)**: High-density clinical table and card views with clickable KPI filters (Total Dossiers, High Urgency, Incomplete Files, Suggested Care Adaptations), multi-column sorting, and quick actions.
+* **Longitudinal Patient Dossier (`/patients/:id`)**: Unified synoptic patient banner, longitudinal clinical delta indicators, collapsible MDT session timeline, side-by-side native PDF viewer (with bounding-box highlights), structured clinical sections with protected manual editing, interactive missing-record checklist, and floating **AI Co-Pilot Side Sheet** for querying either the current MDT form or the full longitudinal patient history.
+* **MDT Session Agenda (`/agenda`)**: Interactive session planner with specialist attendance selection, quorum verification, passage-window visualization, automatic sorting (`hybrid`, `urgency_first`, `expert_grouping`, `manual`), optional deferral of incomplete files (`defer_incomplete_files`), case pinning, and live session navigation (`← Previous Patient` / `Next Patient →`).
+* **Scientific Guidelines RAG (`/guidelines`) & AI Experts Catalog (`/agents`)**: Full-screen TNCD / PNDS reference library with a source-grounded RAG assistant, plus full transparency into every specialist agent's system instructions and attached reference documents.
+* **Live GPU Queue Monitor (`/admin/queue`) & Clinical Feedback (`/feedback`)**: Real-time Server-Sent Events (SSE) tracking of background document extraction waves, live AI reasoning stream, and built-in anomaly reporting.
+
+👉 **[Read the Complete Clinical User Guide (`docs/guide_clinique.md`)](docs/guide_clinique.md)**
 
 ---
 
-## 📄 Licence
+## 📚 Documentation for Contributors & Hospital IT / Developers
 
-Ce projet est distribué sous licence libre (voir le fichier [LICENSE](LICENSE) pour plus de détails).
+If you are a software contributor, clinical AI researcher, or hospital IT / DevOps engineer deploying or extending MedSyntis, please refer to our dedicated technical documentation:
+
+* [**Contributor & Development Guide (`HOW-TO-CONTRIBUTE.md`)**](HOW-TO-CONTRIBUTE.md)
+* [**Technical Architecture & Configuration Reference (`docs/guide_technique.md`)**](docs/guide_technique.md)
+* [**REST & SSE API v1 Specification (`docs/api/endpoints.md`)**](docs/api/endpoints.md)
+* [**Material Design 3 Web UI Design System (`web/docs/design-system.md`)**](web/docs/design-system.md)
+* [**AI Agent & DDD Guidelines (`AGENTS.md`)**](AGENTS.md)
+
+---
+
+## 👥 Community & License
+
+* 💬 **Discord Community**: Join clinicians and contributors on the [Official MedSyntis Discord Server](https://discord.gg/C2RPhyn9x8).
+* 📄 **License**: MedSyntis is distributed under the open-source [Apache-2.0 License](LICENSE).

@@ -224,7 +224,7 @@ export const CLINICAL_TRANSLATIONS_FR: Record<string, string> = {
 
 export const UI_CATALOG: Record<Language, Record<string, string>> = {
   fr: {
-    "app.title": "DataSyntis — Préparation collégiale RCP",
+    "app.title": "MedSyntis — Préparation collégiale RCP",
     "nav.worklist": "Worklist RCP",
     "nav.agenda": "Ordre du jour RCP",
     "nav.ingest": "Importer des PDF",
@@ -270,7 +270,7 @@ export const UI_CATALOG: Record<Language, Record<string, string>> = {
     "empty.value": "Non renseigné",
   },
   en: {
-    "app.title": "DataSyntis — MDT Clinical Preparation",
+    "app.title": "MedSyntis — MDT Clinical Preparation",
     "nav.worklist": "MDT Worklist",
     "nav.agenda": "Next MDT Agenda",
     "nav.ingest": "Upload PDFs",

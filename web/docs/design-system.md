@@ -1,218 +1,219 @@
-# DataSyntis — Design system web (`ds-*`)
+# MedSyntis — Web Design System (`ds-*`)
 
-> CSS pur, sans framework, sans étape de build, **100 % auto-hébergé** (CSP `default-src 'self'`) : aucun CDN, aucune police externe.
-> Fichiers :
-> - [`public/css/tokens.css`](../public/css/tokens.css) : tokens (custom properties), thèmes clair et sombre
-> - [`public/css/components.css`](../public/css/components.css) : composants `ds-*` et système d'icônes SVG M3
-> - [`public/img/icons.svg`](../public/img/icons.svg) : sprite vectoriel de 58 icônes Material Design 3 (`<symbol id="ic-…">`, grille optique `24×24`, trait arrondi `1.85px`)
-> - [`styleguide/index.html`](../styleguide/index.html) : styleguide vivant avec catalogue d'icônes interactif (`#tokens-icons`)
-> - [`scripts/check-contrast.mjs`](../scripts/check-contrast.mjs) : contrôle WCAG des paires de tokens (`node web/scripts/check-contrast.mjs`, code retour 1 si une paire échoue)
+> Pure CSS, framework-free, build-step-free, **100% self-hosted** (CSP `default-src 'self'`): zero CDNs, zero external fonts.
+> Key files:
+> - [`public/css/tokens.css`](../public/css/tokens.css): design tokens (CSS custom properties), Light and Dark themes
+> - [`public/css/components.css`](../public/css/components.css): `ds-*` Material Design 3 components and SVG icon system
+> - [`public/img/icons.svg`](../public/img/icons.svg): vector sprite of 73 Material Design 3 icons (`<symbol id="ic-…">`, `24×24` optical grid, `1.85px` rounded stroke)
+> - [`public/js/app.js`](../public/js/app.js): dependency-free vanilla JS progressive enhancement (`fetch` partial updates with `HX-Request: true` + real-time `EventSource('/events/queue')` SSE streaming)
+> - [`styleguide/index.html`](../styleguide/index.html): living styleguide with interactive icon catalog (`#tokens-icons`)
+> - [`scripts/check-contrast.mjs`](../scripts/check-contrast.mjs): zero-dependency WCAG 2.2 token contrast checker (`node web/scripts/check-contrast.mjs`, exits with code 1 if any pair fails)
 
-Source de vérité de la marque : `application/.streamlit/config.toml` et `application/static/icon.svg`. Ce design system reprend la même palette pour que l'UI web et l'UI Streamlit restent cohérentes.
-
----
-
-## 1. Principes
-
-1. **Lisible sans réfléchir.** Chaque écran se comprend en une seconde, pour deux personas :
-   - **Médecin / spécialiste RCP** : urgence, orientation pré-RCP, repères cliniques, évolution depuis la RCP précédente, avis et références.
-   - **Secrétaire médicale / coordination RCP** : complétude, pièces manquantes, spécialités à convoquer, identité du patient.
-2. **Sobre et rigoureux.** Fond pierre mat (`canvas`) contre l'éblouissement, cartes papier en relief, un seul accent primaire (sarcelle). Pas de ton marketing.
-3. **La couleur n'est jamais seule.** Tout statut = **icône + texte + couleur** (WCAG 1.4.1). Les variations (deltas) ajoutent une flèche et une valeur signée.
-4. **Le rose a un sens précis.** Il est réservé à 🚨 **Priorité haute** et aux **actions destructives**. Ailleurs, jamais.
-5. **Neutralité médico-légale.** L'outil prépare la décision, il ne la prend pas. Les orientations sont formulées comme des propositions (voir § 6).
-6. **Le clinicien a le dernier mot.** Toute modification manuelle est visible (✍️) et n'est jamais écrasée en silence.
-7. **KISS.** Du HTML sémantique et des états natifs (`<dialog>`, `<details>`, `aria-*`, `:disabled`) avant les classes. Pas de JS requis pour le rendu, htmx pour l'interactivité.
+Brand source of truth: `application/.streamlit/config.toml` and `web/public/img/medsyntis-icon.svg`. This design system shares the same clinical color semantics across the Material Design 3 Web UI and the legacy Streamlit dashboard.
 
 ---
 
-## 2. Tokens
+## 1. Core Principles
 
-Préfixe `--ds-`. Les composants consomment **uniquement les tokens sémantiques** (`--ds-color-*`, `--ds-urgency-*`, …), jamais les primitives (`--ds-teal-600`) ni des valeurs hexadécimales en dur.
+1. **Zero-friction clinical readability.** Every screen must be understood in one second for two hospital personas:
+   - **MDT Physician / Specialist**: clinical urgency, pre-MDT orientation, synoptic clinical markers, longitudinal deltas since the previous MDT session, specialty opinions, and grounded citations.
+   - **MDT Medical Secretary / Coordinator**: record completeness, missing clinical items, required specialties to convene, and patient identity.
+2. **Sober and rigorous.** Matte stone canvas (`canvas`) to prevent visual glare on hospital monitors, elevated paper cards, and a single primary accent (clinical teal). No marketing tone.
+3. **Never rely on color alone.** Every status combines **icon + text label + color** (WCAG 1.4.1). Longitudinal variations (deltas) include a directional arrow and a signed value.
+4. **Rose has a strict semantic meaning.** It is exclusively reserved for 🚨 **High Priority** (`priority-high`) and **destructive actions** (`btn_del_` / `btn_danger_`). Never use rose elsewhere.
+5. **Medico-legal neutrality.** MedSyntis prepares the multidisciplinary team meeting; it never makes clinical decisions. All orientations are phrased as non-prescriptive proposals (see § 6).
+6. **The clinician has the final word.** Every manual edit is explicitly badged (✍️) with provenance and is never silently overwritten.
+7. **KISS.** Semantic HTML and native browser states (`<dialog>`, `<details>`, `aria-*`, `:disabled`) come before custom classes. No JS is required for initial SSR rendering; [`public/js/app.js`](../public/js/app.js) provides dependency-free vanilla JS interactivity (`fetch` with `HX-Request: true` for partial DOM updates and `EventSource('/events/queue')` for live queue updates).
 
-### 2.1 Thème
+---
 
-| Mécanisme | Effet |
+## 2. Design Tokens
+
+All tokens use the `--ds-` prefix. Components consume **only semantic tokens** (`--ds-color-*`, `--ds-urgency-*`, etc.), never primitive palette variables (`--ds-teal-600`) or hardcoded hex values.
+
+### 2.1 Theme Modes
+
+| Mechanism | Effect |
 | :--- | :--- |
-| défaut | thème clair |
-| `<html data-theme="dark">` | sombre forcé |
-| `<html data-theme="light">` | clair forcé (ignore l'OS) |
-| sans attribut + OS en sombre | sombre (`prefers-color-scheme`) |
+| Default | Light theme |
+| `<html data-theme="dark">` | Forced Dark theme |
+| `<html data-theme="light">` | Forced Light theme (overrides OS preference) |
+| `<html data-theme="auto">` or no attribute + OS in Dark mode | Automatic Dark theme (`prefers-color-scheme: dark`) |
 
-Le bloc sombre est **dupliqué volontairement** (attribut + media query) pour rester compatible avec les navigateurs hospitaliers anciens (pas de `light-dark()`). Gardez les deux blocs synchronisés.
+The dark token block is **intentionally duplicated** (explicit attribute selector + media query) to remain compatible with older hospital browsers (without relying on `light-dark()`). Keep both blocks synchronized.
 
-### 2.2 Couleurs (contrastes calculés selon WCAG 2.x)
+### 2.2 Colors (Contrast Ratios Computed per WCAG 2.x)
 
-Texte : ≥ 4.5:1 (AA). Composants d'interface, bordures de champs, anneau de focus : ≥ 3:1.
+Normal text: ≥ 4.5:1 (AA). UI components, form field borders, focus rings: ≥ 3:1.
 
-| Rôle | Token | Clair | Sombre | Contraste (clair / sombre) |
+| Role | Token | Light | Dark | Contrast (Light / Dark) |
 | :--- | :--- | :--- | :--- | :--- |
-| Fond de travail | `--ds-color-canvas` | `#E6ECF0` | `#0F172A` | — |
-| Carte (surface) | `--ds-color-surface` | `#FBFDFF` | `#162032` | — |
-| Zone en retrait | `--ds-color-surface-sunken` | `#F1F5F9` | `#111A2B` | — |
-| Texte | `--ds-color-text` | `#2A3647` | `#E2E8F0` | 11.99 / 13.24 sur surface |
-| Texte secondaire | `--ds-color-text-muted` | `#4A5A70` | `#A3B1C4` | 6.89 / 7.49 sur surface, 5.90 / 8.20 sur canvas |
-| Texte discret | `--ds-color-text-subtle` | `#5F6E82` | `#8D9BB0` | 5.10 / 5.79 |
-| Bordure de champ | `--ds-color-border-strong` | `#7A8799` | `#64748B` | 3.58 / 3.43 (UI) |
-| Primaire (sarcelle) | `--ds-color-primary` | `#467E79` | `#72A8A2` | texte du bouton : 4.65 (blanc) / 7.03 (`#0B1120`) |
-| Lien, onglet actif | `--ds-color-primary-text` | `#3A6B66` | `#88BDB7` | 5.93 / 7.78 sur surface, 5.07 / 8.51 sur canvas |
-| Anneau de focus | `--ds-color-focus` | `#3B6E9C` | `#7FB2F0` | 4.52 / 8.10 sur canvas (UI) |
-| Succès / conformité (sauge) | `--ds-color-success-fg` / `-bg` | `#2E544A` / `#E6F1EE` | `#BFE3D6` / `#16362E` | 7.32 / 9.48 |
-| Attention (ambre) | `--ds-color-warning-fg` / `-bg` | `#7C4718` / `#FBF0E4` | `#FCD9A8` / `#43290F` | 6.74 / 10.00 |
-| Danger (rose) | `--ds-color-danger` | `#B83B5E` | `#E11D48` | texte blanc : 5.49 / 4.70 |
-| Danger, badge | `--ds-color-danger-fg` / `-bg` | `#882644` / `#F9E8EC` | `#FECDD6` / `#4A1424` | 7.39 / 10.53 |
-| Info (bleu clinique) | `--ds-color-info-fg` / `-bg` | `#234B6E` / `#E3EFF8` | `#DBEAFE` / `#1E3A5F` | 7.80 / 9.43 |
-| Neutre | `--ds-color-neutral-fg` / `-bg` | `#3D4A5C` / `#E2E8EE` | `#CBD5E1` / `#273449` | 7.29 / 8.45 |
-| 🧭 Adaptation suggérée | `--ds-orientation-adapt-fg` / `-bg` | `#2C5753` / `#E2EFED` | `#BCE0DB` / `#173A37` | 6.86 / 8.74 |
-| ✍️ Modifié manuellement | `--ds-manual-fg` / `-bg` | `#6E4F12` / `#FAF3E0` | `#F5DFA6` / `#3D3010` | 6.80 / 9.82 |
-| Spécialité requise | `--ds-specialty-fg` / `-bg` | `#3B475C` / `#EAEFF5` | `#D3DCE8` / `#2A3548` | 8.10 / 8.92 |
-| Domaine Oncologie | `--ds-domain-onco-fg` / `-bg` | `#1F5470` / `#E1EEF5` | `#BFE0F0` / `#123247` | 6.93 / 9.62 |
-| Domaine SMA | `--ds-domain-sma-fg` / `-bg` | `#56427A` / `#EFEAF6` | `#DCD0F0` / `#2E2447` | 7.24 / 9.81 |
-| Barre latérale | `--ds-sidebar-bg` / `-text` | `#2B3748` / `#E8EEF3` | `#0B1120` / `#E2E8F0` | 10.30 / 15.27 |
-| En-tête de tableau | `--ds-table-header-bg` / `-text` | `#2B3748` / `#F1F5F9` | `#0B1120` / `#F8FAFC` | 11.00 / 18.00 |
+| Workspace canvas | `--ds-color-canvas` | `#E6ECF0` | `#0F172A` | — |
+| Card surface | `--ds-color-surface` | `#FBFDFF` | `#162032` | — |
+| Sunken surface | `--ds-color-surface-sunken` | `#F1F5F9` | `#111A2B` | — |
+| Primary text | `--ds-color-text` | `#2A3647` | `#E2E8F0` | 11.99 / 13.24 on surface |
+| Secondary text | `--ds-color-text-muted` | `#4A5A70` | `#A3B1C4` | 6.89 / 7.49 on surface, 5.90 / 8.20 on canvas |
+| Subtle text | `--ds-color-text-subtle` | `#5F6E82` | `#8D9BB0` | 5.10 / 5.79 |
+| Input border | `--ds-color-border-strong` | `#7A8799` | `#64748B` | 3.58 / 3.43 (UI) |
+| Primary (clinical teal) | `--ds-color-primary` | `#467E79` | `#72A8A2` | button text: 4.65 (white) / 7.03 (`#0B1120`) |
+| Link, active tab | `--ds-color-primary-text` | `#3A6B66` | `#88BDB7` | 5.93 / 7.78 on surface, 5.07 / 8.51 on canvas |
+| Focus ring | `--ds-color-focus` | `#3B6E9C` | `#7FB2F0` | 4.52 / 8.10 on canvas (UI) |
+| Success / compliance (sage) | `--ds-color-success-fg` / `-bg` | `#2E544A` / `#E6F1EE` | `#BFE3D6` / `#16362E` | 7.32 / 9.48 |
+| Warning (amber) | `--ds-color-warning-fg` / `-bg` | `#7C4718` / `#FBF0E4` | `#FCD9A8` / `#43290F` | 6.74 / 10.00 |
+| Danger (rose) | `--ds-color-danger` | `#B83B5E` | `#E11D48` | white text: 5.49 / 4.70 |
+| Danger badge | `--ds-color-danger-fg` / `-bg` | `#882644` / `#F9E8EC` | `#FECDD6` / `#4A1424` | 7.39 / 10.53 |
+| Info (clinical blue) | `--ds-color-info-fg` / `-bg` | `#234B6E` / `#E3EFF8` | `#DBEAFE` / `#1E3A5F` | 7.80 / 9.43 |
+| Neutral | `--ds-color-neutral-fg` / `-bg` | `#3D4A5C` / `#E2E8EE` | `#CBD5E1` / `#273449` | 7.29 / 8.45 |
+| 🧭 Care adaptation suggested | `--ds-orientation-adapt-fg` / `-bg` | `#2C5753` / `#E2EFED` | `#BCE0DB` / `#173A37` | 6.86 / 8.74 |
+| ✍️ Manually edited | `--ds-manual-fg` / `-bg` | `#6E4F12` / `#FAF3E0` | `#F5DFA6` / `#3D3010` | 6.80 / 9.82 |
+| Required specialty | `--ds-specialty-fg` / `-bg` | `#3B475C` / `#EAEFF5` | `#D3DCE8` / `#2A3548` | 8.10 / 8.92 |
+| Oncology domain | `--ds-domain-onco-fg` / `-bg` | `#1F5470` / `#E1EEF5` | `#BFE0F0` / `#123247` | 6.93 / 9.62 |
+| SMA domain | `--ds-domain-sma-fg` / `-bg` | `#56427A` / `#EFEAF6` | `#DCD0F0` / `#2E2447` | 7.24 / 9.81 |
+| Navigation rail | `--ds-sidebar-bg` / `-text` | `#2B3748` / `#E8EEF3` | `#0B1120` / `#E2E8F0` | 10.30 / 15.27 |
+| Table header | `--ds-table-header-bg` / `-text` | `#2B3748` / `#F1F5F9` | `#0B1120` / `#F8FAFC` | 11.00 / 18.00 |
 
-Alias cliniques :
+Clinical semantic aliases:
 
-| Sémantique | Tokens | Correspond à |
+| Clinical Meaning | Tokens | Maps To |
 | :--- | :--- | :--- |
-| Urgence haute 🚨 | `--ds-urgency-high*` | danger (rose) |
-| Urgence modérée 🟠 | `--ds-urgency-medium*` | warning (ambre) |
-| Urgence standard 🟢 | `--ds-urgency-low*` | success (sauge) |
-| Non évaluée ⚪ | `--ds-urgency-none*` | neutral |
-| Conforme au référentiel ✅ | `--ds-orientation-standard*` | success |
-| Adaptation suggérée 🧭 | `--ds-orientation-adapt*` | **sarcelle primaire (neutre)** |
-| À discuter / en attente ⏳ | `--ds-orientation-pending*` | neutral |
+| High priority 🚨 | `--ds-urgency-high*` | danger (rose) |
+| Medium priority 🟠 | `--ds-urgency-medium*` | warning (amber) |
+| Standard priority 🟢 | `--ds-urgency-low*` | success (sage) |
+| Not evaluated ⚪ | `--ds-urgency-none*` | neutral |
+| Standard care / guideline-aligned ✅ | `--ds-orientation-standard*` | success |
+| Care adaptation suggested 🧭 | `--ds-orientation-adapt*` | **primary teal (non-alarmist)** |
+| To discuss / pending ⏳ | `--ds-orientation-pending*` | neutral |
 
-### 2.3 Typographie
+### 2.3 Typography
 
-Pile système `--ds-font-sans` (system-ui, Segoe UI, Roboto, Noto Sans, Liberation Sans… + polices emoji). Mono : `--ds-font-mono`.
+System font stack `--ds-font-sans` (`system-ui`, `Segoe UI`, `Roboto`, `Noto Sans`, `Liberation Sans`, etc. + emoji fonts). Monospace stack: `--ds-font-mono`.
 
-| Token | Taille | Usage |
+| Token | Size | Usage |
 | :--- | :--- | :--- |
-| `--ds-text-xs` | 12 px | méta, horodatages (jamais pour du texte courant) |
-| `--ds-text-sm` | 13 px | tableaux denses, badges, boutons |
-| `--ds-text-md` | 15 px | corps de texte |
-| `--ds-text-lg` | 17 px | titres de section ou de carte |
-| `--ds-text-xl` | 20 px | titres h2 |
-| `--ds-text-2xl` | 24 px | titre de page, nom du patient |
-| `--ds-text-3xl` | 30 px | valeur des KPI |
+| `--ds-text-xs` | 12 px | Metadata, timestamps (never for body copy) |
+| `--ds-text-sm` | 13 px | Dense tables, badges, buttons |
+| `--ds-text-md` | 15 px | Body text |
+| `--ds-text-lg` | 17 px | Section or card titles |
+| `--ds-text-xl` | 20 px | `h2` headings |
+| `--ds-text-2xl` | 24 px | Page title, patient name |
+| `--ds-text-3xl` | 30 px | KPI values |
 
-Graisses : 400 / 500 / 600 / 700. Chiffres tabulaires (`font-variant-numeric: tabular-nums`) pour les tableaux, les KPI et les deltas.
+Font weights: 400 / 500 / 600 / 700. Tabular numerals (`font-variant-numeric: tabular-nums`) are enforced on tables, KPIs, and longitudinal deltas.
 
-### 2.4 Espacement, rayons, ombres, couches, mouvement
+### 2.4 Spacing, Radii, Shadows, Z-Index & Motion
 
-- **Espacement** (grille de 4 px) : `--ds-space-1` (4 px) → `--ds-space-12` (48 px).
-- **Rayons** : `sm` 4 px · `md` 6 px (boutons, champs) · `lg` 8 px (cartes) · `xl` 12 px (modales) · `pill` (badges).
-- **Ombres** : `sm` (cartes) · `md` (survol, carte synoptique) · `lg` (modale, tiroir, toast).
-- **Z-index** : sticky 10 · sidebar 20 · topbar 30 · bannière de file 40 · tiroir 50 · modale 60 · toast 70.
-- **Mouvement** : 120 / 200 / 320 ms, courbe `--ds-ease`. Avec `prefers-reduced-motion: reduce`, les durées passent à 0 ; spinners ralentis, shimmer et points de saisie arrêtés.
+- **Spacing** (4 px grid): `--ds-space-1` (4 px) → `--ds-space-12` (48 px).
+- **Border radii**: `sm` 4 px · `md` 6 px (buttons, inputs) · `lg` 8 px (cards) · `xl` 12 px (modals) · `pill` (badges).
+- **Shadows**: `sm` (cards) · `md` (hover, synoptic card) · `lg` (modal, drawer, toast).
+- **Z-index**: sticky 10 · sidebar 20 · topbar 30 · queue banner 40 · drawer 50 · modal 60 · toast 70.
+- **Motion**: 120 / 200 / 320 ms with `--ds-ease`. Under `prefers-reduced-motion: reduce`, transition durations drop to 0, spinners slow down, and skeleton shimmer / typing dots stop animating.
 
 ---
 
-## 3. Composants
+## 3. Components
 
-Nommage BEM : `.ds-bloc`, `.ds-bloc__element`, `.ds-bloc--variante`. L'état passe d'abord par les attributs natifs ou ARIA.
+BEM naming convention: `.ds-block`, `.ds-block__element`, `.ds-block--modifier`. Interactive state relies on native HTML or ARIA attributes first.
 
-| Composant | Classes | État / notes |
+| Component | Classes | State & Notes |
 | :--- | :--- | :--- |
-| Shell & Rail M3 | `ds-shell`, `ds-sidebar`, `ds-nav-rail`, `ds-rail__fab`, `ds-nav__indicator`, `ds-main`, `ds-topbar`, `ds-workspace`, `ds-bottom-nav`, `ds-skip-link` | `aria-current="page"` sur le lien actif. Rail repliable en `72px` (`body.ds-shell--sidebar-collapsed`). Sous `48rem` (`768px`), barre mobile `ds-bottom-nav` + tiroir latéral `ds-shell--mobile-nav-open`. |
-| Bannière de file | `ds-queue-banner` (`--idle`, `--success`, `--error`, `--offline`), `__msg`, `__progress`, `__action` | `role="status" aria-live="polite" aria-atomic="true"`, cible SSE (`sse-swap`). Une seule ligne. |
-| Tiroir File GPU | `<dialog class="ds-drawer">`, `__header`, `__body`, `__footer`, `ds-job` | Ouverture par `showModal()` ; fermeture avec `<form method="dialog">` ou Échap. |
-| Co-Pilot IA (Side Sheet) | `ds-fab-menu` (`btn_fab_ai_chat`), `<aside class="ds-copilot-drawer">` (`#ai-chat-drawer`), `ds-m3-select`, `ds-split-btn`, `ds-ai-thinking` | Tiroir latéral pleine hauteur non bloquant. Sur mobile, synchronise `--ds-vvh` avec `window.visualViewport` et ajoute `.is-keyboard-open` à la prise de focus. |
-| Ordre du jour RCP | `ds-agenda-item` (`--focused`, `--dimmed`), `ds-agenda-section-bar`, `ds-agenda-focus-bar`, `ds-agenda-dossier-nav`, `ds-agenda-onboarding` | Mise en évidence dynamique par spécialité (`data-focus-expert`), barre de navigation inter-dossiers (`← Dossier précédent` / `Dossier suivant →`) et modale d'onboarding. |
-| Boutons | `ds-btn` + `--primary`, `--secondary`, `--tonal`, `--ghost`, `--danger-soft`, `--danger` ; `--sm`, `--lg`, `--icon`, `--block` | Chargement : `aria-busy="true"` + `disabled`. Bouton icône seul : `aria-label` obligatoire. |
-| Badges | `ds-badge` + `--urgency-{high,medium,low,none}`, `--complete`, `--incomplete`, `--orientation-{standard,adapt,pending}`, `--specialty`, `--domain-{onco,sma}`, `--manual`, `--success`, `--warning`, `--danger`, `--info`, `--neutral` ; `--sm`, `--outline` ; `ds-badge-list` | Emoji dans `<span class="ds-icon" aria-hidden="true">`, libellé ≤ 24 caractères. |
-| Cartes | `ds-card`, `__header`, `__title`, `__body`, `__footer`, `--interactive`, `--flush` | Cartes de même hauteur dans une grille ; actions alignées dans le footer. |
-| KPI | `ds-kpi-grid`, `ds-kpi` (`--danger`, `--warning`, `--success`, `--info`), `__label`, `__value`, `__meta` | Un KPI cliquable est un `<a>` qui mène à la vue filtrée. |
-| Synoptique | `ds-synoptic` (sticky), `--static`, `__row`, `__label`, `ds-markers` (`dl`), `dd.is-missing` | Ligne 1 : priorité, complétude, orientation. Ligne 2 : spécialités requises. Ligne 3 : repères cliniques et deltas. |
-| Delta | `ds-delta--better`, `--worse`, `--stable`, `--new` | Flèche (sens) + valeur signée + date de référence. Une aggravation est en **ambre**, pas en rose. |
-| Patient | `ds-patient-header`, `ds-patient-grid`, `ds-patient-card` (`--urgent`) | — |
-| Tableau | `ds-table-wrap`, `ds-table` (`--dense`, `--comfortable`), `ds-sort`, `tr.is-urgent`, `ds-table__primary-link`, `__num`, `__actions` | Tri via `<th aria-sort>` + `<button class="ds-sort">`. En-tête sticky. `<caption>` (au besoin `ds-sr-only`). |
-| Barre d'outils | `ds-toolbar`, `ds-segmented` | Contrôle segmenté = vrais boutons radio. |
-| Formulaires | `ds-field`, `ds-label`, `ds-hint`, `ds-error-text`, `ds-input`, `ds-select`, `ds-textarea`, `ds-check`, `ds-toggle` | Erreur : `aria-invalid="true"` + `aria-describedby` qui pointe vers `ds-error-text`. Interrupteur : `<input type="checkbox" role="switch" class="ds-toggle">`. |
-| Zone de dépôt | `ds-dropzone` (`.is-dragover`), `ds-file-list` | `<label>` qui englobe un `<input type="file" multiple accept="application/pdf" class="ds-sr-only">` : utilisable au clavier sans JS. |
-| Rubrique éditable | `<details class="ds-section">` (`--manual`, `.is-editing`), `__title`, `__summary`, `__body`, `__actions`, `__duration`, `__provenance` | Repliée par défaut, conclusion dans le `summary`. Rubrique modifiée : `--manual` + badge `ds-badge--manual` + provenance (qui, quand). |
-| Alertes | `ds-alert` (`--success`, `--warning`, `--danger`, `--guidance`), `__icon`, `__title` | `role="alert"` uniquement pour un danger bloquant ; sinon `role="note"` ou aucun rôle. |
-| Toasts | `ds-toast-region` (`role="status" aria-live="polite"`), `ds-toast` (`--success`, `--warning`, `--danger`) | Bouton de fermeture avec `aria-label`. Une erreur ne disparaît jamais toute seule. |
-| Onglets | `ds-tabs[role=tablist]`, `ds-tab[role=tab][aria-selected]`, `ds-tabpanel[role=tabpanel]` | Flèches ←/→ et *roving tabindex*. Onglets par liens : `aria-current="page"`. |
-| Frise | `ds-timeline`, `__item`, `__link` (`aria-current="step"`), `__marker--{high,medium,low}`, `__date`, `__meta` | Le marqueur contient un glyphe, le méta un libellé. |
-| Avis experts | `<details class="ds-opinion">`, `ds-refs`, `ds-ref__source`, `ds-ref__quote`, `ds-disclaimer` | Un accordéon par spécialité, trié par pertinence puis urgence. |
-| Chat | `ds-chat`, `__log` (`aria-live="polite"`), `__msg--user`, `__msg--assistant`, `__bubble`, `__typing`, `__composer` | Les sources sont affichées sous la bulle de l'assistant. |
-| Progression | `ds-progress` (`<progress>`, `--success`, `--danger`), `ds-progress-label`, `ds-stepper`, `ds-step--{done,active,error}` | `aria-label` avec le pourcentage ; `aria-current="step"` sur l'étape active. |
-| Modale | `<dialog class="ds-modal">` (`--danger`, `--lg`), `__header`, `__body`, `__footer` | Focus initial sur **Annuler** (`autofocus`). `aria-labelledby` et `aria-describedby`. |
-| Chargement / vide | `ds-skeleton` (`--title`, `--block`, `--w-60`, `--w-80`), `ds-empty` | Conteneur en chargement : `aria-busy="true"`. Un état vide propose toujours l'action suivante. |
-| Vue scindée | `ds-split` (`--40-60`), `ds-split__pane` (`--sticky`), `ds-pdf-frame` | Une seule colonne sous 75 rem. PDF servi par la même origine (CSP). |
-| Utilitaires | `ds-stack` (`--sm`, `--lg`), `ds-cluster`, `ds-grid`, `ds-sr-only`, `ds-muted`, `ds-small`, `ds-mono`, `ds-nowrap` | — |
+| App Shell & M3 Navigation Rail | `ds-shell`, `ds-sidebar`, `ds-nav-rail`, `ds-rail__fab`, `ds-nav__indicator`, `ds-main`, `ds-topbar`, `ds-workspace`, `ds-bottom-nav`, `ds-skip-link` | `aria-current="page"` on active navigation item. Rail collapses to `72px` (`body.ds-shell--sidebar-collapsed`). Below `48rem` (`768px`), renders mobile bottom navigation `ds-bottom-nav` + off-canvas drawer `ds-shell--mobile-nav-open`. |
+| Live Queue Banner | `ds-queue-banner` (`--idle`, `--success`, `--error`, `--offline`), `__msg`, `__progress`, `__action` | `role="status" aria-live="polite" aria-atomic="true"`, updated live via `EventSource('/events/queue')` in [`public/js/app.js`](../public/js/app.js). Single-line layout. |
+| GPU Queue Drawer | `<dialog class="ds-drawer">`, `__header`, `__body`, `__footer`, `ds-job` | Opened via `showModal()`; closed via `<form method="dialog">` or `Escape`. |
+| AI Co-Pilot (Side Sheet) | `ds-fab-menu` (`btn_fab_ai_chat`), `<aside class="ds-copilot-drawer">` (`#ai-chat-drawer`), `ds-m3-select`, `ds-split-btn`, `ds-ai-thinking` | Full-height non-blocking side sheet. On mobile, synchronizes `--ds-vvh` with `window.visualViewport` and toggles `.is-keyboard-open` when the chat input is focused. |
+| Next MDT Agenda Builder | `ds-agenda-item` (`--focused`, `--dimmed`), `ds-agenda-section-bar`, `ds-agenda-focus-bar`, `ds-agenda-dossier-nav`, `ds-agenda-onboarding` | Dynamic specialty highlighting (`data-focus-expert`), inter-dossier navigation bar (`← Dossier précédent` / `Dossier suivant →`), and meeting onboarding dialog. |
+| Buttons | `ds-btn` + `--primary`, `--secondary`, `--tonal`, `--ghost`, `--danger-soft`, `--danger`; `--sm`, `--lg`, `--icon`, `--block` | Loading state: `aria-busy="true"` + `disabled`. Icon-only buttons require `aria-label`. |
+| Badges | `ds-badge` + `--urgency-{high,medium,low,none}`, `--complete`, `--incomplete`, `--orientation-{standard,adapt,pending}`, `--specialty`, `--domain-{onco,sma}`, `--manual`, `--success`, `--warning`, `--danger`, `--info`, `--neutral`; `--sm`, `--outline`; `ds-badge-list` | SVG icon inside `<svg class="ds-icon" aria-hidden="true">`, label ≤ 24 characters. |
+| Cards | `ds-card`, `__header`, `__title`, `__body`, `__footer`, `--interactive`, `--flush` | Equal-height cards in grid layouts; actions aligned in footer. |
+| KPI Cards | `ds-kpi-grid`, `ds-kpi` (`--danger`, `--warning`, `--success`, `--info`), `__label`, `__value`, `__meta` | Clickable KPIs are `<a>` links pointing to the corresponding filtered view. |
+| Synoptic Strip | `ds-synoptic` (sticky), `--static`, `__row`, `__label`, `ds-markers` (`dl`), `dd.is-missing` | Row 1: priority, completeness, orientation. Row 2: required specialties. Row 3: clinical markers and longitudinal deltas. |
+| Longitudinal Delta | `ds-delta--better`, `--worse`, `--stable`, `--new` | Directional arrow + signed value + reference date. Clinical worsening uses **amber**, never rose. |
+| Patient Header & Grid | `ds-patient-header`, `ds-patient-grid`, `ds-patient-card` (`--urgent`) | — |
+| Data Table | `ds-table-wrap`, `ds-table` (`--dense`, `--comfortable`), `ds-sort`, `tr.is-urgent`, `ds-table__primary-link`, `__num`, `__actions` | Sorting via `<th aria-sort>` + `<button class="ds-sort">`. Sticky header. Includes `<caption>` (`ds-sr-only` when visually hidden). |
+| Toolbar & Segmented Control | `ds-toolbar`, `ds-segmented` | Segmented controls use native radio inputs. |
+| Form Controls | `ds-field`, `ds-label`, `ds-hint`, `ds-error-text`, `ds-input`, `ds-select`, `ds-textarea`, `ds-check`, `ds-toggle` | Validation error: `aria-invalid="true"` + `aria-describedby` pointing to `ds-error-text`. Switch: `<input type="checkbox" role="switch" class="ds-toggle">`. |
+| PDF Dropzone | `ds-dropzone` (`.is-dragover`), `ds-file-list` | `<label>` wrapping `<input type="file" multiple accept="application/pdf" class="ds-sr-only">`: fully keyboard-accessible without JS. |
+| Editable Clinical Section | `<details class="ds-section">` (`--manual`, `.is-editing`), `__title`, `__summary`, `__body`, `__actions`, `__duration`, `__provenance` | Collapsed by default with a 1-line summary in `<summary>`. Manually edited sections receive `--manual` + `ds-badge--manual` + provenance (author and timestamp) and are updated inline via `fetch` (`HX-Request: true`). |
+| Alerts | `ds-alert` (`--success`, `--warning`, `--danger`, `--guidance`), `__icon`, `__title` | `role="alert"` only for blocking errors; otherwise `role="note"` or no live role. |
+| Snackbars / Toasts | `ds-toast-region` (`role="status" aria-live="polite"`), `ds-toast` (`--success`, `--warning`, `--danger`) | Dismiss button with `aria-label`. Error toasts never auto-dismiss. |
+| Tabs | `ds-tabs[role=tablist]`, `ds-tab[role=tab][aria-selected]`, `ds-tabpanel[role=tabpanel]` | Left/Right arrow navigation and roving `tabindex`. Link-based tabs use `aria-current="page"`. |
+| Longitudinal Timeline | `ds-timeline`, `__item`, `__link` (`aria-current="step"`), `__marker--{high,medium,low}`, `__date`, `__meta` | Marker displays a glyph; meta displays a short status label. |
+| Specialty Opinions | `<details class="ds-opinion">`, `ds-refs`, `ds-ref__source`, `ds-ref__quote`, `ds-disclaimer` | One accordion per specialty, ordered by relevance then urgency. |
+| AI Chat Log | `ds-chat`, `__log` (`aria-live="polite"`), `__msg--user`, `__msg--assistant`, `__bubble`, `__typing`, `__composer` | Grounded PDF citations are rendered directly below the assistant bubble. |
+| Progress & Stepper | `ds-progress` (`<progress>`, `--success`, `--danger`), `ds-progress-label`, `ds-stepper`, `ds-step--{done,active,error}` | `aria-label` with percentage; `aria-current="step"` on active step. |
+| Confirmation Modal | `<dialog class="ds-modal">` (`--danger`, `--lg`), `__header`, `__body`, `__footer` | Initial focus on **Cancel** (`autofocus`). Uses `aria-labelledby` and `aria-describedby`. |
+| Skeleton & Empty State | `ds-skeleton` (`--title`, `--block`, `--w-60`, `--w-80`), `ds-empty` | Loading container sets `aria-busy="true"`. Empty states always provide the next primary action. |
+| Split View | `ds-split` (`--40-60`), `ds-split__pane` (`--sticky`), `ds-pdf-frame` | Collapses to a single column below `75rem`. PDFs are served from the same origin (CSP compliant). |
+| Layout Utilities | `ds-stack` (`--sm`, `--lg`), `ds-cluster`, `ds-grid`, `ds-sr-only`, `ds-muted`, `ds-small`, `ds-mono`, `ds-nowrap` | — |
 
-### Actions destructives
+### Destructive Actions
 
-| Étape | Classe | `data-testid` | Aspect |
+| Step | Class | `data-testid` | Visual Style |
 | :--- | :--- | :--- | :--- |
-| Déclencheur (ouvre la confirmation) | `ds-btn--danger-soft` | `btn_del_<objet>_<id>` | contour et texte roses |
-| Confirmation irréversible (dans `<dialog class="ds-modal ds-modal--danger">`) | `ds-btn--danger` | `btn_danger_<action>` | rose plein |
+| Trigger button (opens confirmation dialog) | `ds-btn--danger-soft` | `btn_del_<object>_<id>` | Rose outline and rose text |
+| Irreversible confirmation (inside `<dialog class="ds-modal ds-modal--danger">`) | `ds-btn--danger` | `btn_danger_<action>` | Solid rose fill |
 
-Le dialogue contient une `ds-alert--danger` qui décrit ce qui sera perdu, avec un libellé explicite : « Supprimer définitivement », pas « OK ».
+The confirmation dialog always contains a `ds-alert--danger` detailing what will be permanently deleted, with an explicit action label (`Supprimer définitivement`, never `OK`).
 
-### `data-testid`
+### `data-testid` Conventions
 
-Convention en snake_case ou kebab-case, stable et sans donnée patient : `kpi-priority-high`, `worklist-row-<id>`, `badge-orientation-adapt`, `section-<clé>`, `btn_edit_section_<clé>`, `btn_del_…`, `btn_danger_…`, `queue-banner`, `queue-drawer`.
+Stable `snake_case` or `kebab-case` identifiers without real patient data: `kpi-priority-high`, `worklist-row-<id>`, `badge-orientation-adapt`, `section-<key>`, `btn_edit_section_<key>`, `btn_del_…`, `btn_danger_…`, `queue-banner`, `queue-drawer`.
 
 ---
 
-## 4. À faire / à éviter
+## 4. Do / Don't
 
-| ✅ À faire | ❌ À éviter |
+| ✅ Do | ❌ Don't |
 | :--- | :--- |
-| `🧭 Adaptation suggérée` en sarcelle neutre | orientation en rouge ou en rose, ou « Non conforme » |
-| `🚨 Priorité haute` en rose, avec contour | du rose pour un lien, un onglet ou un KPI non urgent |
-| icône + texte + couleur | pastille de couleur seule ou texte coloré seul |
-| libellé ≤ 24 caractères, détail en infobulle ou dans le panneau | une phrase entière dans un badge |
-| « Non renseigné » en italique discret | « Not documented in record », « null », « N/A » |
-| spécialités au nom court (`🧠 Neurologie`) | « Expert neurologue », 🕵️ |
-| validation ✓ en sauge | ✓ sur fond rouge ou rose |
-| confirmation en deux temps (`btn_del_` → `btn_danger_`) | suppression en un clic |
-| tokens sémantiques | hexadécimal en dur dans un template |
-| polices système, assets sous `/public` | Google Fonts, CDN, icônes distantes |
+| Render `🧭 Adaptation suggérée` in neutral clinical teal | Render care orientation in red/rose or label it "Non-compliant" |
+| Render `🚨 Priorité haute` in rose with outline | Use rose for links, active tabs, or non-urgent KPIs |
+| Combine SVG icon + text label + color | Use a color dot alone or colored text alone |
+| Keep badge labels ≤ 24 characters (details in tooltip/panel) | Put a full sentence inside a badge |
+| Display `"Non renseigné"` in subtle italic | Display `"Not documented in record"`, `"null"`, or `"N/A"` |
+| Use short specialty names (`🧠 Neurologie`) | Use `"Expert neurologue"` or detective emojis (`🕵️`) |
+| Render checkmarks (`✓`) in sage green | Render `✓` on a red or rose background |
+| Require two-step confirmation (`btn_del_` → `btn_danger_`) | Trigger destructive deletion in a single click |
+| Reference semantic CSS tokens (`var(--ds-*)`) | Hardcode hex colors in templates |
+| Use system fonts and self-hosted assets under `/public` | Load Google Fonts, external CDNs, or remote icon scripts |
 
 ---
 
-## 5. Checklist accessibilité (WCAG 2.2 AA)
+## 5. Accessibility Checklist (WCAG 2.2 AA)
 
-- [ ] Contrastes : `node web/scripts/check-contrast.mjs` passe (texte ≥ 4.5:1, UI ≥ 3:1) dans les deux thèmes.
-- [ ] `:focus-visible` toujours visible (anneau `--ds-color-focus` 2 px, décalé) ; ne jamais faire `outline: none` sans le remplacer.
-- [ ] Lien d'évitement `ds-skip-link` vers `<main id="main">`.
-- [ ] Landmarks : `<aside>` ou `<nav>` avec `aria-label`, `<header>`, `<main>` ; une seule hiérarchie de titres par page.
-- [ ] Statuts : jamais par la couleur seule ; emoji décoratif en `aria-hidden="true"` à côté d'un texte lisible.
-- [ ] Bannière de file : `role="status"` + `aria-live="polite"`. Pas de `assertive` hors erreur bloquante.
-- [ ] Dialogues natifs (`<dialog>` + `showModal()`) : piège du focus, Échap et retour du focus gérés par le navigateur.
-- [ ] Onglets : rôles ARIA, `aria-selected`, flèches clavier.
-- [ ] Tableaux : `<caption>`, `<th scope>`, tri annoncé par `aria-sort`.
-- [ ] Formulaires : chaque champ a un `<label>` ; erreurs reliées par `aria-describedby` + `aria-invalid`.
-- [ ] Boutons icône seuls : `aria-label` qui nomme l'objet (« Supprimer le dossier de … »).
-- [ ] Cibles cliquables ≥ 24 × 24 px (boutons `--sm` à 30 px).
-- [ ] Mise en page lisible à 200 % de zoom et à 320 px de large (pas de scroll horizontal hors tableaux).
-- [ ] `prefers-reduced-motion` respecté.
-- [ ] `lang="fr"` sur `<html>`.
+- [ ] Contrast ratios: `node web/scripts/check-contrast.mjs` passes (normal text ≥ 4.5:1, UI ≥ 3:1) in both Light and Dark themes.
+- [ ] `:focus-visible` is always clearly visible (2 px `--ds-color-focus` ring with offset); never apply `outline: none` without a replacement focus indicator.
+- [ ] Skip link `ds-skip-link` targets `<main id="main">`.
+- [ ] Landmarks: `<aside>` or `<nav>` with `aria-label`, `<header>`, `<main>`; a single logical heading hierarchy per page.
+- [ ] Status indicators never rely on color alone; decorative icons have `aria-hidden="true"` next to readable text.
+- [ ] Queue banner uses `role="status"` + `aria-live="polite"`. Never use `assertive` except for blocking errors.
+- [ ] Native dialogs (`<dialog>` + `showModal()`) handle focus trapping, `Escape` dismissal, and focus restoration natively.
+- [ ] Tabs implement ARIA `tablist` / `tab` / `tabpanel` roles, `aria-selected`, and Left/Right arrow key navigation.
+- [ ] Tables include `<caption>`, `<th scope>`, and announce sorting via `aria-sort`.
+- [ ] Forms associate every input with a `<label>` and link validation errors via `aria-describedby` + `aria-invalid`.
+- [ ] Icon-only buttons provide an explicit `aria-label` naming the target object (e.g., `"Supprimer le dossier de …"`).
+- [ ] Interactive targets measure at least 24 × 24 px (`--sm` buttons are at least 30 px tall).
+- [ ] Layouts remain readable at 200% browser zoom and 320 px viewport width (no horizontal scrolling outside data tables).
+- [ ] `prefers-reduced-motion` is respected across all animations.
+- [ ] `<html lang="fr">` or `<html lang="en">` matches the active interface language.
 
 ---
 
-## 6. Règles de formulation médico-légale
+## 6. Medico-Legal Wording Rules
 
-DataSyntis est un **outil d'aide à la préparation** de la RCP. La décision appartient à la RCP. Le vocabulaire doit refléter ce positionnement non prescriptif.
+MedSyntis is a **clinical decision-preparation assistant** for Multidisciplinary Team Meetings (RCP / MDT). The therapeutic decision belongs exclusively to the medical board. All UI terminology must reflect this non-prescriptive positioning.
 
-| Contexte | Formulation recommandée | À proscrire |
+| Clinical Context | Recommended Wording | Prohibited Wording |
 | :--- | :--- | :--- |
-| Orientation alignée sur le référentiel | ✅ Conforme au référentiel | « Traitement validé », « Décision » |
-| Écart possible au référentiel | 🧭 Adaptation suggérée · « à discuter en RCP » | « Non conforme », « Hors recommandations », « Erreur », rouge |
-| Informations insuffisantes | ⏳ À discuter en RCP · ⚠️ Données insuffisantes | « Impossible », « Refusé » |
-| Proposition d'un expert IA | « Proposition 1 — Discuter… », « Envisager… » | « Prescrire », « Il faut », « Le patient doit » |
-| Urgence | 🚨 Priorité haute · « à présenter en premier » | « Urgence vitale » (qualification clinique réservée au médecin) |
-| Pièce manquante | ⚠️ 2 pièces manquantes (liste factuelle) | « Dossier invalide » |
-| Pied d'avis | « Proposition d'aide à la préparation de la RCP générée localement. La décision thérapeutique appartient à la RCP. » | — |
-| Modification humaine | ✍️ Modifié manuellement · « Modifié par Dr X le JJ/MM/AAAA à HH:MM » | modification silencieuse |
+| Orientation aligned with guidelines | `✅ Suivi habituel` / `Conforme au référentiel` | `"Traitement validé"`, `"Décision"` |
+| Potential deviation from guidelines | `🧭 Adaptation suggérée` · `"à discuter en RCP"` | `"Non conforme"`, `"Hors recommandations"`, `"Erreur"`, red/rose color |
+| Insufficient clinical data | `⏳ À discuter en RCP` · `⚠️ Données insuffisantes` | `"Impossible"`, `"Refusé"` |
+| AI specialty agent proposal | `"Proposition 1 — Discuter…"`, `"Envisager…"` | `"Prescrire"`, `"Il faut"`, `"Le patient doit"` |
+| Case priority | `🚨 Priorité haute` · `"à présenter en premier"` | `"Urgence vitale"` (clinical qualification reserved for physicians) |
+| Missing record item | `⚠️ 2 pièces manquantes` (factual list) | `"Dossier invalide"` |
+| Medico-legal footer disclaimer | `"Proposition d'aide à la préparation de la RCP générée localement. La décision thérapeutique appartient exclusivement au collège médical de la RCP."` | — |
+| Human-in-the-loop edit | `✍️ Modifié manuellement` · `"Modifié par Dr X le JJ/MM/AAAA à HH:MM"` | Silent overwrite without provenance |
 
-Autres règles :
+Additional rules:
 
-- Toujours **citer la source** (référentiel + section, document + page) sous une proposition (`ds-refs`).
-- Dates au format français `JJ/MM/AAAA`, décimales avec virgule (`12,4 s`), unités cliniques avec une espace insécable (`412 U/mL`).
-- Aucun nom de patient réel dans le styleguide, les tests ou les captures. Utiliser des noms fictifs explicites (`FICTIVE`, `EXEMPLE`, `MODÈLE`) et des IPP `…-FICTIF`.
+- Always **cite the source** (guideline + section, or source PDF + page) beneath any AI proposal (`ds-refs`).
+- Format dates as `DD/MM/YYYY` in French (`YYYY-MM-DD` in ISO/English contexts) and include clinical units (`412 U/mL`).
+- Never include real patient names or hospital identifiers in the styleguide, tests, or screenshots. Use explicit fictitious names (`FICTIVE`, `EXEMPLE`, `MODÈLE`).

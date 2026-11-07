@@ -140,7 +140,7 @@ class PatientMDTFormQueueJobExecutor:
 
     def __init__(self, base_config: AppConfig | None = None) -> None:
         self.base_config = base_config or AppConfig()
-        self.logger = self.base_config.set_logger("oncoflow.queue.executor")
+        self.logger = self.base_config.set_logger("medsyntis.queue.executor")
 
     def _resolve_domain_config(self, domain: str | None = None) -> AppConfig:
         norm_domain = (domain or self.base_config.domain or "oncology").strip().lower()

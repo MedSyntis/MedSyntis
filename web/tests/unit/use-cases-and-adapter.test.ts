@@ -7,13 +7,13 @@ import { QueueAdminUseCase } from "../../src/application/use-cases/queue-admin.u
 import { WorklistUseCase } from "../../src/application/use-cases/worklist.use-case.js";
 import {
   bffRequestContext,
-  HttpOncoflowApiAdapter,
-} from "../../src/infrastructure/api/http-oncoflow-api.adapter.js";
-import { InMemoryOncoflowApiFake } from "../../src/infrastructure/api/in-memory-oncoflow-api.fake.js";
+  HttpMedsyntisApiAdapter,
+} from "../../src/infrastructure/api/http-medsyntis-api.adapter.js";
+import { InMemoryMedsyntisApiFake } from "../../src/infrastructure/api/in-memory-medsyntis-api.fake.js";
 
-describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
+describe("Application Use-Cases with InMemoryMedsyntisApiFake", () => {
   it("WorklistUseCase loads oncology and SMA patient/RCP cards and computes 4 KPIs", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const useCase = new WorklistUseCase(api);
 
     const oncoView = await useCase.execute("oncology", { completeness: "all" });
@@ -26,7 +26,7 @@ describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
   });
 
   it("PatientDossierUseCase loads longitudinal history, updates a section with manual_edits, and preserves manual edits on rerun", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const useCase = new PatientDossierUseCase(api);
 
     const dossier = await useCase.getDossier("A-1042", "oncology", "fr");
@@ -63,7 +63,7 @@ describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
   });
 
   it("IngestUseCase uploads PDFs with a batch_id and tracks batch status", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const useCase = new IngestUseCase(api);
 
     const result = await useCase.uploadBatch(
@@ -83,7 +83,7 @@ describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
   });
 
   it("GuidelinesUseCase lists TNCD/PNDS resources, specialty agents, and answers RAG chat", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const useCase = new GuidelinesUseCase(api);
 
     const view = await useCase.getOverview("oncology", "fr");
@@ -100,7 +100,7 @@ describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
   });
 
   it("FeedbackUseCase creates, filters, and updates bug reports", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const useCase = new FeedbackUseCase(api);
 
     const created = await useCase.createBug({
@@ -120,7 +120,7 @@ describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
   });
 
   it("QueueAdminUseCase lists queue stats/jobs, retries failed jobs, cleans queue, and releases GPU locks", async () => {
-    const api = new InMemoryOncoflowApiFake();
+    const api = new InMemoryMedsyntisApiFake();
     const useCase = new QueueAdminUseCase(api);
 
     const dashboard = await useCase.getDashboard("oncology", true);
@@ -140,8 +140,8 @@ describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
   });
 });
 
-describe("HttpOncoflowApiAdapter server-side security headers & contract", () => {
-  it("injects X-App-Token and X-Oncoflow-Domain server-side and parses API responses", async () => {
+describe("HttpMedsyntisApiAdapter server-side security headers & contract", () => {
+  it("injects X-App-Token and X-MedSyntis-Domain server-side and parses API responses", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -167,7 +167,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
       ],
     });
 
-    const adapter = new HttpOncoflowApiAdapter({
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       apiToken: "secret-server-token",
       proxySecret: "proxy-secret-xyz",
@@ -187,7 +187,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     expect(headers.Authorization).toBe("Bearer secret-server-token");
     expect(headers["X-API-Key"]).toBe("secret-server-token");
     expect(headers["X-App-Token"]).toBe("secret-server-token");
-    expect(headers["X-Oncoflow-Domain"]).toBe("oncology");
+    expect(headers["X-MedSyntis-Domain"]).toBe("oncology");
   });
 
   it("waits for chat responses with extended chatTimeoutMs and preserves HTTP 500 statusCode after backend retries fail", async () => {
@@ -209,7 +209,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
         }),
       });
 
-    const adapter = new HttpOncoflowApiAdapter({
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       timeoutMs: 30_000,
       chatTimeoutMs: 300_000,
@@ -250,7 +250,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
       json: async () => ({ detail: "Le dossier patient 'toto' n'existe pas." }),
     });
 
-    const adapter = new HttpOncoflowApiAdapter({
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
@@ -260,7 +260,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     expect(dossier).toBeNull();
   });
 
-  it("covers all HttpOncoflowApiAdapter endpoints (forms, patients, sections, resources, bugs, queue, agenda)", async () => {
+  it("covers all HttpMedsyntisApiAdapter endpoints (forms, patients, sections, resources, bugs, queue, agenda)", async () => {
     const fetchMock = vi.fn(async (urlStr: string, init?: RequestInit) => {
       const url = String(urlStr);
       const method = (init?.method ?? "GET").toUpperCase();
@@ -584,7 +584,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
       return { ok: true, status: 200, json: async () => ({}) };
     });
 
-    const adapter = new HttpOncoflowApiAdapter({
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000/",
       apiToken: "tok",
       proxySecret: "sec",
@@ -720,8 +720,8 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
 
   it("delegates to fallbackPort when HTTP requests fail", async () => {
     const failingFetch = vi.fn().mockRejectedValue(new Error("Network error"));
-    const fallback = new InMemoryOncoflowApiFake();
-    const adapter = new HttpOncoflowApiAdapter({
+    const fallback = new InMemoryMedsyntisApiFake();
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       fetchImpl: failingFetch as unknown as typeof fetch,
       fallbackPort: fallback,
@@ -799,7 +799,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     await adapter.deletePatient(samplePid, "oncology");
   });
 
-  it("propagates X-Forwarded-For / X-Oncoflow-User via bffRequestContext and caches short-TTL calls with invalidation on write", async () => {
+  it("propagates X-Forwarded-For / X-MedSyntis-User via bffRequestContext and caches short-TTL calls with invalidation on write", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -813,7 +813,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
       ],
     }));
 
-    const adapter = new HttpOncoflowApiAdapter({
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       fetchImpl: fetchMock as unknown as typeof fetch,
       cacheTtlMs: 15_000,
@@ -837,8 +837,8 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
         const headers = init.headers as Record<string, string>;
         expect(headers["X-Forwarded-For"]).toBe("10.20.30.40");
         expect(headers["X-Real-IP"]).toBe("10.20.30.40");
-        expect(headers["X-Oncoflow-User"]).toBe("dr.martin");
-        expect(headers["X-Oncoflow-User-Name"]).toBe("Dr Martin");
+        expect(headers["X-MedSyntis-User"]).toBe("dr.martin");
+        expect(headers["X-MedSyntis-User-Name"]).toBe("Dr Martin");
         expect(headers["X-Request-ID"]).toBe("req-123");
 
         // Any write invalidates the dossier caches
@@ -937,7 +937,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
       };
     });
 
-    const adapter = new HttpOncoflowApiAdapter({
+    const adapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       fetchImpl: fetchMock as unknown as typeof fetch,
       cacheTtlMs: 15_000,
@@ -959,7 +959,7 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     expect(trig.summary?.activeJob).toEqual({ job_id: "JOB-SUM-1", status: "PENDING" });
 
     // Fallback when HTTP fails and no InMemory fallback is attached (computes from getPatientForms)
-    const failingAdapter = new HttpOncoflowApiAdapter({
+    const failingAdapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",
       fetchImpl: (async (url: string) => {
         if (url.includes("/dashboard")) {

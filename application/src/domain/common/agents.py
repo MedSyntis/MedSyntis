@@ -1,13 +1,13 @@
 import inspect
 from typing import Any, ClassVar, cast
 
-from src.application.agent.agent import OncowflowAgent
+from src.application.agent.agent import MedSyntisAgent
 from src.application.config import AppConfig
 
 
 class Agents:
     def __init__(self) -> None:
-        self.list: dict[str, type[OncowflowAgent]] = {}
+        self.list: dict[str, type[MedSyntisAgent]] = {}
         for name in dir(self.__class__):
             if name.startswith("__"):
                 continue
@@ -18,10 +18,10 @@ class Agents:
             ):
                 if hasattr(cls_attribute, "agent_name"):
                     self.list[cls_attribute.agent_name] = cast(
-                        type[OncowflowAgent], cls_attribute
+                        type[MedSyntisAgent], cls_attribute
                     )
 
-        self.expert_agents: list[type[OncowflowAgent]] = []
+        self.expert_agents: list[type[MedSyntisAgent]] = []
         for name in dir(self.__class__):
             if name.startswith("__"):
                 continue
@@ -33,7 +33,7 @@ class Agents:
             ):
                 self.expert_agents.append(cls_attribute)
 
-    class Ressource_agent(OncowflowAgent):
+    class Ressource_agent(MedSyntisAgent):
         agent_name: str = "Ressource Assistant"
         system_prompt: ClassVar[str] = """
         You are a clinical resource assistant. Your goal is to retrieve relevant scientific and medical guidelines from the resource documents to answer the user's request.
@@ -47,7 +47,7 @@ class Agents:
         6. Respect strictly the required JSON output format.
         """
 
-    class Administratives_agent(OncowflowAgent):
+    class Administratives_agent(MedSyntisAgent):
         agent_name: str = "Administrative"
         system_prompt: ClassVar[str] = """
         You are a medical administrative assistant. Your goal is to extract precise information from the patient record without interpretation.
@@ -61,7 +61,7 @@ class Agents:
         6. Respect stricly the response output format.
         """
 
-    class Coordinator_agent(OncowflowAgent):
+    class Coordinator_agent(MedSyntisAgent):
         agent_name: str = "MDT Coordinator"
         ressources: ClassVar[list[str]] = []
         system_prompt: ClassVar[str] = """
@@ -75,7 +75,7 @@ class Agents:
         5. Respect strictly the response output format.
         """
 
-    class Expert_model(OncowflowAgent):
+    class Expert_model(MedSyntisAgent):
         expert_type: ClassVar[str] = ""
         system_prompt: ClassVar[str] = ""
 
