@@ -562,7 +562,6 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           mfm_d2_score: 77.8,
           mfm_d3_score: 90.5,
           rulm_score: 26,
-          hfmse_score: 40,
         },
         RespiratoryFunction: {
           requires_ventilation_support: false,
@@ -620,7 +619,6 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           mfm_d2_score: 80.6,
           mfm_d3_score: 95.2,
           rulm_score: 28,
-          hfmse_score: 42,
         },
         RespiratoryFunction: {
           requires_ventilation_support: false,
@@ -644,17 +642,17 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           "neurologist expert": {
             expert_relevant: true,
             patient_priority: "Patient is not urgent",
-            why_relevant: "Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).",
+            why_relevant: "Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
             suggestions: [
               {
                 suggestion:
                   "Poursuivre le schéma d'entretien par nusinersen et maintenir la kinésithérapie motrice tri-hebdomadaire.",
-                why: "Gain fonctionnel de +2 points au score HFMSE (42/66) et +2 points au RULM (28/37).",
+                why: "Gain fonctionnel de +3.1 % au score MFM-32 (65.6 %) et +2 points au RULM (28/37).",
                 references: [
                   {
                     name: "PNDS Amyotrophie Spinale 2025 §6.1",
                     page: 24,
-                    excerpt: "Évaluation HFMSE et RULM semestrielle sous traitement modificateur.",
+                    excerpt: "Évaluation MFM et RULM semestrielle sous traitement modificateur.",
                   },
                 ],
               },
@@ -681,7 +679,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           suggested_priority: "low",
           proposed_care_type: "Suivi habituel sous nusinersen + kinésithérapie",
           clinical_rationale:
-            "Évolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+            "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
         },
       },
       manualEdits: {},
@@ -693,11 +691,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       metrics: {
         priority_level: "low",
         urgency_reason:
-          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).\n\n**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).\n\nÉvolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).\n\n**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).\n\nÉvolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
         urgency_reasons: [
-          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).",
+          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
           "**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).",
-          "Évolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+          "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
         ],
         is_complete: true,
         missing_count: 0,

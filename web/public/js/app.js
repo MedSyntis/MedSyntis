@@ -2381,6 +2381,178 @@
       });
   }
 
+  // -------------------------------------------------------------------------
+  // Longitudinal Dashboard Chart Point Hover Tooltip & Legend Highlighting
+  // -------------------------------------------------------------------------
+  function showChartPointTooltip(pointEl) {
+    if (!pointEl) return;
+    var canvas = pointEl.closest("[data-chart-canvas]");
+    if (!canvas) return;
+    var tooltip = canvas.querySelector("[data-chart-tooltip]");
+    if (!tooltip) return;
+
+    var seriesKey = pointEl.getAttribute("data-series-key") || "";
+    var seriesLabel = pointEl.getAttribute("data-series-label") || "";
+    var seriesColor = pointEl.getAttribute("data-series-color") || "#0f766e";
+    var pointDate = pointEl.getAttribute("data-point-date") || "";
+    var pointValue = pointEl.getAttribute("data-point-value") || "";
+    var pointDelta = pointEl.getAttribute("data-point-delta") || "";
+
+    tooltip.textContent = "";
+
+    var header = document.createElement("div");
+    header.className = "ds-chart-tooltip__header";
+    var dot = document.createElement("span");
+    dot.className = "ds-chart-legend__dot";
+    dot.style.setProperty("--legend-color", seriesColor);
+    var titleSpan = document.createElement("span");
+    titleSpan.textContent = seriesLabel;
+    header.appendChild(dot);
+    header.appendChild(titleSpan);
+    tooltip.appendChild(header);
+
+    var meta = document.createElement("div");
+    meta.className = "ds-chart-tooltip__meta";
+    var dateSpan = document.createElement("span");
+    dateSpan.className = "ds-chart-tooltip__date";
+    dateSpan.textContent = pointDate;
+    var valWrap = document.createElement("span");
+    var valStrong = document.createElement("strong");
+    valStrong.className = "ds-chart-tooltip__value";
+    valStrong.textContent = pointValue;
+    valWrap.appendChild(valStrong);
+    if (pointDelta) {
+      var deltaSpan = document.createElement("span");
+      deltaSpan.className = "ds-chart-tooltip__delta";
+      deltaSpan.textContent = " (\u0394 " + pointDelta + ")";
+      valWrap.appendChild(deltaSpan);
+    }
+    meta.appendChild(dateSpan);
+    meta.appendChild(valWrap);
+    tooltip.appendChild(meta);
+
+    var svgEl = pointEl.ownerSVGElement;
+    var cx = parseFloat(pointEl.getAttribute("cx") || "0");
+    var cy = parseFloat(pointEl.getAttribute("cy") || "0");
+    var leftPx = cx;
+    var topPx = cy;
+    if (svgEl && canvas.getBoundingClientRect) {
+      var canvasRect = canvas.getBoundingClientRect();
+      var pointRect = pointEl.getBoundingClientRect();
+      if (canvasRect.width > 0 && pointRect.width > 0) {
+        leftPx = pointRect.left - canvasRect.left + pointRect.width / 2;
+        topPx = pointRect.top - canvasRect.top;
+      }
+    }
+
+    // Clamp horizontal position so the tooltip stays within the card canvas
+    var canvasWidth = canvas.clientWidth || 680;
+    var clampedLeft = Math.max(96, Math.min(canvasWidth - 96, leftPx));
+    tooltip.style.left = clampedLeft + "px";
+    tooltip.style.top = topPx + "px";
+    if (topPx < 54) {
+      tooltip.setAttribute("data-placement", "bottom");
+    } else {
+      tooltip.removeAttribute("data-placement");
+    }
+    tooltip.removeAttribute("hidden");
+    tooltip.setAttribute("aria-hidden", "false");
+
+    var card = canvas.closest(".ds-metric-chart-card");
+    if (card && seriesKey) {
+      var legendItems = card.querySelectorAll("[data-legend-series-key]");
+      for (var i = 0; i < legendItems.length; i++) {
+        var item = legendItems[i];
+        if (item.getAttribute("data-legend-series-key") === seriesKey) {
+          item.classList.add("is-active");
+        } else {
+          item.classList.remove("is-active");
+        }
+      }
+    }
+  }
+
+  function hideChartPointTooltip(pointEl) {
+    if (!pointEl) return;
+    var canvas = pointEl.closest("[data-chart-canvas]");
+    if (!canvas) return;
+    var tooltip = canvas.querySelector("[data-chart-tooltip]");
+    if (tooltip) {
+      tooltip.setAttribute("hidden", "");
+      tooltip.setAttribute("aria-hidden", "true");
+    }
+    var card = canvas.closest(".ds-metric-chart-card");
+    if (card) {
+      var legendItems = card.querySelectorAll("[data-legend-series-key].is-active");
+      for (var i = 0; i < legendItems.length; i++) {
+        legendItems[i].classList.remove("is-active");
+      }
+    }
+  }
+
+  document.addEventListener("mouseover", function (ev) {
+    var target = ev.target;
+    if (!target || typeof target.closest !== "function") return;
+    var pointEl = target.closest('[data-chart-point="true"]');
+    if (pointEl) {
+      showChartPointTooltip(pointEl);
+      return;
+    }
+    var legendEl = target.closest("[data-legend-series-key]");
+    if (legendEl) {
+      var seriesKey = legendEl.getAttribute("data-legend-series-key");
+      var card = legendEl.closest(".ds-metric-chart-card");
+      if (card && seriesKey) {
+        var pts = card.querySelectorAll('[data-chart-point="true"]');
+        for (var i = 0; i < pts.length; i++) {
+          if (pts[i].getAttribute("data-series-key") === seriesKey) {
+            pts[i].classList.add("is-active");
+          } else {
+            pts[i].classList.remove("is-active");
+          }
+        }
+      }
+    }
+  });
+
+  document.addEventListener("mouseout", function (ev) {
+    var target = ev.target;
+    if (!target || typeof target.closest !== "function") return;
+    var pointEl = target.closest('[data-chart-point="true"]');
+    if (pointEl) {
+      hideChartPointTooltip(pointEl);
+      return;
+    }
+    var legendEl = target.closest("[data-legend-series-key]");
+    if (legendEl) {
+      var card = legendEl.closest(".ds-metric-chart-card");
+      if (card) {
+        var pts = card.querySelectorAll('[data-chart-point="true"].is-active');
+        for (var i = 0; i < pts.length; i++) {
+          pts[i].classList.remove("is-active");
+        }
+      }
+    }
+  });
+
+  document.addEventListener("focusin", function (ev) {
+    var target = ev.target;
+    if (!target || typeof target.closest !== "function") return;
+    var pointEl = target.closest('[data-chart-point="true"]');
+    if (pointEl) {
+      showChartPointTooltip(pointEl);
+    }
+  });
+
+  document.addEventListener("focusout", function (ev) {
+    var target = ev.target;
+    if (!target || typeof target.closest !== "function") return;
+    var pointEl = target.closest('[data-chart-point="true"]');
+    if (pointEl) {
+      hideChartPointTooltip(pointEl);
+    }
+  });
+
   // Poll auto-refresh every 4s while any fiche on the current page is marked as processing
   window.setInterval(function () {
     if (document.querySelector('[data-processing-active="true"]')) {

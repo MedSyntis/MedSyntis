@@ -59,15 +59,153 @@ function resolveTranslatedPointDisplay(
   return translateValue(pt.displayValue, lang);
 }
 
-/**
- * Render an Apache ECharts multi-year raw clinical line chart to an SSR SVG string.
- */
-export function renderMetricSeriesEChartsSvg(
+const MFM_METRIC_KEYS = new Set<string>([
+  "MotorFunctionStatus.mfm_total_score",
+  "MotorFunctionStatus.mfm_d1_score",
+  "MotorFunctionStatus.mfm_d2_score",
+  "MotorFunctionStatus.mfm_d3_score",
+]);
+
+interface SeriesVisualConfig {
+  color: string;
+  symbol: "circle" | "diamond" | "rect" | "triangle";
+  lineType: "solid" | "dashed" | "dotted";
+  lineWidth: number;
+  labelFr: string;
+  labelEn: string;
+  shortFr: string;
+  shortEn: string;
+}
+
+const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = {
+  "MotorFunctionStatus.mfm_total_score": {
+    color: "#0f766e",
+    symbol: "circle",
+    lineType: "solid",
+    lineWidth: 3,
+    labelFr: "MFM Total (Score global)",
+    labelEn: "MFM Total (Global score)",
+    shortFr: "MFM Total",
+    shortEn: "MFM Total",
+  },
+  "MotorFunctionStatus.mfm_d1_score": {
+    color: "#0284c7",
+    symbol: "diamond",
+    lineType: "solid",
+    lineWidth: 2.2,
+    labelFr: "MFM D1 (Debout & transferts)",
+    labelEn: "MFM D1 (Standing & transfers)",
+    shortFr: "MFM D1",
+    shortEn: "MFM D1",
+  },
+  "MotorFunctionStatus.mfm_d2_score": {
+    color: "#7c3aed",
+    symbol: "rect",
+    lineType: "dashed",
+    lineWidth: 2.2,
+    labelFr: "MFM D2 (Motricité axiale & proximale)",
+    labelEn: "MFM D2 (Axial & proximal motor)",
+    shortFr: "MFM D2",
+    shortEn: "MFM D2",
+  },
+  "MotorFunctionStatus.mfm_d3_score": {
+    color: "#d97706",
+    symbol: "triangle",
+    lineType: "dotted",
+    lineWidth: 2.2,
+    labelFr: "MFM D3 (Motricité distale)",
+    labelEn: "MFM D3 (Distal motor)",
+    shortFr: "MFM D3",
+    shortEn: "MFM D3",
+  },
+};
+
+function resolveSeriesVisual(
   series: PatientMetricSeriesView,
   lang: Language,
+  fallbackIndex = 0,
+): {
+  color: string;
+  symbol: "circle" | "diamond" | "rect" | "triangle";
+  lineType: "solid" | "dashed" | "dotted";
+  lineWidth: number;
+  label: string;
+  shortLabel: string;
+} {
+  const mfmCfg = MFM_SERIES_VISUALS[series.metricKey];
+  if (mfmCfg) {
+    return {
+      color: mfmCfg.color,
+      symbol: mfmCfg.symbol,
+      lineType: mfmCfg.lineType,
+      lineWidth: mfmCfg.lineWidth,
+      label: lang === "fr" ? mfmCfg.labelFr : mfmCfg.labelEn,
+      shortLabel: lang === "fr" ? mfmCfg.shortFr : mfmCfg.shortEn,
+    };
+  }
+  const palette: Array<{
+    color: string;
+    symbol: "circle" | "diamond" | "rect" | "triangle";
+    lineType: "solid" | "dashed" | "dotted";
+  }> = [
+    { color: "#0f766e", symbol: "circle", lineType: "solid" },
+    { color: "#0284c7", symbol: "diamond", lineType: "solid" },
+    { color: "#7c3aed", symbol: "rect", lineType: "dashed" },
+    { color: "#d97706", symbol: "triangle", lineType: "dotted" },
+  ];
+  const pick = palette[fallbackIndex % palette.length] ?? {
+    color: "#0f766e",
+    symbol: "circle" as const,
+    lineType: "solid" as const,
+  };
+  const resolvedLabel = resolveClinicalMetricLabel(series, lang);
+  return {
+    color: pick.color,
+    symbol: pick.symbol,
+    lineType: pick.lineType,
+    lineWidth: fallbackIndex === 0 ? 3 : 2.2,
+    label: resolvedLabel,
+    shortLabel: resolvedLabel,
+  };
+}
+
+function formatExactPointValueWithUnit(rawDisplay: string, unit: string): string {
+  const clean = stripMarkdown(rawDisplay).trim();
+  if (!unit) return clean;
+  const compactUnit = unit.replace(/\s+/g, "");
+  if (clean.replace(/\s+/g, "").endsWith(compactUnit)) {
+    return clean;
+  }
+  return `${clean} ${unit}`;
+}
+
+interface HitTargetMeta {
+  seriesIndex: number;
+  xIndex: number;
+  numericValue: number;
+  seriesKey: string;
+  seriesLabel: string;
+  seriesColor: string;
+  dateLabel: string;
+  exactValue: string;
+  deltaDisplay: string;
+  isManual: boolean;
+  formId: string;
+  sectionName: string;
+}
+
+/**
+ * Render an Apache ECharts multi-series or single-series raw clinical line chart to an SSR SVG string,
+ * enriched with interactive SVG point hit targets (`data-chart-point="true"`) for exact hover tooltips.
+ */
+export function renderMultiMetricSeriesEChartsSvg(
+  seriesList: PatientMetricSeriesView[],
+  lang: Language,
 ): string {
+  if (seriesList.length === 0) return "";
+  const isMultiSeries = seriesList.length > 1;
   const width = 680;
-  const height = 210;
+  const height = isMultiSeries ? 236 : 210;
   const chart = echarts.init(null, null, {
     renderer: "svg",
     ssr: true,
@@ -76,50 +214,95 @@ export function renderMetricSeriesEChartsSvg(
   });
 
   try {
-    const xLabels = series.points.map((pt, idx) => {
+    // Build unified chronological session list across all provided series
+    const sessionMap = new Map<
+      string,
+      { formId: string; formDateLabel: string; daysSinceFirstRcp: number }
+    >();
+    for (const s of seriesList) {
+      for (const pt of s.points) {
+        if (!sessionMap.has(pt.formId)) {
+          sessionMap.set(pt.formId, {
+            formId: pt.formId,
+            formDateLabel: pt.formDateLabel,
+            daysSinceFirstRcp: pt.daysSinceFirstRcp,
+          });
+        }
+      }
+    }
+    const sessions = Array.from(sessionMap.values());
+
+    const xLabels = sessions.map((sess, idx) => {
       const base =
-        pt.formDateLabel || (lang === "fr" ? `Séance #${idx + 1}` : `Session #${idx + 1}`);
-      return series.points.length > 1 && pt.daysSinceFirstRcp > 0
-        ? `${base}\n(J+${pt.daysSinceFirstRcp})`
-        : idx === 0 && series.points.length > 1
+        sess.formDateLabel || (lang === "fr" ? `Séance #${idx + 1}` : `Session #${idx + 1}`);
+      return sessions.length > 1 && sess.daysSinceFirstRcp > 0
+        ? `${base}\n(J+${sess.daysSinceFirstRcp})`
+        : idx === 0 && sessions.length > 1
           ? `${base}\n(J0)`
           : base;
     });
 
-    const primaryData = series.points.map((pt) => ({
-      value: pt.numericValue,
-      rawDisplay: pt.displayValue,
-      formId: pt.formId,
-      isManual: pt.isManual,
-      isAnnotativeOnly: pt.isAnnotativeOnly,
-      itemStyle: {
-        color: pt.isManual ? "#b45309" : "#0f766e",
-        borderColor: "#ffffff",
-        borderWidth: 2,
-      },
-    }));
+    const echartsSeries: Record<string, unknown>[] = [];
+    const hitTargets: HitTargetMeta[] = [];
 
-    const hasBilateralD = series.points.some(
-      (pt) => pt.subValues && typeof pt.subValues.D === "number",
-    );
-    const hasBilateralG = series.points.some(
-      (pt) => pt.subValues && typeof pt.subValues.G === "number",
-    );
+    seriesList.forEach((series, sIdx) => {
+      const vis = resolveSeriesVisual(series, lang, sIdx);
+      const ptsByForm = new Map(series.points.map((pt) => [pt.formId, pt]));
+      const seriesIndex = echartsSeries.length;
 
-    const echartsSeries: Record<string, unknown>[] = [
-      {
-        name: resolveClinicalMetricLabel(series, lang),
+      const dataPoints = sessions.map((sess, xIdx) => {
+        const pt = ptsByForm.get(sess.formId);
+        if (!pt || typeof pt.numericValue !== "number") {
+          return { value: null };
+        }
+        const exactVal = formatExactPointValueWithUnit(pt.displayValue, series.unit);
+        const deltaStr = pt.deltaDisplay
+          ? `${pt.deltaDisplay}${series.unit && !pt.deltaDisplay.includes(series.unit) ? ` ${series.unit}` : ""}`
+          : "";
+        hitTargets.push({
+          seriesIndex,
+          xIndex: xIdx,
+          numericValue: pt.numericValue,
+          seriesKey: series.metricKey,
+          seriesLabel: vis.label,
+          seriesColor: pt.isManual ? "#b45309" : vis.color,
+          dateLabel: pt.formDateLabel || sess.formDateLabel,
+          exactValue: exactVal,
+          deltaDisplay: deltaStr,
+          isManual: pt.isManual,
+          formId: pt.formId,
+          sectionName: series.section,
+        });
+
+        return {
+          value: pt.numericValue,
+          rawDisplay: exactVal,
+          shortSeriesLabel: vis.shortLabel,
+          formId: pt.formId,
+          isManual: pt.isManual,
+          isAnnotativeOnly: pt.isAnnotativeOnly,
+          itemStyle: {
+            color: pt.isManual ? "#b45309" : vis.color,
+            borderColor: "#ffffff",
+            borderWidth: 2,
+          },
+        };
+      });
+
+      echartsSeries.push({
+        name: vis.label,
         type: "line",
         smooth: false,
-        connectNulls: false,
-        symbol: "circle",
-        symbolSize: 9,
+        connectNulls: true,
+        symbol: vis.symbol,
+        symbolSize: isMultiSeries ? (sIdx === 0 ? 10 : 8) : 9,
         lineStyle: {
-          width: 3,
-          color: "#0f766e",
+          width: vis.lineWidth,
+          type: vis.lineType,
+          color: vis.color,
         },
         label: {
-          show: true,
+          show: !isMultiSeries || sIdx === 0,
           position: "top",
           distance: 6,
           color: "#0f172a",
@@ -128,34 +311,96 @@ export function renderMetricSeriesEChartsSvg(
           formatter: (params: { data?: { rawDisplay?: string } }) =>
             stripMarkdown(params?.data?.rawDisplay ?? ""),
         },
-        data: primaryData,
-      },
-    ];
+        data: dataPoints,
+      });
 
-    if (hasBilateralD && hasBilateralG) {
-      echartsSeries.push(
-        {
-          name: lang === "fr" ? "Droite (D)" : "Right (D)",
-          type: "line",
-          smooth: false,
-          symbol: "diamond",
-          symbolSize: 7,
-          lineStyle: { width: 1.5, type: "dashed", color: "#0284c7" },
-          itemStyle: { color: "#0284c7" },
-          data: series.points.map((pt) => pt.subValues?.D ?? null),
-        },
-        {
-          name: lang === "fr" ? "Gauche (G)" : "Left (G)",
-          type: "line",
-          smooth: false,
-          symbol: "triangle",
-          symbolSize: 7,
-          lineStyle: { width: 1.5, type: "dotted", color: "#7c3aed" },
-          itemStyle: { color: "#7c3aed" },
-          data: series.points.map((pt) => pt.subValues?.G ?? null),
-        },
-      );
-    }
+      // Bilateral D/G sub-curves for single-metric charts (e.g., upper limb strength)
+      if (!isMultiSeries) {
+        const hasBilateralD = series.points.some(
+          (pt) => pt.subValues && typeof pt.subValues.D === "number",
+        );
+        const hasBilateralG = series.points.some(
+          (pt) => pt.subValues && typeof pt.subValues.G === "number",
+        );
+        if (hasBilateralD && hasBilateralG) {
+          const rightLabel =
+            lang === "fr" ? `${vis.label} — Droite (D)` : `${vis.label} — Right (D)`;
+          const leftLabel = lang === "fr" ? `${vis.label} — Gauche (G)` : `${vis.label} — Left (G)`;
+          const dSeriesIndex = echartsSeries.length;
+          echartsSeries.push({
+            name: lang === "fr" ? "Droite (D)" : "Right (D)",
+            type: "line",
+            smooth: false,
+            symbol: "diamond",
+            symbolSize: 7,
+            lineStyle: { width: 1.5, type: "dashed", color: "#0284c7" },
+            itemStyle: { color: "#0284c7" },
+            data: sessions.map((sess, xIdx) => {
+              const pt = ptsByForm.get(sess.formId);
+              const valD = pt?.subValues?.D;
+              if (pt && typeof valD === "number") {
+                hitTargets.push({
+                  seriesIndex: dSeriesIndex,
+                  xIndex: xIdx,
+                  numericValue: valD,
+                  seriesKey: `${series.metricKey}:D`,
+                  seriesLabel: rightLabel,
+                  seriesColor: "#0284c7",
+                  dateLabel: pt.formDateLabel || sess.formDateLabel,
+                  exactValue: formatExactPointValueWithUnit(String(valD), series.unit),
+                  deltaDisplay: "",
+                  isManual: pt.isManual,
+                  formId: pt.formId,
+                  sectionName: series.section,
+                });
+                return valD;
+              }
+              return null;
+            }),
+          });
+
+          const gSeriesIndex = echartsSeries.length;
+          echartsSeries.push({
+            name: lang === "fr" ? "Gauche (G)" : "Left (G)",
+            type: "line",
+            smooth: false,
+            symbol: "triangle",
+            symbolSize: 7,
+            lineStyle: { width: 1.5, type: "dotted", color: "#7c3aed" },
+            itemStyle: { color: "#7c3aed" },
+            data: sessions.map((sess, xIdx) => {
+              const pt = ptsByForm.get(sess.formId);
+              const valG = pt?.subValues?.G;
+              if (pt && typeof valG === "number") {
+                hitTargets.push({
+                  seriesIndex: gSeriesIndex,
+                  xIndex: xIdx,
+                  numericValue: valG,
+                  seriesKey: `${series.metricKey}:G`,
+                  seriesLabel: leftLabel,
+                  seriesColor: "#7c3aed",
+                  dateLabel: pt.formDateLabel || sess.formDateLabel,
+                  exactValue: formatExactPointValueWithUnit(String(valG), series.unit),
+                  deltaDisplay: "",
+                  isManual: pt.isManual,
+                  formId: pt.formId,
+                  sectionName: series.section,
+                });
+                return valG;
+              }
+              return null;
+            }),
+          });
+        }
+      }
+    });
+
+    const scaleMins = seriesList
+      .map((s) => s.scaleMin)
+      .filter((v): v is number => typeof v === "number");
+    const scaleMaxs = seriesList
+      .map((s) => s.scaleMax)
+      .filter((v): v is number => typeof v === "number");
 
     chart.setOption({
       animation: false,
@@ -178,8 +423,8 @@ export function renderMetricSeriesEChartsSvg(
       },
       yAxis: {
         type: "value",
-        min: typeof series.scaleMin === "number" ? series.scaleMin : undefined,
-        max: typeof series.scaleMax === "number" ? series.scaleMax : undefined,
+        min: scaleMins.length > 0 ? Math.min(...scaleMins) : undefined,
+        max: scaleMaxs.length > 0 ? Math.max(...scaleMaxs) : undefined,
         splitLine: { lineStyle: { type: "dashed", color: "#e2e8f0" } },
         axisLabel: {
           color: "#475569",
@@ -189,10 +434,48 @@ export function renderMetricSeriesEChartsSvg(
       series: echartsSeries,
     });
 
-    return chart.renderToSVGString();
+    const rawSvg = chart.renderToSVGString();
+
+    // Compute exact pixel coordinates for interactive hover hit targets
+    const interactiveCirclesHtml = hitTargets
+      .map((target) => {
+        const px = chart.convertToPixel({ seriesIndex: target.seriesIndex }, [
+          target.xIndex,
+          target.numericValue,
+        ]);
+        if (!Array.isArray(px) || px.length < 2) return "";
+        const cx = Number(px[0]);
+        const cy = Number(px[1]);
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return "";
+        const summaryTitle = `${target.seriesLabel} — ${target.dateLabel} : ${target.exactValue}${
+          target.deltaDisplay ? ` (Δ ${target.deltaDisplay})` : ""
+        }`;
+        return `<circle class="ds-chart-point" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9" tabindex="0" role="button" aria-label="${esc(summaryTitle)}" data-chart-point="true" data-series-key="${esc(target.seriesKey)}" data-series-label="${esc(target.seriesLabel)}" data-series-color="${esc(target.seriesColor)}" data-point-date="${esc(target.dateLabel)}" data-point-value="${esc(target.exactValue)}" data-point-delta="${esc(target.deltaDisplay)}" data-point-manual="${target.isManual ? "true" : "false"}" data-form-id="${esc(target.formId)}" data-jump-section="${esc(target.sectionName)}" data-jump-tab="clinical" style="--chart-point-color:${esc(target.seriesColor)}"><title>${esc(summaryTitle)}</title></circle>`;
+      })
+      .filter(Boolean)
+      .join("");
+
+    if (!interactiveCirclesHtml) {
+      return rawSvg;
+    }
+
+    return rawSvg.replace(
+      "</svg>",
+      `<g class="ds-chart-hit-layer" data-testid="chart_hit_layer">${interactiveCirclesHtml}</g></svg>`,
+    );
   } finally {
     chart.dispose();
   }
+}
+
+/**
+ * Render an Apache ECharts multi-year raw clinical line chart to an SSR SVG string.
+ */
+export function renderMetricSeriesEChartsSvg(
+  series: PatientMetricSeriesView,
+  lang: Language,
+): string {
+  return renderMultiMetricSeriesEChartsSvg([series], lang);
 }
 
 function renderSummaryCard(
@@ -473,6 +756,30 @@ function renderNumericChartCard(
           ? "1 séance"
           : "1 session";
 
+  const hasBilateralD = series.points.some(
+    (pt) => pt.subValues && typeof pt.subValues.D === "number",
+  );
+  const hasBilateralG = series.points.some(
+    (pt) => pt.subValues && typeof pt.subValues.G === "number",
+  );
+  const bilateralLegendHtml =
+    hasBilateralD && hasBilateralG
+      ? `<div class="ds-chart-legend" role="list" aria-label="${lang === "fr" ? "Légende des courbes" : "Chart curves legend"}">
+          <div class="ds-chart-legend__item" role="listitem" data-legend-series-key="${esc(series.metricKey)}" tabindex="0">
+            <span class="ds-chart-legend__swatch ds-chart-legend__swatch--solid" style="--legend-color:#0f766e" aria-hidden="true"></span>
+            <span class="ds-chart-legend__label">${esc(clinicalLabel)}</span>
+          </div>
+          <div class="ds-chart-legend__item" role="listitem" data-legend-series-key="${esc(series.metricKey)}:D" tabindex="0">
+            <span class="ds-chart-legend__swatch ds-chart-legend__swatch--dashed" style="--legend-color:#0284c7" aria-hidden="true"></span>
+            <span class="ds-chart-legend__label">${lang === "fr" ? "Droite (D)" : "Right (D)"}</span>
+          </div>
+          <div class="ds-chart-legend__item" role="listitem" data-legend-series-key="${esc(series.metricKey)}:G" tabindex="0">
+            <span class="ds-chart-legend__swatch ds-chart-legend__swatch--dotted" style="--legend-color:#7c3aed" aria-hidden="true"></span>
+            <span class="ds-chart-legend__label">${lang === "fr" ? "Gauche (G)" : "Left (G)"}</span>
+          </div>
+        </div>`
+      : "";
+
   return `<article class="ds-card ds-metric-chart-card" data-testid="metric_chart_${esc(series.metricKey)}" data-metric-key="${esc(series.metricKey)}" data-section="${esc(series.section)}">
     <div class="ds-card__header" data-jump-section="${esc(series.section)}" data-jump-tab="clinical" tabindex="0">
       <div>
@@ -495,10 +802,128 @@ function renderNumericChartCard(
       }
     </div>
     <div class="ds-card__body ds-stack">
-      <div class="ds-metric-chart-card__canvas" role="img" aria-label="${esc(clinicalLabel)}">
+      ${bilateralLegendHtml}
+      <div class="ds-metric-chart-card__canvas" data-chart-canvas role="img" aria-label="${esc(clinicalLabel)}">
         ${svgMarkup}
+        <div class="ds-chart-tooltip" data-chart-tooltip data-testid="chart_point_tooltip" hidden aria-hidden="true"></div>
       </div>
       ${renderPointPills(series.points, series.unit, series.section, lang)}
+    </div>
+  </article>`;
+}
+
+function renderMfmCombinedChartCard(
+  mfmSeriesList: PatientMetricSeriesView[],
+  domain: ClinicalDomain,
+  lang: Language,
+): string {
+  const primarySeries =
+    mfmSeriesList.find((s) => s.metricKey === "MotorFunctionStatus.mfm_total_score") ??
+    mfmSeriesList[0];
+  if (!primarySeries) return "";
+
+  const svgMarkup = renderMultiMetricSeriesEChartsSvg(mfmSeriesList, lang);
+  const secMeta = getSectionPresentation(primarySeries.section, domain, lang);
+  const cardTitle =
+    lang === "fr"
+      ? "Mesure de la Fonction Motrice (MFM — Total & Dimensions D1, D2, D3)"
+      : "Motor Function Measure (MFM — Total & Dimensions D1, D2, D3)";
+
+  // Compute session count and time span across all MFM series
+  const allPoints = mfmSeriesList.flatMap((s) => s.points);
+  const uniqueForms = new Set(allPoints.map((p) => p.formId));
+  const maxDays = allPoints.reduce((acc, p) => Math.max(acc, p.daysSinceFirstRcp), 0);
+  const spanYears =
+    maxDays >= 365
+      ? `${(maxDays / 365.25).toFixed(1)} ${lang === "fr" ? "ans" : "yrs"}`
+      : maxDays > 0
+        ? `${maxDays} ${lang === "fr" ? "jours" : "days"}`
+        : lang === "fr"
+          ? "1 séance"
+          : "1 session";
+
+  const lastPrimaryPt = primarySeries.points[primarySeries.points.length - 1];
+  const primaryVis = resolveSeriesVisual(primarySeries, lang, 0);
+
+  const legendHtml = `<div class="ds-chart-legend" role="list" data-testid="mfm_chart_legend" aria-label="${
+    lang === "fr" ? "Légende des courbes MFM" : "MFM curves legend"
+  }">
+    ${mfmSeriesList
+      .map((s, idx) => {
+        const vis = resolveSeriesVisual(s, lang, idx);
+        const latestPt = s.points[s.points.length - 1];
+        const latestVal = latestPt
+          ? formatExactPointValueWithUnit(latestPt.displayValue, s.unit)
+          : "";
+        const deltaBadge = latestPt?.deltaDisplay
+          ? `<span class="ds-chart-legend__delta">Δ ${esc(latestPt.deltaDisplay)}${s.unit && !latestPt.deltaDisplay.includes(s.unit) ? ` ${esc(s.unit)}` : ""}</span>`
+          : "";
+        return `<div class="ds-chart-legend__item" role="listitem" data-testid="mfm_legend_item_${esc(s.metricKey)}" data-legend-series-key="${esc(s.metricKey)}" tabindex="0" style="--legend-color:${esc(vis.color)}">
+          <span class="ds-chart-legend__swatch ds-chart-legend__swatch--${esc(vis.lineType)}" style="--legend-color:${esc(vis.color)}" aria-hidden="true"></span>
+          <span class="ds-chart-legend__label">${esc(vis.label)}</span>
+          ${latestVal ? `<strong class="ds-chart-legend__value">${esc(latestVal)}</strong>` : ""}
+          ${deltaBadge}
+        </div>`;
+      })
+      .join("")}
+  </div>`;
+
+  const combinedPillsHtml = `<div class="ds-metric-points-strip" role="list" aria-label="${
+    lang === "fr" ? "Valeurs MFM brutes par séance RCP" : "Raw MFM values per MDT session"
+  }">
+    ${mfmSeriesList
+      .flatMap((s, idx) => {
+        const vis = resolveSeriesVisual(s, lang, idx);
+        return s.points.map((pt) => {
+          const exactVal = formatExactPointValueWithUnit(pt.displayValue, s.unit);
+          const manualBadge = pt.isManual
+            ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-tooltip="${
+                lang === "fr" ? "Valeur corrigée manuellement" : "Manually edited value"
+              }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`
+            : "";
+          const deltaBadge = pt.deltaDisplay
+            ? `<span class="ds-raw-pill__delta">Δ ${esc(pt.deltaDisplay)}</span>`
+            : "";
+          return `<div class="ds-raw-pill" role="listitem" data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0" data-tooltip="${esc(vis.label)} — ${esc(pt.formDateLabel)} : ${esc(exactVal)}">
+            <span class="ds-chart-legend__dot" style="--legend-color:${esc(vis.color)}" aria-hidden="true"></span>
+            <span class="ds-raw-pill__series">${esc(vis.shortLabel)}</span>
+            <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
+            <strong class="ds-raw-pill__val ds-metric-pill__value ds-markdown-inline">${esc(exactVal)}</strong>
+            ${manualBadge}${deltaBadge}
+          </div>`;
+        });
+      })
+      .join("")}
+  </div>`;
+
+  return `<article class="ds-card ds-metric-chart-card ds-metric-chart-card--mfm-combined" data-testid="metric_chart_${esc(primarySeries.metricKey)}" data-mfm-combined="true" data-metric-key="${esc(primarySeries.metricKey)}" data-metric-keys="${esc(mfmSeriesList.map((s) => s.metricKey).join(","))}" data-section="${esc(primarySeries.section)}">
+    <div class="ds-card__header" data-jump-section="${esc(primarySeries.section)}" data-jump-tab="clinical" tabindex="0">
+      <div>
+        <h4 class="ds-card__title">
+          <span class="ds-icon-box">${iconSvg(secMeta.icon)}</span>
+          ${esc(cardTitle)}
+        </h4>
+        <span class="ds-card__subtitle">
+          ${esc(secMeta.title)} · ${lang === "fr" ? "Données brutes" : "Raw data"} (%) · ${mfmSeriesList.length} ${lang === "fr" ? "courbe(s)" : "curve(s)"} · ${uniqueForms.size} ${lang === "fr" ? "séance(s)" : "session(s)"} (${esc(spanYears)})
+        </span>
+      </div>
+      ${
+        lastPrimaryPt
+          ? `<div class="ds-card__header-actions">
+              <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(primarySeries.section)}" data-jump-tab="clinical" data-tooltip="${esc(primaryVis.shortLabel)} — ${lang === "fr" ? "Dernier relevé" : "Latest"} (${esc(lastPrimaryPt.formDateLabel)})">
+                ${iconSvg("ic-trend-up")} ${esc(primaryVis.shortLabel)} : ${esc(formatExactPointValueWithUnit(lastPrimaryPt.displayValue, primarySeries.unit))} · ${esc(lastPrimaryPt.formDateLabel)}
+              </span>
+            </div>`
+          : ""
+      }
+    </div>
+    <div class="ds-card__body ds-stack">
+      ${legendHtml}
+      <div class="ds-metric-chart-card__canvas" data-chart-canvas role="img" aria-label="${esc(cardTitle)}">
+        ${svgMarkup}
+        <div class="ds-chart-tooltip" data-chart-tooltip data-testid="chart_point_tooltip" hidden aria-hidden="true"></div>
+      </div>
+      ${combinedPillsHtml}
     </div>
   </article>`;
 }
@@ -694,6 +1119,20 @@ export function renderPatientDashboardPanel(
   const numericSeries = dashboard.metrics.filter((s) => s.valueType === "numeric_or_mixed");
   const qualitativeSeries = dashboard.metrics.filter((s) => s.valueType !== "numeric_or_mixed");
 
+  const mfmSeriesList = numericSeries.filter((s) => MFM_METRIC_KEYS.has(s.metricKey));
+  let mfmCardRendered = false;
+  const chartCardsHtml = numericSeries
+    .map((s) => {
+      if (MFM_METRIC_KEYS.has(s.metricKey)) {
+        if (mfmCardRendered) return "";
+        mfmCardRendered = true;
+        return renderMfmCombinedChartCard(mfmSeriesList, dashboard.domain, lang);
+      }
+      return renderNumericChartCard(s, dashboard.domain, lang);
+    })
+    .filter(Boolean)
+    .join("");
+
   const emptyMetricsHtml =
     dashboard.metrics.length === 0
       ? `<div class="ds-alert ds-alert--guidance" data-testid="dashboard_metrics_empty">
@@ -728,9 +1167,9 @@ export function renderPatientDashboardPanel(
     ${emptyMetricsHtml}
 
     ${
-      numericSeries.length > 0
+      chartCardsHtml
         ? `<div class="ds-metric-charts-grid" data-testid="patient_dashboard_charts_grid">
-            ${numericSeries.map((s) => renderNumericChartCard(s, dashboard.domain, lang)).join("")}
+            ${chartCardsHtml}
           </div>`
         : ""
     }

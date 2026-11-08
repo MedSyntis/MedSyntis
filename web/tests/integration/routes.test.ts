@@ -1156,15 +1156,29 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(updatedRes.body).toContain('data-testid="badge_summary_up_to_date"');
     expect(updatedRes.body).not.toContain('data-testid="alert_summary_obsolete"');
 
-    // 4. SMA patient S-0007 renders RULM / HFMSE raw curves in ECharts SVG and translated clinical milestones without technical class names
+    // 4. SMA patient S-0007 renders a single combined MFM chart (Total + D1/D2/D3) with legend, interactive point hover metadata, RULM chart, and NO HFMSE chart
     const smaRes = await app.inject({
       method: "GET",
       url: "/patients/S-0007?domain=sma&view=dashboard",
     });
     expect(smaRes.statusCode).toBe(200);
     expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.mfm_total_score"');
+    expect(smaRes.body).toContain('data-mfm-combined="true"');
+    expect(smaRes.body).toContain('data-testid="mfm_chart_legend"');
+    expect(smaRes.body).toContain(
+      'data-testid="mfm_legend_item_MotorFunctionStatus.mfm_total_score"',
+    );
+    expect(smaRes.body).toContain('data-testid="mfm_legend_item_MotorFunctionStatus.mfm_d1_score"');
+    expect(smaRes.body).toContain('data-testid="mfm_legend_item_MotorFunctionStatus.mfm_d2_score"');
+    expect(smaRes.body).toContain('data-testid="mfm_legend_item_MotorFunctionStatus.mfm_d3_score"');
+    expect(smaRes.body).toContain('data-chart-point="true"');
+    expect(smaRes.body).toContain('data-point-value="65.6 %"');
+    expect(smaRes.body).toContain('data-testid="chart_point_tooltip"');
+    expect(smaRes.body).not.toContain(
+      'data-testid="metric_chart_MotorFunctionStatus.mfm_d1_score"',
+    );
+    expect(smaRes.body).not.toContain('data-testid="metric_chart_MotorFunctionStatus.hfmse_score"');
     expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.rulm_score"');
-    expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.hfmse_score"');
     expect(smaRes.body).toContain("Station assise sans appui");
     expect(smaRes.body).toContain("Position assise autonome stable");
     expect(smaRes.body).toContain("Voie orale");

@@ -65,7 +65,6 @@ export const SMA_METRIC_SPECS: MetricDescriptorSpec[] = parseMetricCatalog([
   "MotorFunctionStatus.mfm_d3_score|MFM D3 (Motricité distale)|%|higher_is_better|numeric_or_mixed|0|100",
   "MotorFunctionStatus.rulm_score|Score RULM (Membre supérieur)|/ 37|higher_is_better|numeric_or_mixed|0|37",
   "MotorFunctionStatus.chop_intend_score|Score CHOP-INTEND|/ 64|higher_is_better|numeric_or_mixed|0|64",
-  "MotorFunctionStatus.hfmse_score|Score HFMSE (Échelle secondaire)|/ 66|higher_is_better|numeric_or_mixed|0|66",
   "RespiratoryFunction.forced_vital_capacity_percent|Capacité Vitale Forcée (CVF)|%|higher_is_better|numeric_or_mixed|0|140",
   "RespiratoryFunction.daily_ventilation_hours|Ventilation quotidienne|h/j|lower_is_better|numeric_or_mixed|0|24",
   "OrthopedicAndSpineStatus.scoliosis_cobb_angle|Angle de Cobb (Scoliose)|°|lower_is_better|numeric_or_mixed|0|120",

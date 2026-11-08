@@ -216,18 +216,6 @@ SMA_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         value_type="numeric_or_mixed",
     ),
     PatientMetricDescriptor(
-        metric_key="MotorFunctionStatus.hfmse_score",
-        section="MotorFunctionStatus",
-        field="hfmse_score",
-        label="Score HFMSE (Échelle secondaire)",
-        clinical_category="Fonction motrice",
-        unit="/ 66",
-        scale_min=0.0,
-        scale_max=66.0,
-        polarity="higher_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
         metric_key="RespiratoryFunction.forced_vital_capacity_percent",
         section="RespiratoryFunction",
         field="forced_vital_capacity_percent",
