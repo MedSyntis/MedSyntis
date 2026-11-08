@@ -66,6 +66,12 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await page.getByTestId("btn_pdf_expand").click();
     await expect(page.getByTestId("split-view")).not.toHaveClass(/ds-split--pdf-expanded/);
 
+    // Click on highlighted synoptic clinical metric to directly expand the corresponding detail section
+    await expect(page.getByTestId("section-TumorBiology")).not.toHaveAttribute("open", "");
+    await page.getByTestId("marker-ca19_9").click();
+    await expect(page.getByTestId("section-TumorBiology")).toHaveAttribute("open", "");
+    await page.getByTestId("section-TumorBiology").locator("summary").first().click();
+
     // Expand clinical sections (collapsed by default)
     await page.getByTestId("btn_toggle_all_sections").click();
     await expect(page.getByTestId("reasoning-TumorLocation")).toBeVisible();

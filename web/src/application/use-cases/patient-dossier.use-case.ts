@@ -142,6 +142,8 @@ export interface PatientDossierView {
     label: string;
     value: string;
     isMissing: boolean;
+    targetSection: string;
+    targetTab: "clinical" | "opinions";
     delta?: LongitudinalDelta;
   }>;
   deltas: LongitudinalDelta[];
@@ -468,18 +470,24 @@ export class PatientDossierUseCase {
           label: "Type SMA",
           value: translateValue(mot.sma_type, lang),
           isMissing: !mot.sma_type,
+          targetSection: "MotorFunctionStatus",
+          targetTab: "clinical",
         },
         {
           key: "smn2_copy_count",
           label: "Copies SMN2",
           value: translateValue(gen.smn2_copy_count, lang),
           isMissing: gen.smn2_copy_count == null,
+          targetSection: "GeneticDiagnosis",
+          targetTab: "clinical",
         },
         {
           key: "hfmse_score",
           label: "HFMSE",
           value: mot.hfmse_score != null ? `${mot.hfmse_score}/66` : translateValue(null, lang),
           isMissing: mot.hfmse_score == null,
+          targetSection: "MotorFunctionStatus",
+          targetTab: "clinical",
           delta: deltaMap.get("hfmse_score"),
         },
         {
@@ -487,6 +495,8 @@ export class PatientDossierUseCase {
           label: "RULM",
           value: mot.rulm_score != null ? `${mot.rulm_score}/37` : translateValue(null, lang),
           isMissing: mot.rulm_score == null,
+          targetSection: "MotorFunctionStatus",
+          targetTab: "clinical",
           delta: deltaMap.get("rulm_score"),
         },
         {
@@ -497,6 +507,8 @@ export class PatientDossierUseCase {
               ? `${resp.forced_vital_capacity_percent} %`
               : translateValue(null, lang),
           isMissing: resp.forced_vital_capacity_percent == null,
+          targetSection: "RespiratoryFunction",
+          targetTab: "clinical",
           delta: deltaMap.get("forced_vital_capacity_percent"),
         },
         {
@@ -507,6 +519,8 @@ export class PatientDossierUseCase {
               ? `${ortho.scoliosis_cobb_angle}°`
               : translateValue(ortho.has_scoliosis ?? null, lang),
           isMissing: ortho.scoliosis_cobb_angle == null && ortho.has_scoliosis == null,
+          targetSection: "OrthopedicAndSpineStatus",
+          targetTab: "clinical",
           delta: deltaMap.get("scoliosis_cobb_angle"),
         },
       ];
@@ -515,6 +529,7 @@ export class PatientDossierUseCase {
     const loc = (form.sections.TumorLocation ?? {}) as Record<string, unknown>;
     const bio = (form.sections.TumorBiology ?? {}) as Record<string, unknown>;
     const perf = (form.sections.PatientPerformanceStatus ?? {}) as Record<string, unknown>;
+    const chemoSectionName = form.sections.Chemotherapy ? "Chemotherapy" : "ChemotherapyTreament";
     const chemo = (form.sections.Chemotherapy ??
       form.sections.ChemotherapyTreament ??
       {}) as Record<string, unknown>;
@@ -530,18 +545,24 @@ export class PatientDossierUseCase {
         label: "Organe / Tumeur",
         value: translateValue(loc.tumor_location, lang),
         isMissing: !loc.tumor_location,
+        targetSection: "TumorLocation",
+        targetTab: "clinical",
       },
       {
         key: "ca19_9",
         label: "Biologie / MSI",
         value: translateValue(bio.ca19_9 ?? bio.msi_state, lang),
         isMissing: !bio.ca19_9 && !bio.msi_state,
+        targetSection: "TumorBiology",
+        targetTab: "clinical",
       },
       {
         key: "performance_status",
         label: "OMS / ECOG",
         value: translateValue(perf.performance_status, lang),
         isMissing: perf.performance_status === undefined,
+        targetSection: "PatientPerformanceStatus",
+        targetTab: "clinical",
         delta: deltaMap.get("performance_status"),
       },
       {
@@ -549,6 +570,8 @@ export class PatientDossierUseCase {
         label: "Traitement systémique",
         value: translateValue(firstChemoName, lang),
         isMissing: !firstChemoName && chemo.chemotherapy === undefined,
+        targetSection: chemoSectionName,
+        targetTab: "clinical",
       },
     ];
   }

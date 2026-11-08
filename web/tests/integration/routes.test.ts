@@ -126,6 +126,14 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('data-testid="synoptic-card"');
+    expect(res.body).toContain('data-testid="marker-tumor_location"');
+    expect(res.body).toContain('data-jump-section="TumorLocation"');
+    expect(res.body).toContain('data-testid="marker-ca19_9"');
+    expect(res.body).toContain('data-jump-section="TumorBiology"');
+    expect(res.body).toContain('data-testid="marker-performance_status"');
+    expect(res.body).toContain('data-jump-section="PatientPerformanceStatus"');
+    expect(res.body).toContain('data-testid="badge-completeness"');
+    expect(res.body).toContain('data-jump-section="MTDCompleted"');
     expect(res.body).toContain("2 spécialités");
     expect(res.body).toContain("Spécialités mobilisées (2)");
     expect(res.body).not.toContain("+1 spécialité(s)");

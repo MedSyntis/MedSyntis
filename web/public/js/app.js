@@ -1063,6 +1063,129 @@
   }
   initM3Tabs(document);
 
+  // Direct navigation from highlighted patient dossier metrics/badges ([data-jump-section]) to expanded detail sections
+  var SECTION_FALLBACK_ALIASES = {
+    Chemotherapy: ["Chemotherapy", "ChemotherapyTreament"],
+    ChemotherapyTreament: ["ChemotherapyTreament", "Chemotherapy"],
+    RadiologicExams: ["RadiologicExams", "RadiologicalExams"],
+    RadiologicalExams: ["RadiologicalExams", "RadiologicExams"],
+    PreviousCurativeSurgery: ["PreviousCurativeSurgery", "PreviousSurgery"],
+    PreviousSurgery: ["PreviousSurgery", "PreviousCurativeSurgery"],
+    PlannedCurativeSurgery: ["PlannedCurativeSurgery", "PlannedSurgery"],
+    PlannedSurgery: ["PlannedSurgery", "PlannedCurativeSurgery"],
+  };
+
+  function resolveDossierSectionElement(sectionName) {
+    if (!sectionName) return null;
+    var candidates = SECTION_FALLBACK_ALIASES[sectionName] || [sectionName];
+    for (var i = 0; i < candidates.length; i++) {
+      var el = document.getElementById("section-" + candidates[i]);
+      if (el) return el;
+    }
+    var opinionEl = document.querySelector("[data-testid='opinion-" + sectionName + "']");
+    if (opinionEl) return opinionEl;
+    if (sectionName === "ExpertAnswer" || sectionName === "CareOrientationProposal") {
+      return (
+        document.querySelector("#panel-opinions details.ds-opinion") ||
+        document.querySelector("#panel-opinions details.ds-section")
+      );
+    }
+    return null;
+  }
+
+  function jumpToDossierSection(sectionName, preferredTab) {
+    if (!sectionName) return false;
+    var targetDetails = resolveDossierSectionElement(sectionName);
+    var targetPanel = targetDetails ? targetDetails.closest("[role='tabpanel']") : null;
+    var resolvedTabId = null;
+    if (targetPanel && targetPanel.id === "panel-opinions") {
+      resolvedTabId = "tab-opinions";
+    } else if (targetPanel && targetPanel.id === "panel-clinical") {
+      resolvedTabId = "tab-clinical";
+    } else if (preferredTab === "opinions") {
+      resolvedTabId = "tab-opinions";
+    } else if (preferredTab === "clinical") {
+      resolvedTabId = "tab-clinical";
+    }
+
+    var rcpPatientTab = document.getElementById("tab-patient-rcp");
+    if (rcpPatientTab && rcpPatientTab.getAttribute("aria-selected") !== "true") {
+      rcpPatientTab.click();
+    }
+
+    if (resolvedTabId) {
+      var tabBtn = document.getElementById(resolvedTabId);
+      if (tabBtn && tabBtn.getAttribute("aria-selected") !== "true") {
+        tabBtn.click();
+      }
+    }
+
+    if (!targetDetails) return false;
+
+    if (targetDetails.tagName === "DETAILS") {
+      targetDetails.open = true;
+    }
+
+    document
+      .querySelectorAll(".ds-section.is-jump-target, .ds-opinion.is-jump-target")
+      .forEach(function (el) {
+        el.classList.remove("is-jump-target");
+      });
+    targetDetails.classList.add("is-jump-target");
+    window.setTimeout(function () {
+      targetDetails.classList.remove("is-jump-target");
+    }, 2200);
+
+    var summaryEl = targetDetails.querySelector("summary");
+    if (typeof targetDetails.scrollIntoView === "function") {
+      targetDetails.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    if (summaryEl && typeof summaryEl.focus === "function") {
+      try {
+        summaryEl.focus({ preventScroll: true });
+      } catch (_e) {
+        summaryEl.focus();
+      }
+    }
+    return true;
+  }
+
+  document.addEventListener("click", function (e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (e.target.closest("a, button, input, select, textarea, form")) return;
+    var jumpTrigger = e.target.closest("[data-jump-section]");
+    if (!jumpTrigger) return;
+    var sectionName = jumpTrigger.getAttribute("data-jump-section");
+    var preferredTab = jumpTrigger.getAttribute("data-jump-tab");
+    if (sectionName) {
+      jumpToDossierSection(sectionName, preferredTab);
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.defaultPrevented || (e.key !== "Enter" && e.key !== " ")) return;
+    var active = document.activeElement;
+    if (!active || !active.hasAttribute || !active.hasAttribute("data-jump-section")) return;
+    var sectionName = active.getAttribute("data-jump-section");
+    var preferredTab = active.getAttribute("data-jump-tab");
+    if (sectionName) {
+      e.preventDefault();
+      jumpToDossierSection(sectionName, preferredTab);
+    }
+  });
+
+  function syncDossierSectionFromHash() {
+    var hash = window.location.hash || "";
+    if (hash.indexOf("#section-") === 0) {
+      var secName = decodeURIComponent(hash.slice("#section-".length));
+      if (secName) {
+        jumpToDossierSection(secName, null);
+      }
+    }
+  }
+  syncDossierSectionFromHash();
+  window.addEventListener("hashchange", syncDossierSectionFromHash);
+
   // M3 Segmented Button background pill slider (.ds-segmented__pill — only the colored background moves)
   function syncAllSegmentedPills() {
     document.querySelectorAll(".ds-segmented").forEach(function (seg) {

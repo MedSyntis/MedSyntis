@@ -2265,32 +2265,41 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
             return "Non renseigné"
         return s
 
-    # Extract synoptic clinical markers (Oncology & SMA) as (label, value) pairs
-    marker_pairs: list[tuple[str, str]] = []
+    # Extract synoptic clinical markers (Oncology & SMA) as (label, value, target_section) tuples
+    marker_pairs: list[tuple[str, str, str]] = []
     if isinstance(data.get("TumorLocation"), dict):
         loc = data["TumorLocation"].get("tumor_location")
         if loc:
-            marker_pairs.append(("🎯 Organe primitif", _clean_marker_val(loc)))
+            marker_pairs.append(
+                ("🎯 Organe primitif", _clean_marker_val(loc), "TumorLocation")
+            )
     if isinstance(data.get("PatientPerformanceStatus"), dict):
         ps = data["PatientPerformanceStatus"].get("performance_status")
         if ps is not None:
-            marker_pairs.append(("🏃 Score OMS", f"OMS {ps}"))
+            marker_pairs.append(
+                ("🏃 Score OMS", f"OMS {ps}", "PatientPerformanceStatus")
+            )
     if isinstance(data.get("TumorBiology"), dict):
         msi = data["TumorBiology"].get("msi_state")
         if msi is True:
-            marker_pairs.append(("🧬 Biologie", "MSI (Instable)"))
+            marker_pairs.append(("🧬 Biologie", "MSI (Instable)", "TumorBiology"))
         elif msi is False:
-            marker_pairs.append(("🧬 Biologie", "MSS (Stable)"))
+            marker_pairs.append(("🧬 Biologie", "MSS (Stable)", "TumorBiology"))
     if isinstance(data.get("PreviousCurativeSurgery"), dict) or isinstance(
         data.get("ChemotherapyTreament"), dict
     ):
         tx_parts = []
+        tx_target = "ChemotherapyTreament"
         if isinstance(data.get("PreviousCurativeSurgery"), dict):
             prev_s = data["PreviousCurativeSurgery"].get("previous_curative_surgery")
             if prev_s is True:
                 tx_parts.append("Chir. réalisée")
+                if not isinstance(data.get("ChemotherapyTreament"), dict):
+                    tx_target = "PreviousCurativeSurgery"
             elif prev_s is False:
                 tx_parts.append("Sans chir.")
+                if not isinstance(data.get("ChemotherapyTreament"), dict):
+                    tx_target = "PreviousCurativeSurgery"
         if isinstance(data.get("ChemotherapyTreament"), dict):
             chemo = data["ChemotherapyTreament"].get("chemotherapy")
             if chemo is True:
@@ -2298,24 +2307,40 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
             elif chemo is False:
                 tx_parts.append("Chimio. non")
         if tx_parts:
-            marker_pairs.append(("💊 Antécédents", " · ".join(tx_parts)))
+            marker_pairs.append(("💊 Antécédents", " · ".join(tx_parts), tx_target))
 
     if isinstance(data.get("MotorFunctionStatus"), dict):
         sma_t = data["MotorFunctionStatus"].get("sma_type")
         if sma_t:
-            marker_pairs.append(("🦿 Type SMA", _clean_marker_val(sma_t)))
+            marker_pairs.append(
+                ("🦿 Type SMA", _clean_marker_val(sma_t), "MotorFunctionStatus")
+            )
     if isinstance(data.get("GeneticDiagnosis"), dict):
         copies = data["GeneticDiagnosis"].get("smn2_copy_count")
         if copies is not None:
-            marker_pairs.append(("🧬 Copies SMN2", f"{copies} copie(s)"))
+            marker_pairs.append(
+                ("🧬 Copies SMN2", f"{copies} copie(s)", "GeneticDiagnosis")
+            )
     if isinstance(data.get("RespiratoryFunction"), dict):
         vent = data["RespiratoryFunction"].get("requires_ventilation_support")
         if vent is not None:
-            marker_pairs.append(("🫁 Ventilation", "Requise" if vent else "Aucune"))
+            marker_pairs.append(
+                (
+                    "🫁 Ventilation",
+                    "Requise" if vent else "Aucune",
+                    "RespiratoryFunction",
+                )
+            )
     if isinstance(data.get("BulbarAndNutritionalStatus"), dict):
         feed = data["BulbarAndNutritionalStatus"].get("feeding_mode")
         if feed:
-            marker_pairs.append(("🍽️ Alimentation", _clean_marker_val(feed)))
+            marker_pairs.append(
+                (
+                    "🍽️ Alimentation",
+                    _clean_marker_val(feed),
+                    "BulbarAndNutritionalStatus",
+                )
+            )
 
     # Find immediately preceding RCP if patient has multiple RCPs
     prev_doc: dict[str, Any] | None = None
@@ -2352,8 +2377,17 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
         # Row 3: Key Clinical Markers (for the physician)
         if marker_pairs:
             m_cols = st.columns(len(marker_pairs))
-            for col, (m_label, m_val) in zip(m_cols, marker_pairs):
-                col.caption(f"{m_label}  \n**{m_val}**")
+            for idx, (col, (m_label, m_val, target_sec)) in enumerate(
+                zip(m_cols, marker_pairs)
+            ):
+                if col.button(
+                    f":small[{m_label}]  \n**{m_val}**",
+                    key=f"btn_jump_marker_{cur_file or 'doc'}_{idx}_{target_sec}",
+                    type="tertiary",
+                    help="Cliquer pour déplier directement la rubrique correspondante",
+                ):
+                    st.session_state[f"focus_section_{cur_file or 'doc'}"] = target_sec
+                    st.rerun()
         if prev_doc is not None:
             prev_dt = PatientMDTForm.extract_mdt_date(prev_doc)
             prev_dt_str = (
@@ -3159,6 +3193,8 @@ def _render_form_sections_list(
         if model_name not in data or header_summary.startswith(" — ⚪ Non mentionné"):
             default_exp = False
         if is_editable and st.session_state.get(edit_key):
+            default_exp = True
+        if st.session_state.get(f"focus_section_{target_filename}") == model_name:
             default_exp = True
 
         with st.expander(
