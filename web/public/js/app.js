@@ -2413,8 +2413,8 @@
       (pointDelta ? " (\u0394 " + pointDelta + ")" : "");
     tooltip.appendChild(textSpan);
 
-    var cx = parseFloat(pointEl.getAttribute("cx") || "0");
-    var cy = parseFloat(pointEl.getAttribute("cy") || "0");
+    var cx = Number.parseFloat(pointEl.getAttribute("cx") || "0");
+    var cy = Number.parseFloat(pointEl.getAttribute("cy") || "0");
     var leftPx = cx;
     var topPx = cy;
     if (pointEl.ownerSVGElement && canvas.getBoundingClientRect) {
@@ -2449,32 +2449,22 @@
     }
   }
 
-  document.addEventListener("mouseover", function (ev) {
-    var target = ev.target;
-    if (!target || typeof target.closest !== "function") return;
-    var pointEl = target.closest('[data-chart-point="true"]');
-    if (pointEl) showChartPointTooltip(pointEl);
+  ["mouseover", "focusin"].forEach(function (evtName) {
+    document.addEventListener(evtName, function (ev) {
+      var target = ev.target;
+      if (!target || typeof target.closest !== "function") return;
+      var pointEl = target.closest('[data-chart-point="true"]');
+      if (pointEl) showChartPointTooltip(pointEl);
+    });
   });
 
-  document.addEventListener("mouseout", function (ev) {
-    var target = ev.target;
-    if (!target || typeof target.closest !== "function") return;
-    var pointEl = target.closest('[data-chart-point="true"]');
-    if (pointEl) hideChartPointTooltip(pointEl);
-  });
-
-  document.addEventListener("focusin", function (ev) {
-    var target = ev.target;
-    if (!target || typeof target.closest !== "function") return;
-    var pointEl = target.closest('[data-chart-point="true"]');
-    if (pointEl) showChartPointTooltip(pointEl);
-  });
-
-  document.addEventListener("focusout", function (ev) {
-    var target = ev.target;
-    if (!target || typeof target.closest !== "function") return;
-    var pointEl = target.closest('[data-chart-point="true"]');
-    if (pointEl) hideChartPointTooltip(pointEl);
+  ["mouseout", "focusout"].forEach(function (evtName) {
+    document.addEventListener(evtName, function (ev) {
+      var target = ev.target;
+      if (!target || typeof target.closest !== "function") return;
+      var pointEl = target.closest('[data-chart-point="true"]');
+      if (pointEl) hideChartPointTooltip(pointEl);
+    });
   });
 
   // Poll auto-refresh every 4s while any fiche on the current page is marked as processing

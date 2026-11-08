@@ -532,6 +532,35 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     };
 
     // 3. SMA: Léo EXEMPLE (#S-0007) — 2 longitudinal sessions
+    const buildLeoCoreSections = (
+      dateRcp: string,
+      milestone: string,
+      scores: [number, number, number, number, number],
+    ) => ({
+      PatientAdministrative: {
+        first_name: "Léo",
+        last_name: "EXEMPLE",
+        date_birth: "2018-04-12",
+        date_rcp: dateRcp,
+        gender: "Male",
+      },
+      GeneticDiagnosis: {
+        smn1_deletion_confirmed: true,
+        smn2_copy_count: 3,
+        other_genetic_variants: "None",
+      },
+      MotorFunctionStatus: {
+        sma_type: "Type 2",
+        motor_milestones: [milestone],
+        mfm_scale_version: "MFM-32",
+        mfm_total_score: scores[0],
+        mfm_d1_score: scores[1],
+        mfm_d2_score: scores[2],
+        mfm_d3_score: scores[3],
+        rulm_score: scores[4],
+      },
+    });
+
     const leo1: MdtFormDetail = {
       file: "leo_exemple_2026_05_18.pdf",
       patientId: "S-0007",
@@ -541,28 +570,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       processingStep: null,
       processingProgressPct: 100,
       sections: {
-        PatientAdministrative: {
-          first_name: "Léo",
-          last_name: "EXEMPLE",
-          date_birth: "2018-04-12",
-          date_rcp: "2026-05-18",
-          gender: "Male",
-        },
-        GeneticDiagnosis: {
-          smn1_deletion_confirmed: true,
-          smn2_copy_count: 3,
-          other_genetic_variants: "None",
-        },
-        MotorFunctionStatus: {
-          sma_type: "Type 2",
-          motor_milestones: ["Sitting unsupported"],
-          mfm_scale_version: "MFM-32",
-          mfm_total_score: 62.5,
-          mfm_d1_score: 15.4,
-          mfm_d2_score: 77.8,
-          mfm_d3_score: 90.5,
-          rulm_score: 26,
-        },
+        ...buildLeoCoreSections("2026-05-18", "Sitting unsupported", [62.5, 15.4, 77.8, 90.5, 26]),
         RespiratoryFunction: {
           requires_ventilation_support: false,
           ventilation_type: "None",
@@ -598,28 +606,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       processingStep: null,
       processingProgressPct: 100,
       sections: {
-        PatientAdministrative: {
-          first_name: "Léo",
-          last_name: "EXEMPLE",
-          date_birth: "2018-04-12",
-          date_rcp: "2026-11-12",
-          gender: "Male",
-        },
-        GeneticDiagnosis: {
-          smn1_deletion_confirmed: true,
-          smn2_copy_count: 3,
-          other_genetic_variants: "None",
-        },
-        MotorFunctionStatus: {
-          sma_type: "Type 2",
-          motor_milestones: ["Position assise autonome stable"],
-          mfm_scale_version: "MFM-32",
-          mfm_total_score: 65.6,
-          mfm_d1_score: 17.9,
-          mfm_d2_score: 80.6,
-          mfm_d3_score: 95.2,
-          rulm_score: 28,
-        },
+        ...buildLeoCoreSections(
+          "2026-11-12",
+          "Position assise autonome stable",
+          [65.6, 17.9, 80.6, 95.2, 28],
+        ),
         RespiratoryFunction: {
           requires_ventilation_support: false,
           ventilation_type: "None",
