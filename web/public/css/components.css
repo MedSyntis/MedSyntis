@@ -1452,11 +1452,13 @@ textarea,
     background-color var(--ds-duration-short4) var(--ds-ease-standard),
     box-shadow var(--ds-duration-short4) var(--ds-ease-standard);
 }
-.ds-card:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible),
+.ds-card:not(.ds-synoptic):has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible),
 .ds-section:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible),
-.ds-opinion:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible),
+.ds-opinion:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible) {
+  z-index: 5;
+}
 .ds-synoptic:has(.ds-menu[open], .ds-popover[open], .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible) {
-  z-index: var(--ds-z-popover, 60);
+  z-index: calc(var(--ds-z-topbar, 30) - 1);
 }
 .ds-card--elevated {
   background: var(--ds-surface-container-low);

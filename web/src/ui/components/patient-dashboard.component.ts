@@ -731,7 +731,7 @@ function renderPointPills(
               lang === "fr" ? "Observation qualitative brute" : "Raw qualitative note"
             }">${iconSvg("ic-info", "ds-icon--xs")}</span>`
           : "";
-        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(pt.formId)}" data-jump-section="${esc(sectionName)}" data-jump-tab="clinical" tabindex="0" data-tooltip="${esc(stripMarkdown(pt.displayValue))}${esc(unitStr)}">
+        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(pt.formId)}" data-jump-section="${esc(sectionName)}" data-jump-tab="clinical" tabindex="0">
           <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
           <strong class="ds-raw-pill__val ds-metric-pill__value ds-markdown-inline">${renderSafeInlineMarkdown(pt.displayValue)}${esc(unitStr)}</strong>
           ${manualBadge}${annotBadge}${deltaBadge}
@@ -750,7 +750,6 @@ interface ChartCardShellProps {
   title: string;
   subtitle: string;
   headerBadgeText?: string;
-  headerBadgeTooltip?: string;
   svgMarkup: string;
   pillsHtml: string;
 }
@@ -758,7 +757,7 @@ interface ChartCardShellProps {
 function renderChartCardShell(props: ChartCardShellProps): string {
   const headerBadgeHtml = props.headerBadgeText
     ? `<div class="ds-card__header-actions">
-        <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(props.sectionName)}" data-jump-tab="clinical" data-tooltip="${esc(props.headerBadgeTooltip ?? "")}">
+        <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(props.sectionName)}" data-jump-tab="clinical">
           ${iconSvg("ic-trend-up")} ${esc(props.headerBadgeText)}
         </span>
       </div>`
@@ -806,9 +805,6 @@ function renderNumericChartCard(
     subtitle,
     headerBadgeText: lastPt
       ? `${stripMarkdown(lastPt.displayValue)}${series.unit ? ` ${series.unit}` : ""} · ${lastPt.formDateLabel}`
-      : undefined,
-    headerBadgeTooltip: lastPt
-      ? `${lang === "fr" ? "Dernier relevé" : "Latest"} (${lastPt.formDateLabel})`
       : undefined,
     svgMarkup,
     pillsHtml: renderPointPills(series.points, series.unit, series.section, lang),
@@ -859,7 +855,7 @@ function renderMfmCombinedChartCard(
             ptIdx === s.points.length - 1
               ? ` data-testid="mfm_legend_item_${esc(s.metricKey)}"`
               : "";
-          return `<div class="ds-raw-pill" role="listitem"${legendTestIdAttr} data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0" data-tooltip="${esc(vis.label)} — ${esc(pt.formDateLabel)} : ${esc(exactVal)}">
+          return `<div class="ds-raw-pill" role="listitem"${legendTestIdAttr} data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
             <span class="ds-chart-legend__dot" style="--legend-color:${esc(vis.color)}" aria-hidden="true"></span>
             <span class="ds-raw-pill__series">${esc(vis.shortLabel)}</span>
             <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
@@ -883,9 +879,6 @@ function renderMfmCombinedChartCard(
     subtitle,
     headerBadgeText: lastPrimaryPt
       ? `${primaryVis.shortLabel} : ${formatExactPointValueWithUnit(lastPrimaryPt.displayValue, primarySeries.unit)} · ${lastPrimaryPt.formDateLabel}`
-      : undefined,
-    headerBadgeTooltip: lastPrimaryPt
-      ? `${primaryVis.shortLabel} — ${lang === "fr" ? "Dernier relevé" : "Latest"} (${lastPrimaryPt.formDateLabel})`
       : undefined,
     svgMarkup,
     pillsHtml: combinedPillsHtml,
