@@ -2086,6 +2086,11 @@ export function renderDossierPage(
       </div>`
     : "";
 
+  const confirmRerunMsg =
+    lang === "fr"
+      ? "Relancer l'analyse IA de cette fiche ? Les rubriques modifiées manuellement seront conservées."
+      : "Rerun AI analysis for this session? Saved manual edits will be preserved.";
+
   const isDashboardView = activeTab === "patient-dashboard";
   const rcpTab = activeTab === "opinions" ? "opinions" : "clinical";
 
@@ -2156,12 +2161,6 @@ export function renderDossierPage(
             <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm ds-patient-header__quick-action" data-open="link-patient-modal" data-testid="btn_link_patient">
               ${iconSvg("ic-link")} Rattacher
             </button>
-            <form class="ds-patient-header__quick-action" method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" style="display:inline-flex">
-              <input type="hidden" name="preserve_manual_edits" value="true">
-              <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-tooltip="Relance l'analyse complète en conservant les modifications manuelles" data-testid="btn_reprocess_form">
-                ${iconSvg("ic-refresh")} Relancer l'IA
-              </button>
-            </form>
             <details class="ds-menu" data-testid="menu-dossier-actions">
               <summary class="ds-menu__trigger" aria-label="Actions contextuelles du dossier patient" title="Actions du dossier">
                 ${iconSvg("ic-more-vert")}
@@ -2172,11 +2171,11 @@ export function renderDossierPage(
                   ${iconSvg("ic-link")}
                   <span>Rattacher à un autre patient…</span>
                 </button>
-                <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" style="margin:0">
+                <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
                   <input type="hidden" name="preserve_manual_edits" value="true">
                   <button type="submit" class="ds-menu__item" role="menuitem">
                     ${iconSvg("ic-refresh")}
-                    <span>Relancer l'analyse IA</span>
+                    <span>${lang === "fr" ? "Relancer cette fiche IA" : "Rerun this AI session"} (${esc(dossier.currentForm.file)})</span>
                   </button>
                 </form>
                 <hr class="ds-menu__divider">
@@ -2270,6 +2269,12 @@ export function renderDossierPage(
           <div class="ds-cluster ds-pdf-desktop-bar" style="justify-content:space-between">
             <span class="ds-label">${iconSvg("ic-file-pdf")} Document source : <code class="ds-mono">${esc(dossier.currentForm.file)}</code></span>
             <div class="ds-cluster" style="gap:var(--ds-space-1)">
+              <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0;display:inline-flex">
+                <input type="hidden" name="preserve_manual_edits" value="true">
+                <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-tooltip="Relancer l'extraction IA pour ce document source (les modifications manuelles sont conservées)" data-testid="btn_reprocess_form_pdf">
+                  ${iconSvg("ic-refresh")} Relancer
+                </button>
+              </form>
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-action="toggle-pdf-expand" data-testid="btn_pdf_expand">
                 ${iconSvg("ic-eye")} Élargir PDF
               </button>
@@ -2279,6 +2284,13 @@ export function renderDossierPage(
                 </summary>
                 <div class="ds-menu__panel" role="menu">
                   <div class="ds-menu__header">Lecteur PDF</div>
+                  <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
+                    <input type="hidden" name="preserve_manual_edits" value="true">
+                    <button type="submit" class="ds-menu__item" role="menuitem">
+                      ${iconSvg("ic-refresh")}
+                      <span>Relancer l'analyse de ce document</span>
+                    </button>
+                  </form>
                   <button type="button" class="ds-menu__item" role="menuitem" data-action="toggle-pdf-expand">
                     ${iconSvg("ic-expand")}
                     <span>Élargir / Réduire le volet PDF</span>
@@ -2325,9 +2337,32 @@ export function renderDossierPage(
           <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-clinical" aria-labelledby="tab-clinical" tabindex="0"${rcpTab === "clinical" ? "" : " hidden"}>
             <div class="ds-cluster" style="justify-content:space-between">
               <span class="ds-small ds-muted">${clinicalSections.length} rubriques structurées · Cliquez sur une catégorie pour la déplier</span>
-              <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-clinical" data-testid="btn_toggle_all_sections">
-                ${iconSvg("ic-layers")} Tout déplier / Tout replier
-              </button>
+              <div class="ds-cluster" style="gap:var(--ds-space-1)">
+                <form class="ds-reprocess-btn--desktop" method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0;display:inline-flex">
+                  <input type="hidden" name="preserve_manual_edits" value="true">
+                  <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-tooltip="Relancer l'extraction IA de cette fiche (les modifications manuelles sont conservées)" data-testid="btn_reprocess_form">
+                    ${iconSvg("ic-refresh")} Relancer cette fiche
+                  </button>
+                </form>
+                <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-clinical" data-testid="btn_toggle_all_sections">
+                  ${iconSvg("ic-layers")} Tout déplier / Tout replier
+                </button>
+                <details class="ds-menu ds-reprocess-menu--mobile" data-testid="menu-clinical-mobile-actions">
+                  <summary class="ds-menu__trigger" aria-label="Actions de la séance RCP" title="Actions de la séance">
+                    ${iconSvg("ic-more-vert")}
+                  </summary>
+                  <div class="ds-menu__panel" role="menu">
+                    <div class="ds-menu__header">Séance RCP (${esc(dossier.currentForm.mdtDate ?? dossier.currentForm.file)})</div>
+                    <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
+                      <input type="hidden" name="preserve_manual_edits" value="true">
+                      <button type="submit" class="ds-menu__item" role="menuitem" data-testid="btn_reprocess_form_mobile">
+                        ${iconSvg("ic-refresh")}
+                        <span>Relancer cette fiche IA</span>
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              </div>
             </div>
             ${sectionsHtml}
           </div>
@@ -2336,9 +2371,32 @@ export function renderDossierPage(
           <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-opinions" aria-labelledby="tab-opinions" tabindex="0"${rcpTab === "opinions" ? "" : " hidden"}>
             <div class="ds-cluster" style="justify-content:space-between">
               <span class="ds-small ds-muted">Synthèse pré-RCP &amp; ${dossier.opinions.length} avis spécialisé(s)</span>
-              <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-opinions" data-testid="btn_toggle_all_opinions">
-                ${iconSvg("ic-layers")} Tout déplier / Tout replier
-              </button>
+              <div class="ds-cluster" style="gap:var(--ds-space-1)">
+                <form class="ds-reprocess-btn--desktop" method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0;display:inline-flex">
+                  <input type="hidden" name="preserve_manual_edits" value="true">
+                  <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-tooltip="Relancer l'extraction IA de cette fiche (les modifications manuelles sont conservées)" data-testid="btn_reprocess_opinions">
+                    ${iconSvg("ic-refresh")} Relancer cette fiche
+                  </button>
+                </form>
+                <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-opinions" data-testid="btn_toggle_all_opinions">
+                  ${iconSvg("ic-layers")} Tout déplier / Tout replier
+                </button>
+                <details class="ds-menu ds-reprocess-menu--mobile" data-testid="menu-opinions-mobile-actions">
+                  <summary class="ds-menu__trigger" aria-label="Actions de la séance RCP" title="Actions de la séance">
+                    ${iconSvg("ic-more-vert")}
+                  </summary>
+                  <div class="ds-menu__panel" role="menu">
+                    <div class="ds-menu__header">Séance RCP (${esc(dossier.currentForm.mdtDate ?? dossier.currentForm.file)})</div>
+                    <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
+                      <input type="hidden" name="preserve_manual_edits" value="true">
+                      <button type="submit" class="ds-menu__item" role="menuitem">
+                        ${iconSvg("ic-refresh")}
+                        <span>Relancer cette fiche IA</span>
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              </div>
             </div>
             ${careOrientationHtml}
             ${opinionSectionsHtml}

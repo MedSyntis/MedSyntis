@@ -4202,7 +4202,6 @@ a.ds-timeline__link:hover {
 .ds-rationale--orientation .ds-rationale__text {
   white-space: pre-line;
   line-height: 1.65;
-  max-width: 85ch;
 }
 .ds-rationale--orientation .ds-rationale__text.ds-markdown {
   white-space: normal;
@@ -4438,6 +4437,22 @@ a.ds-timeline__link:hover {
     border: 1px solid var(--ds-color-border);
     border-radius: var(--ds-radius-lg);
     background: var(--ds-surface-container);
+  }
+}
+
+/* Reprocess Action: Prominent on desktop, discreet contextual menu on mobile to prevent accidental touch trigger */
+.ds-reprocess-btn--desktop {
+  display: inline-flex;
+}
+.ds-reprocess-menu--mobile {
+  display: none !important;
+}
+@media (max-width: 48rem) {
+  .ds-reprocess-btn--desktop {
+    display: none !important;
+  }
+  .ds-reprocess-menu--mobile {
+    display: inline-flex !important;
   }
 }
 

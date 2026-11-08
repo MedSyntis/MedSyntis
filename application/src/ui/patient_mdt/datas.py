@@ -1507,7 +1507,7 @@ def render_unified_patient_banner(
                 )
                 rerun_target_label = f" sur {default_file}" if is_power else ""
                 if st.button(
-                    "Relancer l'IA",
+                    "Relancer cette fiche",
                     icon=":material/refresh:",
                     type="secondary",
                     help=(

@@ -1406,6 +1406,17 @@
     var form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
 
+    var confirmMsg = form.getAttribute("data-confirm");
+    if (!confirmMsg && e.submitter && typeof e.submitter.getAttribute === "function") {
+      confirmMsg = e.submitter.getAttribute("data-confirm");
+    }
+    if (confirmMsg) {
+      if (!window.confirm(confirmMsg)) {
+        e.preventDefault();
+        return;
+      }
+    }
+
     var secId = form.getAttribute("data-ajax-section");
     if (secId) {
       e.preventDefault();

@@ -1088,6 +1088,14 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     );
     expect(dossierRes.body).toContain('data-patient-view="rcp"');
 
+    // Fiche-level reprocess controls: desktop direct button + mobile discreet menu + confirmation protection
+    expect(dossierRes.body).toContain('data-testid="btn_reprocess_form"');
+    expect(dossierRes.body).toContain('data-testid="menu-clinical-mobile-actions"');
+    expect(dossierRes.body).toContain('data-testid="btn_reprocess_form_mobile"');
+    expect(dossierRes.body).toContain("data-confirm=");
+    expect(dossierRes.body).toContain('class="ds-reprocess-btn--desktop"');
+    expect(dossierRes.body).toContain('class="ds-menu ds-reprocess-menu--mobile"');
+
     // Tab button itself must NOT contain any obsolete warning badge
     const tabBtnMatch = dossierRes.body.match(
       /<button[^>]*id="tab-patient-dashboard"[^>]*>([\s\S]*?)<\/button>/,
