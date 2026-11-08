@@ -556,8 +556,13 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         MotorFunctionStatus: {
           sma_type: "Type 2",
           motor_milestones: ["Sitting unsupported"],
-          hfmse_score: 40,
+          mfm_scale_version: "MFM-32",
+          mfm_total_score: 62.5,
+          mfm_d1_score: 15.4,
+          mfm_d2_score: 77.8,
+          mfm_d3_score: 90.5,
           rulm_score: 26,
+          hfmse_score: 40,
         },
         RespiratoryFunction: {
           requires_ventilation_support: false,
@@ -609,8 +614,13 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         MotorFunctionStatus: {
           sma_type: "Type 2",
           motor_milestones: ["Position assise autonome stable"],
-          hfmse_score: 42,
+          mfm_scale_version: "MFM-32",
+          mfm_total_score: 65.6,
+          mfm_d1_score: 17.9,
+          mfm_d2_score: 80.6,
+          mfm_d3_score: 95.2,
           rulm_score: 28,
+          hfmse_score: 42,
         },
         RespiratoryFunction: {
           requires_ventilation_support: false,

@@ -1162,6 +1162,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/patients/S-0007?domain=sma&view=dashboard",
     });
     expect(smaRes.statusCode).toBe(200);
+    expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.mfm_total_score"');
     expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.rulm_score"');
     expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.hfmse_score"');
     expect(smaRes.body).toContain("Station assise sans appui");

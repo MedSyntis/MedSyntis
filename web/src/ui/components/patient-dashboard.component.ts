@@ -432,7 +432,7 @@ function renderPointPills(
         const unitStr =
           unit && !pt.displayValue.includes(unit.replace(/\s+/g, "")) ? ` ${unit}` : "";
         const manualBadge = pt.isManual
-          ? `<span class="ds-badge ds-badge--manual ds-badge--sm" title="${
+          ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-tooltip="${
               lang === "fr" ? "Valeur corrigée manuellement" : "Manually edited value"
             }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`
           : "";
@@ -440,11 +440,11 @@ function renderPointPills(
           ? `<span class="ds-raw-pill__delta">Δ ${esc(pt.deltaDisplay)}</span>`
           : "";
         const annotBadge = pt.isAnnotativeOnly
-          ? `<span class="ds-badge ds-badge--incomplete ds-badge--sm" title="${
+          ? `<span class="ds-badge ds-badge--incomplete ds-badge--sm" data-tooltip="${
               lang === "fr" ? "Observation qualitative brute" : "Raw qualitative note"
             }">${iconSvg("ic-info", "ds-icon--xs")}</span>`
           : "";
-        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(pt.formId)}" data-jump-section="${esc(sectionName)}" data-jump-tab="clinical" tabindex="0" title="${esc(stripMarkdown(pt.displayValue))}${esc(unitStr)}">
+        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(pt.formId)}" data-jump-section="${esc(sectionName)}" data-jump-tab="clinical" tabindex="0" data-tooltip="${esc(stripMarkdown(pt.displayValue))}${esc(unitStr)}">
           <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
           <strong class="ds-raw-pill__val ds-metric-pill__value ds-markdown-inline">${renderSafeInlineMarkdown(pt.displayValue)}${esc(unitStr)}</strong>
           ${manualBadge}${annotBadge}${deltaBadge}
@@ -474,7 +474,7 @@ function renderNumericChartCard(
           : "1 session";
 
   return `<article class="ds-card ds-metric-chart-card" data-testid="metric_chart_${esc(series.metricKey)}" data-metric-key="${esc(series.metricKey)}" data-section="${esc(series.section)}">
-    <div class="ds-card__header" data-jump-section="${esc(series.section)}" data-jump-tab="clinical" tabindex="0" title="${lang === "fr" ? "Cliquer pour déplier cette rubrique dans le dossier" : "Click to expand this section in the record"}">
+    <div class="ds-card__header" data-jump-section="${esc(series.section)}" data-jump-tab="clinical" tabindex="0">
       <div>
         <h4 class="ds-card__title">
           <span class="ds-icon-box">${iconSvg(secMeta.icon)}</span>
@@ -487,7 +487,7 @@ function renderNumericChartCard(
       ${
         lastPt
           ? `<div class="ds-card__header-actions">
-              <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(series.section)}" data-jump-tab="clinical" title="${lang === "fr" ? "Dernier relevé" : "Latest"} (${esc(lastPt.formDateLabel)})">
+              <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(series.section)}" data-jump-tab="clinical" data-tooltip="${lang === "fr" ? "Dernier relevé" : "Latest"} (${esc(lastPt.formDateLabel)})">
                 ${iconSvg("ic-trend-up")} ${esc(stripMarkdown(lastPt.displayValue))}${series.unit ? ` ${esc(series.unit)}` : ""} · ${esc(lastPt.formDateLabel)}
               </span>
             </div>`

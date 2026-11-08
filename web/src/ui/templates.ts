@@ -1791,17 +1791,13 @@ export function renderDossierPage(
       </a>
     </li>`;
 
-  const markerJumpTitle =
-    lang === "fr"
-      ? "Cliquer pour déplier le détail de cette rubrique"
-      : "Click to expand this detail section";
   const markersHtml = dossier.synopticMarkers
     .map((m) => {
       const deltaHtml = m.delta
         ? ` <span class="ds-delta ds-delta--${m.delta.direction}">${iconSvg(m.delta.icon, "ds-icon--xs")} ${esc(m.delta.deltaText)}</span>`
         : "";
-      return `<div class="ds-markers__item ds-markers__item--interactive" data-jump-section="${esc(m.targetSection)}" data-jump-tab="${esc(m.targetTab)}" data-testid="marker-${esc(m.key)}" tabindex="0" title="${esc(markerJumpTitle)}">
-        <dt class="ds-markers__label"><span>${esc(m.label)}</span><span class="ds-markers__jump-icon" aria-hidden="true">${iconSvg("ic-arrow-right", "ds-icon--xs")}</span></dt>
+      return `<div class="ds-markers__item ds-markers__item--interactive" data-jump-section="${esc(m.targetSection)}" data-jump-tab="${esc(m.targetTab)}" data-testid="marker-${esc(m.key)}" tabindex="0">
+        <dt>${esc(m.label)}</dt>
         <dd class="${m.isMissing ? "is-missing" : ""}">${esc(m.value)}${deltaHtml}</dd>
       </div>`;
     })
@@ -2214,7 +2210,7 @@ export function renderDossierPage(
               jumpSection: "CareOrientationProposal",
               jumpTab: "opinions",
             })}
-            <div class="ds-hovercard" data-jump-section="MTDCompleted" data-jump-tab="opinions" tabindex="0" title="${esc(markerJumpTitle)}">
+            <div class="ds-hovercard" data-jump-section="MTDCompleted" data-jump-tab="opinions" tabindex="0">
               <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="MTDCompleted" data-jump-tab="opinions" data-testid="badge-completeness">
                 ${iconSvg(dossier.completenessBadge.icon)} ${esc(dossier.completenessBadge.label)}
               </span>
@@ -2231,7 +2227,7 @@ export function renderDossierPage(
             </div>
             ${
               dossier.careProposal?.proposedCareType || dossier.careProposal?.clinicalRationale
-                ? `<div class="ds-hovercard" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" tabindex="0" title="${esc(markerJumpTitle)}">
+                ? `<div class="ds-hovercard" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" tabindex="0">
                     <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt">
                       ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
                     </span>
@@ -2241,23 +2237,23 @@ export function renderDossierPage(
                       ${dossier.careProposal.clinicalRationale ? `<div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(dossier.careProposal.clinicalRationale)}</div>` : ""}
                     </div>
                   </div>`
-                : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt" tabindex="0" title="${esc(markerJumpTitle)}">
+                : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt" tabindex="0">
                     ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
                   </span>`
             }
             ${
               dossier.specialties.length === 1 && dossier.specialties[0]
-                ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate ds-badge--interactive" data-jump-section="${esc(dossier.specialties[0].name)}" data-jump-tab="opinions" data-testid="badge-specialties" tabindex="0" title="${esc(markerJumpTitle)}">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
+                ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate ds-badge--interactive" data-jump-section="${esc(dossier.specialties[0].name)}" data-jump-tab="opinions" data-testid="badge-specialties" tabindex="0">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
                 : ""
             }
             ${
               dossier.specialties.length > 1
-                ? `<div class="ds-hovercard" data-jump-section="ExpertAnswer" data-jump-tab="opinions" tabindex="0" title="${esc(markerJumpTitle)}">
+                ? `<div class="ds-hovercard" data-jump-section="ExpertAnswer" data-jump-tab="opinions" tabindex="0">
                     <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="ExpertAnswer" data-jump-tab="opinions" data-testid="badge-specialties">${iconSvg("ic-stethoscope")} ${dossier.specialties.length} ${lang === "fr" ? "spécialités" : "specialties"}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-stethoscope")} ${lang === "fr" ? "Spécialités mobilisées" : "Involved specialties"} (${dossier.specialties.length})</span>
                       <ul class="ds-hovercard__list">
-                        ${dossier.specialties.map((s) => `<li data-jump-section="${esc(s.name)}" data-jump-tab="opinions" style="cursor:pointer">${esc(s.label)}</li>`).join("")}
+                        ${dossier.specialties.map((s) => `<li data-jump-section="${esc(s.name)}" data-jump-tab="opinions">${esc(s.label)}</li>`).join("")}
                       </ul>
                     </div>
                   </div>`

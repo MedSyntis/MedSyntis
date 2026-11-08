@@ -368,7 +368,22 @@ export function computeLongitudinalDeltas(
     },
     {
       section: "MotorFunctionStatus",
-      field: "hfmse_score",
+      field: "mfm_total_score",
+      higherIsWorse: false,
+    },
+    {
+      section: "MotorFunctionStatus",
+      field: "mfm_d1_score",
+      higherIsWorse: false,
+    },
+    {
+      section: "MotorFunctionStatus",
+      field: "mfm_d2_score",
+      higherIsWorse: false,
+    },
+    {
+      section: "MotorFunctionStatus",
+      field: "mfm_d3_score",
       higherIsWorse: false,
     },
     {
@@ -379,6 +394,11 @@ export function computeLongitudinalDeltas(
     {
       section: "MotorFunctionStatus",
       field: "chop_intend_score",
+      higherIsWorse: false,
+    },
+    {
+      section: "MotorFunctionStatus",
+      field: "hfmse_score",
       higherIsWorse: false,
     },
     {

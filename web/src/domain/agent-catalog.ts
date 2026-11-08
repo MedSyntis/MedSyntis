@@ -143,12 +143,12 @@ export function getDomainQuickPrompts(
         ? [
             "Quels sont les critères PNDS d'adaptation thérapeutique (nusinersen / risdiplam) ?",
             "Quel bilan respiratoire (CVF, VNI, Cough Assist) est requis avant la RCP ?",
-            "Quelles échelles motrices standardisées (HFMSE, RULM, CHOP-INTEND) utiliser ?",
+            "Quelles échelles motrices standardisées (MFM, RULM, CHOP-INTEND) utiliser ?",
           ]
         : [
             "What are the PNDS criteria for SMN therapy adaptation?",
             "Which respiratory assessments (FVC, NIV) are required before MDT?",
-            "Which motor scales (HFMSE, RULM, CHOP-INTEND) are recommended?",
+            "Which motor scales (MFM, RULM, CHOP-INTEND) are recommended?",
           ];
     }
     return lang === "fr"
@@ -167,12 +167,12 @@ export function getDomainQuickPrompts(
   if (domain === "sma") {
     return lang === "fr"
       ? [
-          "Quelle est l'évolution des scores moteurs (HFMSE / RULM) et de la CVF ?",
+          "Quelle est l'évolution des scores moteurs (MFM / RULM) et de la CVF ?",
           "Quels examens ou bilans manquent pour statuer en RCP ?",
           "Résumer les propositions des experts (neurologie, pneumologie, orthopédie).",
         ]
       : [
-          "What is the evolution of motor scores (HFMSE / RULM) and FVC?",
+          "What is the evolution of motor scores (MFM / RULM) and FVC?",
           "Which exams are missing before the MDT board decision?",
           "Summarize the specialist opinions (neurology, pulmonology, orthopedics).",
         ];

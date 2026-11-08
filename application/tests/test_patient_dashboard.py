@@ -35,19 +35,37 @@ def test_sma_motor_function_accepts_int_float_ratio_bilateral_and_annotative_raw
     m_int = PatientMDTSmaForm.MotorFunctionStatus(
         sma_type="Type 2",
         motor_milestones=["Assis sans appui"],
+        mfm_scale_version="MFM-32",
+        mfm_total_score=65,
+        mfm_d1_score=18,
+        mfm_d2_score=80,
+        mfm_d3_score=95,
         hfmse_score=42,
         chop_intend_score=50,
         rulm_score=32,
     )
+    assert m_int.mfm_scale_version == "MFM-32"
+    assert m_int.mfm_total_score == 65
+    assert m_int.mfm_d1_score == 18
+    assert m_int.mfm_d2_score == 80
+    assert m_int.mfm_d3_score == 95
     assert m_int.rulm_score == 32
     assert m_int.hfmse_score == 42
 
-    # Float values
+    # Float values & percentage strings for MFM
     m_float = PatientMDTSmaForm.MotorFunctionStatus(
         sma_type="Type 2",
         motor_milestones=["Assis sans appui"],
+        mfm_total_score=64.6,
+        mfm_d1_score="12.8%",
+        mfm_d2_score="69,4%",
+        mfm_d3_score="85%",
         rulm_score=31.5,
     )
+    assert m_float.mfm_total_score == 64.6
+    assert m_float.mfm_d1_score == 12.8
+    assert m_float.mfm_d2_score == 69.4
+    assert m_float.mfm_d3_score == 85
     assert m_float.rulm_score == 31.5
 
     # Ratio strings (e.g., "34/37")
@@ -110,6 +128,20 @@ def test_sma_motor_function_rejects_out_of_bounds_numeric_scores():
             hfmse_score=75,
         )
 
+    with pytest.raises(ValidationError):
+        PatientMDTSmaForm.MotorFunctionStatus(
+            sma_type="Type 2",
+            motor_milestones=[],
+            mfm_total_score=105,
+        )
+
+    with pytest.raises(ValidationError):
+        PatientMDTSmaForm.MotorFunctionStatus(
+            sma_type="Type 2",
+            motor_milestones=[],
+            mfm_d1_score="110%",
+        )
+
 
 # ---------------------------------------------------------------------------
 # 2. Raw Metric Parsing & Multi-Year Longitudinal Series
@@ -118,7 +150,23 @@ def test_sma_motor_function_rejects_out_of_bounds_numeric_scores():
 
 def test_parse_raw_metric_value_preserves_raw_and_extracts_numeric_or_bilateral():
     """parse_raw_metric_value must keep raw_value untouched while extracting plotting coordinates."""
-    descriptors = {d.metric_key: d for d in get_domain_metric_descriptors("sma")}
+    desc_list = get_domain_metric_descriptors("sma")
+    # MFM metrics must be prioritized at the top of SMA_METRIC_DESCRIPTORS, with HFMSE after RULM/CHOP-INTEND
+    motor_keys = [
+        d.metric_key
+        for d in desc_list
+        if d.section == "MotorFunctionStatus" and d.value_type == "numeric_or_mixed"
+    ]
+    assert motor_keys == [
+        "MotorFunctionStatus.mfm_total_score",
+        "MotorFunctionStatus.mfm_d1_score",
+        "MotorFunctionStatus.mfm_d2_score",
+        "MotorFunctionStatus.mfm_d3_score",
+        "MotorFunctionStatus.rulm_score",
+        "MotorFunctionStatus.chop_intend_score",
+        "MotorFunctionStatus.hfmse_score",
+    ]
+    descriptors = {d.metric_key: d for d in desc_list}
     rulm_desc = descriptors["MotorFunctionStatus.rulm_score"]
 
     obs_ratio = parse_raw_metric_value("34/37", rulm_desc)

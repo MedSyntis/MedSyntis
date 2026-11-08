@@ -154,10 +154,10 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
     tab: "clinical",
     editable: true,
     order: 65,
-    titleFr: "Classification clinique & scores moteurs (HFMSE / RULM / CHOP-INTEND)",
-    titleEn: "Motor Function Status (HFMSE / RULM / CHOP-INTEND)",
+    titleFr: "Classification clinique & scores moteurs (MFM / RULM / CHOP-INTEND)",
+    titleEn: "Motor Function Status (MFM / RULM / CHOP-INTEND)",
     defaultUserPrompt:
-      "Determine the SMA clinical type (1, 2, 3, or 4), list the patient's current motor milestones, and extract any standardized motor scale scores found in the clinical records (HFMSE, CHOP INTEND, RULM).",
+      "Determine the SMA clinical type (1, 2, 3, or 4), list the patient's current motor milestones, and extract standardized motor scale scores found in the clinical records, prioritizing MFM (MFM-32 or MFM-20: Total, D1, D2, D3 in %), RULM, and CHOP INTEND (or HFMSE if documented).",
     domains: ["sma"],
   },
   RespiratoryFunction: {

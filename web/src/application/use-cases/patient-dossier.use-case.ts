@@ -481,15 +481,30 @@ export class PatientDossierUseCase {
           targetSection: "GeneticDiagnosis",
           targetTab: "clinical",
         },
-        {
-          key: "hfmse_score",
-          label: "HFMSE",
-          value: mot.hfmse_score != null ? `${mot.hfmse_score}/66` : translateValue(null, lang),
-          isMissing: mot.hfmse_score == null,
-          targetSection: "MotorFunctionStatus",
-          targetTab: "clinical",
-          delta: deltaMap.get("hfmse_score"),
-        },
+        mot.mfm_total_score != null || mot.hfmse_score == null
+          ? {
+              key: "mfm_total_score",
+              label: mot.mfm_scale_version ? String(mot.mfm_scale_version) : "MFM",
+              value:
+                mot.mfm_total_score != null
+                  ? String(mot.mfm_total_score).endsWith("%")
+                    ? String(mot.mfm_total_score)
+                    : `${mot.mfm_total_score} %`
+                  : translateValue(null, lang),
+              isMissing: mot.mfm_total_score == null,
+              targetSection: "MotorFunctionStatus",
+              targetTab: "clinical",
+              delta: deltaMap.get("mfm_total_score"),
+            }
+          : {
+              key: "hfmse_score",
+              label: "HFMSE",
+              value: `${mot.hfmse_score}/66`,
+              isMissing: false,
+              targetSection: "MotorFunctionStatus",
+              targetTab: "clinical",
+              delta: deltaMap.get("hfmse_score"),
+            },
         {
           key: "rulm_score",
           label: "RULM",

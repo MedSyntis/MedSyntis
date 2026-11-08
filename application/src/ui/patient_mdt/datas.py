@@ -825,8 +825,16 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
             return f" — {_truncate(' · '.join(parts))}"
     elif model_name == "MotorFunctionStatus":
         stype = model_data.get("sma_type")
+        mfm_tot = model_data.get("mfm_total_score")
+        parts = []
         if stype:
-            return f" — {_truncate(stype)}"
+            parts.append(_truncate(stype))
+        if mfm_tot is not None and str(mfm_tot).strip() != "":
+            clean_mfm = _strip_markdown_inline(str(mfm_tot)).strip()
+            suffix = "" if clean_mfm.endswith("%") else " %"
+            parts.append(f"MFM {clean_mfm}{suffix}")
+        if parts:
+            return f" — {' · '.join(parts)}"
     return ""
 
 
@@ -2177,14 +2185,18 @@ def _compute_longitudinal_deltas(
     if c_chemo > p_chemo:
         deltas.append(f":violet-badge[💊 +{c_chemo - p_chemo} ligne(s) de chimio.]")
 
-    # 5. SMA motor scores evolution (HFMSE / CHOP-INTEND / RULM)
+    # 5. SMA motor scores evolution (MFM prioritized over RULM / CHOP-INTEND / HFMSE)
     if isinstance(current_doc.get("MotorFunctionStatus"), dict) and isinstance(
         prev_doc.get("MotorFunctionStatus"), dict
     ):
-        for field_key, label_short in (
-            ("hfmse_score", "HFMSE"),
-            ("chop_intend_score", "CHOP-INTEND"),
-            ("rulm_score", "RULM"),
+        for field_key, label_short, unit_suffix in (
+            ("mfm_total_score", "MFM", "%"),
+            ("mfm_d1_score", "MFM D1", "%"),
+            ("mfm_d2_score", "MFM D2", "%"),
+            ("mfm_d3_score", "MFM D3", "%"),
+            ("rulm_score", "RULM", ""),
+            ("chop_intend_score", "CHOP-INTEND", ""),
+            ("hfmse_score", "HFMSE", ""),
         ):
             c_sc = current_doc["MotorFunctionStatus"].get(field_key)
             p_sc = prev_doc["MotorFunctionStatus"].get(field_key)
@@ -2193,11 +2205,13 @@ def _compute_longitudinal_deltas(
                 and isinstance(p_sc, (int, float))
                 and c_sc != p_sc
             ):
-                diff = c_sc - p_sc
+                diff = round(c_sc - p_sc, 1)
+                if isinstance(c_sc, int) and isinstance(p_sc, int):
+                    diff = c_sc - p_sc
                 sign = "+" if diff > 0 else ""
                 b_col = "green" if diff > 0 else "orange"
                 deltas.append(
-                    f":{b_col}-badge[🦿 {label_short} : {p_sc} → {c_sc} ({sign}{diff})]"
+                    f":{b_col}-badge[🦿 {label_short} : {p_sc}{unit_suffix} → {c_sc}{unit_suffix} ({sign}{diff}{unit_suffix})]"
                 )
 
     # 6. Completeness resolution
@@ -2315,6 +2329,14 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
             marker_pairs.append(
                 ("🦿 Type SMA", _clean_marker_val(sma_t), "MotorFunctionStatus")
             )
+        mfm_tot = data["MotorFunctionStatus"].get("mfm_total_score")
+        if mfm_tot is not None and str(mfm_tot).strip() != "":
+            clean_mfm = _clean_marker_val(mfm_tot)
+            if clean_mfm != "Non renseigné":
+                suffix = "" if clean_mfm.endswith("%") else " %"
+                marker_pairs.append(
+                    ("🦿 Score MFM", f"{clean_mfm}{suffix}", "MotorFunctionStatus")
+                )
     if isinstance(data.get("GeneticDiagnosis"), dict):
         copies = data["GeneticDiagnosis"].get("smn2_copy_count")
         if copies is not None:

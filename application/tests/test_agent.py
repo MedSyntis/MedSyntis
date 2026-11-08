@@ -604,9 +604,14 @@ class TestMedSyntisAgent(unittest.TestCase):
         )
         for score_field in (
             "sma_type",
-            "hfmse_score",
-            "chop_intend_score",
+            "mfm_scale_version",
+            "mfm_total_score",
+            "mfm_d1_score",
+            "mfm_d2_score",
+            "mfm_d3_score",
             "rulm_score",
+            "chop_intend_score",
+            "hfmse_score",
         ):
             self.assertFalse(
                 _has_markdown_schema(sma_motor_schema["properties"][score_field]),

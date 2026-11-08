@@ -595,6 +595,9 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       "MotorFunctionStatus",
       {
         best_motor_function: "Sitter",
+        mfm_scale_version: "MFM-32",
+        mfm_total_score: "64.6%",
+        mfm_d1_score: "15.4",
         rulm_score: "34/37",
         hfmse_score: "31.5",
         chop_intend_score: "Non testable (fatigue)",
@@ -602,11 +605,15 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       {},
       smaSchema,
     );
+    expect(coercedRatio.mfm_scale_version).toBe("MFM-32");
+    expect(coercedRatio.mfm_total_score).toBe(64.6);
+    expect(coercedRatio.mfm_d1_score).toBe(15.4);
     expect(coercedRatio.rulm_score).toBe("34/37");
     expect(coercedRatio.hfmse_score).toBe(31.5);
     expect(coercedRatio.chop_intend_score).toBe("Non testable (fatigue)");
 
-    const rulmSpec = SMA_METRIC_SPECS[0]!;
+    expect(SMA_METRIC_SPECS[0]?.field).toBe("mfm_total_score");
+    const rulmSpec = SMA_METRIC_SPECS.find((s) => s.field === "rulm_score")!;
     const obsRatio = parseRawMetricObservation("34/37", rulmSpec);
     expect(obsRatio.numericValue).toBe(34);
     expect(obsRatio.displayValue).toBe("34/37");
