@@ -1,5 +1,4 @@
 from typing import Any, ClassVar, Optional
-import re
 
 from pydantic import Field, field_validator
 
@@ -71,15 +70,15 @@ class PatientMDTSmaForm(PatientMDTForm):
         motor_milestones: list[MarkdownStr] = Field(
             description="Achieved motor milestones (e.g. head control, sitting unsupported, standing, independent walking)"
         )
-        hfmse_score: Optional[int | float | MarkdownStr] = Field(
+        hfmse_score: Optional[int | float | str] = Field(
             default=None,
             description="Hammersmith Functional Motor Scale Expanded (HFMSE) raw score (0-66, ratio, bilateral, or clinical note)",
         )
-        chop_intend_score: Optional[int | float | MarkdownStr] = Field(
+        chop_intend_score: Optional[int | float | str] = Field(
             default=None,
             description="CHOP INTEND raw score (usually for Type 1 infants, 0-64, ratio, or clinical note)",
         )
-        rulm_score: Optional[int | float | MarkdownStr] = Field(
+        rulm_score: Optional[int | float | str] = Field(
             default=None,
             description="Revised Upper Limb Module (RULM) raw score (0-37, ratio, bilateral D/G, or clinical note)",
         )
@@ -88,7 +87,7 @@ class PatientMDTSmaForm(PatientMDTForm):
         def _validate_raw_motor_scale(
             value: Any, min_val: float, max_val: float, label: str
         ) -> int | float | str | None:
-            """Validate a motor scale value while preserving raw ratios, bilateral scores, and clinical notes."""
+            """Validate a motor scale value while stripping verbose LLM commentary and preserving raw scores."""
             if value is None:
                 return None
             if isinstance(value, bool):
@@ -103,14 +102,18 @@ class PatientMDTSmaForm(PatientMDTForm):
                 cleaned = value.strip()
                 if not cleaned:
                     return None
-                if re.fullmatch(r"[-+]?\d+(?:\.\d+)?", cleaned):
+                first_token = cleaned.split()[0]
+                if "/" in first_token:
+                    return first_token
+                try:
                     num = float(cleaned)
-                    if num < min_val or num > max_val:
-                        raise ValueError(
-                            f"{label} score must be between {min_val:g} and {max_val:g}."
-                        )
-                    return int(num) if re.fullmatch(r"[-+]?\d+", cleaned) else num
-                return cleaned
+                except ValueError:
+                    return cleaned
+                if num < min_val or num > max_val:
+                    raise ValueError(
+                        f"{label} score must be between {min_val:g} and {max_val:g}."
+                    )
+                return int(num) if num.is_integer() and "." not in cleaned else num
             raise ValueError(f"Unsupported type for {label}.")
 
         @field_validator("hfmse_score", mode="before")
@@ -129,7 +132,10 @@ class PatientMDTSmaForm(PatientMDTForm):
             return cls._validate_raw_motor_scale(v, 0, 37, "RULM")
 
         question: ClassVar[str] = (
-            "Determine the SMA clinical type (1, 2, 3, or 4), list the patient's current motor milestones, and extract any standardized motor scale scores found in the clinical records (HFMSE, CHOP INTEND, RULM)."
+            "Determine the SMA clinical type (1, 2, 3, or 4), list the patient's current motor milestones, "
+            "and extract any standardized motor scale scores found in the clinical records (HFMSE, CHOP INTEND, RULM). "
+            "IMPORTANT: For hfmse_score, chop_intend_score, and rulm_score, output ONLY the raw score value itself "
+            "(e.g. 9, '9/66', '18/37', or '28 (D) / 30 (G)'). Do NOT include dates, deltas, comparisons to baseline, or progression history."
         )
 
     class RespiratoryFunction(PatientMDTForm.default_model):

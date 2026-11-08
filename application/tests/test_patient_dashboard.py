@@ -76,6 +76,16 @@ def test_sma_motor_function_accepts_int_float_ratio_bilateral_and_annotative_raw
     )
     assert m_annot.rulm_score == "Non testable (fatigue)"
 
+    # Verbose LLM strings with dates, deltas, and progression history are stripped to the score only
+    m_verbose = PatientMDTSmaForm.MotorFunctionStatus(
+        sma_type="Type 2",
+        motor_milestones=["Assis sans appui"],
+        hfmse_score="9/66 (dernier suivi du 17/12/2026 ; +5 pts vs T0 où HFMSE 4/66) — progression progressive sur 1 an : 4 → 5 → 7 → 9",
+        rulm_score="18/37 (dernier suivi du 17/12/2026 ; D9 / G9, +6 pts vs T0 où RULM 12/37) — progression progressive sur 1 an : 12 → 14 → 16 → 18",
+    )
+    assert m_verbose.hfmse_score == "9/66"
+    assert m_verbose.rulm_score == "18/37"
+
 
 def test_sma_motor_function_rejects_out_of_bounds_numeric_scores():
     """Pure numeric scores outside clinical scale bounds (e.g. RULM > 37 or < 0) must still fail validation."""

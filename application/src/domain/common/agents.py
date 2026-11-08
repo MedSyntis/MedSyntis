@@ -45,7 +45,7 @@ class Agents:
         4. Synthesize your final answer strictly using the retrieved evidence. Do not extrapolate, assume, or provide medical opinions not documented in the text.
         5. If the information cannot be found in the resource after searching, clearly state that the resource does not contain information to answer the question.
         6. Respect strictly the required JSON output format.
-        7. Free-text string fields support Markdown formatting (**bold** for key concepts/guidelines, *italics*, and bullet lists), while Reference.name and enum/select fields must remain exact plain strings.
+        7. Free-text narrative string fields support Markdown formatting (**bold** for key concepts/guidelines, *italics*, and bullet lists), while Reference.name, enum/select fields, and raw score/measurement fields (e.g. HFMSE, RULM, CHOP INTEND, biomarkers) must remain exact concise values without dates, deltas, or historical progression commentary.
         """
 
     class Administratives_agent(MedSyntisAgent):

@@ -598,19 +598,20 @@ class TestMedSyntisAgent(unittest.TestCase):
 
         # 4. SMA MotorFunctionStatus & GeneticDiagnosis
         sma_motor_schema = PatientMDTSmaForm.MotorFunctionStatus.model_json_schema()
-        for field_name in (
-            "motor_milestones",
+        self.assertTrue(
+            _has_markdown_schema(sma_motor_schema["properties"]["motor_milestones"]),
+            "Expected MarkdownStr schema on MotorFunctionStatus.motor_milestones",
+        )
+        for score_field in (
+            "sma_type",
             "hfmse_score",
             "chop_intend_score",
             "rulm_score",
         ):
-            self.assertTrue(
-                _has_markdown_schema(sma_motor_schema["properties"][field_name]),
-                f"Expected MarkdownStr schema on MotorFunctionStatus.{field_name}",
+            self.assertFalse(
+                _has_markdown_schema(sma_motor_schema["properties"][score_field]),
+                f"MotorFunctionStatus.{score_field} must remain a plain score/option without MarkdownStr",
             )
-        self.assertFalse(
-            _has_markdown_schema(sma_motor_schema["properties"]["sma_type"])
-        )
 
         # 5. ChatResponse & DebateTurn
         self.assertTrue(

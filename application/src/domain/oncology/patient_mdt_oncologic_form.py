@@ -71,7 +71,7 @@ class PatientMDTOncologicForm(PatientMDTForm):
             default_factory=list,
             description="List of organs affected by distant metastases (e.g., liver, lung, peritoneum, bone, distant lymph nodes)",
         )
-        target_lesion_size_mm: Optional[float | int | MarkdownStr] = Field(
+        target_lesion_size_mm: Optional[float | int | str] = Field(
             default=None,
             description="Size of the primary tumor or main target lesion in millimeters (mm)",
         )
@@ -93,19 +93,19 @@ class PatientMDTOncologicForm(PatientMDTForm):
             default=None,
             description="Is the tumor MSI (True) or MSS (False)",
         )
-        ca19_9: Optional[float | int | MarkdownStr] = Field(
+        ca19_9: Optional[float | int | str] = Field(
             default=None,
             description="Serum CA 19-9 tumor marker level (U/mL)",
         )
-        ace: Optional[float | int | MarkdownStr] = Field(
+        ace: Optional[float | int | str] = Field(
             default=None,
             description="Serum CEA / ACE (Carcinoembryonic Antigen) tumor marker level (ng/mL)",
         )
-        afp: Optional[float | int | MarkdownStr] = Field(
+        afp: Optional[float | int | str] = Field(
             default=None,
             description="Serum Alpha-Fetoprotein (AFP) tumor marker level (ng/mL, crucial for hepatocellular carcinoma)",
         )
-        dpd_uracilemia: Optional[float | int | MarkdownStr] = Field(
+        dpd_uracilemia: Optional[float | int | str] = Field(
             default=None,
             description="Pre-therapeutic plasma uracilemia (ng/mL) or DPD deficiency status (mandatory in France before 5-FU / capecitabine)",
         )
