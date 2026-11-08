@@ -52,6 +52,12 @@ export const BOOLEAN_SELECT_OPTIONS: FieldSelectOption[] = [
   { value: "false", labelFr: "Non", labelEn: "No" },
 ];
 
+export const MTD_COMPLETENESS_SELECT_OPTIONS: FieldSelectOption[] = [
+  { value: "true", labelFr: "Oui", labelEn: "Yes" },
+  { value: "partial", labelFr: "Partiel", labelEn: "Partial" },
+  { value: "false", labelFr: "Non", labelEn: "No" },
+];
+
 const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
   PatientAdministrative: [
     { key: "last_name", inputType: "text", nullable: false, defaultValue: "" },
@@ -702,10 +708,10 @@ const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
   MTDCompleted: [
     {
       key: "is_mtd_complete",
-      inputType: "boolean",
+      inputType: "select",
       nullable: false,
-      defaultValue: false,
-      options: BOOLEAN_SELECT_OPTIONS,
+      defaultValue: "false",
+      options: MTD_COMPLETENESS_SELECT_OPTIONS,
     },
     {
       key: "what_missing",
@@ -850,6 +856,11 @@ export function parseJsonSchemaToFieldSchemas(
         nullable: false,
         defaultValue: [],
       });
+      continue;
+    }
+
+    if (propKey === "is_mtd_complete" && fb) {
+      results.push({ ...fb });
       continue;
     }
 

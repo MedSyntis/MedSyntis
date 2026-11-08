@@ -546,6 +546,21 @@ class PatientMDTForm:
                     out[agent_key] = sub_dump
             return out
 
+        if model_cls.__name__ == "MTDCompleted" and "mtd_complete" not in payload:
+            payload = {
+                "mtd_complete": {
+                    "is_mtd_complete": payload.get("is_mtd_complete", True),
+                    "what_missing": payload.get("what_missing", []),
+                    "reflection": payload.get("reflection"),
+                    "references": payload.get("references", []),
+                },
+                **(
+                    {"reasoning_thinking": payload["reasoning_thinking"]}
+                    if "reasoning_thinking" in payload
+                    else {}
+                ),
+            }
+
         validated = model_cls.model_validate(payload)
         dumped = _serialize_persistence_value(validated.model_dump())
         if "reasoning_thinking" in payload:
@@ -726,47 +741,76 @@ class PatientMDTForm:
         relevant_experts = []
         urgency_level = "Indéfini"
         urgency_score = 0
+        expert_priority_entries: list[tuple[str, int, str]] = []
 
         if "ExpertAnswer" in d and isinstance(d["ExpertAnswer"], dict):
             for agent_name, agent_data in d["ExpertAnswer"].items():
                 if isinstance(agent_data, dict):
-                    if agent_data.get("expert_relevant"):
-                        relevant_experts.append(agent_name)
+                    if not agent_data.get("expert_relevant"):
+                        continue
+                    relevant_experts.append(agent_name)
 
                     raw_prio = agent_data.get("patient_priority", "")
                     p_prio = str(
                         raw_prio.value if isinstance(raw_prio, Enum) else raw_prio
                     ).lower()
+                    why_rel = str(agent_data.get("why_relevant") or "").strip()
                     for urgency in list(PatientPriority):  # noqa: F405
-                        if p_prio == urgency.value.lower():
+                        if p_prio in (urgency.value.lower(), urgency.name.lower()):
+                            exp_score = 0
                             if urgency.name == "urgent":
+                                exp_score = 2
                                 if urgency_score < 2:
                                     urgency_score = 2
                                     urgency_level = "Urgent"
                             elif urgency.name == "medium":
+                                exp_score = 1
                                 if urgency_score < 1:
                                     urgency_score = 1
                                     urgency_level = "Semi-urgent"
                             elif urgency.name == "low":
+                                exp_score = 0
                                 if urgency_score == 0:
                                     urgency_level = "Standard"
+                            if why_rel and why_rel.lower() != "no data":
+                                expert_priority_entries.append(
+                                    (agent_name, exp_score, why_rel)
+                                )
+
+        def _parse_completeness_flag(val: Any) -> bool | str | None:
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, str):
+                norm = val.strip().lower()
+                if norm in ("partial", "partiel", "partially", "partiellement"):
+                    return "partial"
+                if norm in ("true", "yes", "oui", "1", "complet", "complete"):
+                    return True
+                if norm in ("false", "no", "non", "0", "incomplet", "incomplete"):
+                    return False
+            return None
 
         raw_missing_candidates: list[str] = []
-        raw_is_mtd_complete: bool | None = None
+        raw_is_mtd_complete: bool | str | None = None
         if "MTDCompleted" in d and isinstance(d["MTDCompleted"], dict):
             mtd_section = d["MTDCompleted"]
             if "mtd_complete" in mtd_section and isinstance(
                 mtd_section.get("mtd_complete"), dict
             ):
                 mtd_comp = mtd_section["mtd_complete"]
-                if isinstance(mtd_comp.get("is_mtd_complete"), bool):
-                    raw_is_mtd_complete = mtd_comp["is_mtd_complete"]
+                parsed_flag = _parse_completeness_flag(mtd_comp.get("is_mtd_complete"))
+                if parsed_flag is None and "is_mtd_complete" in mtd_section:
+                    parsed_flag = _parse_completeness_flag(
+                        mtd_section.get("is_mtd_complete")
+                    )
+                raw_is_mtd_complete = parsed_flag
                 m = mtd_comp.get("what_missing", [])
                 if isinstance(m, list):
                     raw_missing_candidates.extend(str(x) for x in m if x)
             elif "what_missing" in mtd_section or "is_mtd_complete" in mtd_section:
-                if isinstance(mtd_section.get("is_mtd_complete"), bool):
-                    raw_is_mtd_complete = mtd_section["is_mtd_complete"]
+                raw_is_mtd_complete = _parse_completeness_flag(
+                    mtd_section.get("is_mtd_complete")
+                )
                 m = mtd_section.get("what_missing", [])
                 if isinstance(m, list):
                     raw_missing_candidates.extend(str(x) for x in m if x)
@@ -822,17 +866,53 @@ class PatientMDTForm:
         if hide_missing_items or (
             raw_missing and all(m in hidden_set for m in raw_missing)
         ):
+            completeness_status = "yes"
             is_complete = True
         elif not is_ai_completed:
+            completeness_status = "no"
             is_complete = False
-        elif raw_is_mtd_complete is not None and not missing:
-            is_complete = raw_is_mtd_complete
+        elif raw_is_mtd_complete is True:
+            completeness_status = "yes"
+            is_complete = True
+        elif raw_is_mtd_complete == "partial":
+            completeness_status = "partial"
+            is_complete = False
+        elif raw_is_mtd_complete is False:
+            completeness_status = "no"
+            is_complete = False
         else:
             is_complete = len(missing) == 0
+            completeness_status = "yes" if is_complete else "no"
+
+        if completeness_status == "yes":
+            completeness_label = "Oui"
+            completeness_tone = "green"
+            completeness_summary = (
+                f"{len(missing)} élément(s) facultatif manquant(s)"
+                if len(missing) > 0
+                else "Dossier complet"
+            )
+        elif completeness_status == "partial":
+            completeness_label = "Partiel"
+            completeness_tone = "orange"
+            completeness_summary = (
+                f"{len(missing)} élément(s) manquant(s)"
+                if len(missing) > 0
+                else "Dossier partiel"
+            )
+        else:
+            completeness_label = "Non"
+            completeness_tone = "red"
+            completeness_summary = (
+                f"{len(missing)} élément(s) manquant(s)"
+                if len(missing) > 0
+                else "Dossier incomplet"
+            )
 
         care_adaptation_suggested = None
         proposed_care_type = None
         suggested_priority_raw = None
+        clinical_rationale = None
         if "CareOrientationProposal" in d and isinstance(
             d["CareOrientationProposal"], dict
         ):
@@ -843,6 +923,7 @@ class PatientMDTForm:
                 )
                 proposed_care_type = proposal_data.get("proposed_care_type")
                 suggested_priority_raw = proposal_data.get("suggested_priority")
+                clinical_rationale = proposal_data.get("clinical_rationale")
             else:
                 for agent_data in proposal_data.values():
                     if (
@@ -854,6 +935,7 @@ class PatientMDTForm:
                         )
                         proposed_care_type = agent_data.get("proposed_care_type")
                         suggested_priority_raw = agent_data.get("suggested_priority")
+                        clinical_rationale = agent_data.get("clinical_rationale")
                         break
 
         if suggested_priority_raw is not None:
@@ -888,6 +970,41 @@ class PatientMDTForm:
             urgency_score = 0
             urgency_level = "Standard"
 
+        matching_expert_entries = [
+            entry for entry in expert_priority_entries if entry[1] == urgency_score
+        ] or sorted(expert_priority_entries, key=lambda x: x[1], reverse=True)
+
+        expert_labels = {
+            "pancreas expert": "Pancréas",
+            "oesophagus expert": "Œsophage",
+            "hepatocellular expert": "Foie & CHC",
+            "neurologist expert": "Neurologie",
+            "geneticist expert": "Génétique",
+            "pulmonologist expert": "Pneumologie",
+            "physiotherapy expert": "MPR / Kinésithérapie",
+            "orthopedist expert": "Orthopédie & Rachis",
+            "radiotherapy": "Radiothérapie",
+            "anatomopathologie": "Anatomopathologie",
+        }
+        urgency_reasons: list[str] = []
+        seen_reasons: set[str] = set()
+        for agent_name, _, why_rel in matching_expert_entries:
+            label = expert_labels.get(agent_name.strip().lower(), agent_name)
+            formatted = f"**{label}** : {why_rel}"
+            norm = formatted.lower()
+            if norm not in seen_reasons:
+                seen_reasons.add(norm)
+                urgency_reasons.append(formatted)
+
+        clean_rationale = str(clinical_rationale or "").strip()
+        if clean_rationale and clean_rationale.lower() != "no data":
+            norm_rat = clean_rationale.lower()
+            if norm_rat not in seen_reasons:
+                seen_reasons.add(norm_rat)
+                urgency_reasons.append(clean_rationale)
+
+        urgency_reason = "\n\n".join(urgency_reasons) if urgency_reasons else ""
+
         patient_id = d.get("patient_id")
         file_name = d.get("file", "")
         link = (
@@ -908,11 +1025,17 @@ class PatientMDTForm:
             "experts": relevant_experts,
             "missing": missing,
             "is_complete": is_complete,
+            "completeness_status": completeness_status,
+            "completeness_label": completeness_label,
+            "completeness_tone": completeness_tone,
+            "completeness_summary": completeness_summary,
             "all_missing_items": raw_missing,
             "hidden_missing_items": hidden_missing_items,
             "hide_missing_items": hide_missing_items,
             "urgency": urgency_level,
             "urgency_score": urgency_score,
+            "urgency_reason": urgency_reason,
+            "urgency_reasons": urgency_reasons,
             "link": link,
             "care_adaptation_suggested": care_adaptation_suggested,
             "proposed_care_type": proposed_care_type,
@@ -1121,8 +1244,10 @@ class PatientMDTForm:
         collaborative = True
 
         question: ClassVar[str] = """
-            As an expert, determine if the MDT (Multidisciplinary Team) file is complete.
-            Are there missing elements required for a treatment decision?
+            As an expert, determine if the MDT (Multidisciplinary Team) file is complete (`is_mtd_complete`):
+            - Set `is_mtd_complete` to `true` if all mandatory elements required for the MDT decision are present (if optional complementary documents could be present, you may still list them in `what_missing`).
+            - Set `is_mtd_complete` to `"partial"` if the file allows a partial discussion while awaiting complementary elements listed in `what_missing`.
+            - Set `is_mtd_complete` to `false` if essential blocking elements required for a decision are missing (list them in `what_missing`).
             You can use search_on_ressources tool what type of elements/documents is needed.
             You can use tools multiple times for each element
             """
@@ -1163,7 +1288,7 @@ class PatientMDTForm:
             Determine whether an initiation or adaptation of care should be discussed for this patient.
             If yes, specify:
             1. The suggested priority level for the MDT discussion.
-               CRITICAL SAFETY RULE: If even a single expert in the debate flags the case as urgent or high priority, you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
+               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate flags the case as urgent or high priority, you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
             2. The proposed area or modality of care to discuss.
             Provide a clear clinical rationale detailing the positions of the experts and highlighting any divergence in opinions regarding urgency.
             """

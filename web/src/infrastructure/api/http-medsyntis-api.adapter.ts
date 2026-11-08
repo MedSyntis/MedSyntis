@@ -211,6 +211,16 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         ? (raw.experts as string[])
         : [];
 
+    const priorityLevel = normalizePriorityLevel(raw.priority_level ?? raw.priority ?? raw.urgency);
+    const priorityReasons = Array.isArray(raw.urgency_reasons)
+      ? (raw.urgency_reasons as unknown[]).map((r) => String(r).trim()).filter(Boolean)
+      : [];
+    const priorityReason = raw.urgency_reason
+      ? String(raw.urgency_reason).trim()
+      : priorityReasons.length > 0
+        ? priorityReasons.join("\n\n")
+        : null;
+
     return {
       id: String(raw.patient_id ?? raw.id ?? file),
       file,
@@ -223,7 +233,9 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       gender: raw.gender && raw.gender !== "Not_given" ? String(raw.gender) : null,
       domain,
       mdtDate: this.formatIsoDate(raw.mdt_date ?? raw.date),
-      priorityLevel: normalizePriorityLevel(raw.priority_level ?? raw.priority ?? raw.urgency),
+      priorityLevel,
+      priorityReason,
+      priorityReasons,
       isComplete,
       missingCount,
       missingItems,
@@ -291,10 +303,24 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     const derivedMissing = Array.isArray(nestedComp.what_missing)
       ? (nestedComp.what_missing as string[])
       : [];
+    const rawCompFlag = nestedComp.is_mtd_complete ?? mtdComp.is_mtd_complete;
+    const rawCompNorm = String(rawCompFlag ?? "")
+      .trim()
+      .toLowerCase();
     const derivedIsComplete =
-      typeof nestedComp.is_mtd_complete === "boolean"
-        ? nestedComp.is_mtd_complete
-        : derivedMissing.length === 0;
+      rawCompFlag === true ||
+      rawCompNorm === "true" ||
+      rawCompNorm === "yes" ||
+      rawCompNorm === "oui"
+        ? true
+        : rawCompFlag === false ||
+            rawCompNorm === "false" ||
+            rawCompNorm === "no" ||
+            rawCompNorm === "non" ||
+            rawCompNorm === "partial" ||
+            rawCompNorm === "partiel"
+          ? false
+          : derivedMissing.length === 0;
 
     const orientSec = sections.CareOrientationProposal ?? {};
     const derivedAdapt =
@@ -313,9 +339,8 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     for (const [agentKey, val] of Object.entries(expertSec)) {
       if (!val || typeof val !== "object") continue;
       const op = val as Record<string, unknown>;
-      if (op.expert_relevant !== false) {
-        derivedSpecialties.push(agentKey);
-      }
+      if (!op.expert_relevant) continue;
+      derivedSpecialties.push(agentKey);
       const p = normalizePriorityLevel(op.patient_priority);
       if (p === "high") highestPriority = "high";
       else if (p === "medium" && highestPriority !== "high") highestPriority = "medium";
@@ -356,11 +381,9 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         ? true
         : !isAiCompleted || !hasMtdCompleted
           ? false
-          : missingCount === 0
-            ? typeof rawMetrics.is_complete === "boolean"
-              ? rawMetrics.is_complete
-              : derivedIsComplete
-            : false;
+          : typeof rawMetrics.is_complete === "boolean"
+            ? rawMetrics.is_complete
+            : derivedIsComplete;
     const specialties = Array.isArray(rawMetrics.specialties)
       ? (rawMetrics.specialties as string[])
       : Array.isArray(rawMetrics.experts)
@@ -1516,6 +1539,10 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       urgency: String(it.urgency ?? ""),
       urgencyScore: Number(it.urgency_score ?? 0),
       priorityLevel: normalizePriorityLevel(it.priority_level ?? it.urgency),
+      priorityReason: it.urgency_reason ? String(it.urgency_reason) : null,
+      priorityReasons: Array.isArray(it.urgency_reasons)
+        ? (it.urgency_reasons as string[]).map(String).filter(Boolean)
+        : [],
       isComplete: Boolean(it.is_complete ?? true),
       missingCount: Number(it.missing_count ?? 0),
       missingItems: Array.isArray(it.missing_items)
@@ -1572,6 +1599,10 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       urgency: String(c.urgency ?? ""),
       urgencyScore: Number(c.urgency_score ?? 0),
       priorityLevel: normalizePriorityLevel(c.priority_level ?? c.urgency),
+      priorityReason: c.urgency_reason ? String(c.urgency_reason) : null,
+      priorityReasons: Array.isArray(c.urgency_reasons)
+        ? (c.urgency_reasons as string[]).map(String).filter(Boolean)
+        : [],
       isComplete: Boolean(c.is_complete ?? true),
       missingCount: Number(c.missing_count ?? 0),
       missingItems: Array.isArray(c.missing_items) ? (c.missing_items as string[]).map(String) : [],

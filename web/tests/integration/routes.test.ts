@@ -126,6 +126,9 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('data-testid="synoptic-card"');
+    expect(res.body).toContain("2 spécialités");
+    expect(res.body).toContain("Spécialités mobilisées (2)");
+    expect(res.body).not.toContain("+1 spécialité(s)");
     expect(res.body).toContain('data-testid="session-timeline"');
     expect(res.body).toContain('data-testid="split-view"');
     expect(res.body).toContain("jeanne_fictive_2026_11_06.pdf");
@@ -144,6 +147,9 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     // Missing items interactive list visible inside MTDCompleted
     expect(res.body).toContain('data-testid="missing-items-panel"');
     expect(res.body).toContain('data-testid="missing-items-list"');
+    expect(res.body).toContain('class="ds-missing-list__content"');
+    expect(res.body).toContain('class="ds-missing-list__icon"');
+    expect(res.body).toContain('class="ds-missing-list__text ds-markdown"');
     // PatientMDTFormCheck hidden outside expert mode
     expect(res.body).not.toContain('data-testid="section-PatientMDTFormCheck"');
     // Zero raw JSON blocks for MTDCompleted or RadiologicalExams

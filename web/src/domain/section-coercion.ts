@@ -367,10 +367,15 @@ export function coerceSectionUpdatePayload(
       rawBody.is_mtd_complete !== undefined
         ? rawBody.is_mtd_complete
         : (existingSectionData.is_mtd_complete ?? existingNested.is_mtd_complete);
-    const isComplete =
-      rawComplete !== undefined
-        ? coerceBooleanValue(rawComplete, whatMissing.length === 0)
-        : whatMissing.length === 0;
+    const rawCompStr = String(rawComplete ?? "")
+      .trim()
+      .toLowerCase();
+    const isComplete: boolean | "partial" =
+      rawCompStr === "partial" || rawCompStr === "partiel"
+        ? "partial"
+        : rawComplete !== undefined
+          ? coerceBooleanValue(rawComplete, whatMissing.length === 0)
+          : whatMissing.length === 0;
     const rawReflection =
       rawBody.reflection !== undefined
         ? rawBody.reflection

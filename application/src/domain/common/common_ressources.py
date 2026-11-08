@@ -2,7 +2,7 @@ from enum import Enum
 from datetime import date, datetime
 import re
 
-from typing import Annotated, Any, Optional, ClassVar
+from typing import Annotated, Any, ClassVar, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, PastDate, field_validator
 
@@ -388,17 +388,35 @@ class ExpertSuggestion(BaseModel):
 
 
 class MTDComplete(BaseModel):
-    is_mtd_complete: bool = Field(
+    is_mtd_complete: Union[bool, Literal["partial"]] = Field(
         default=True,
-        description="Based on your specialty and provided documents, is the MDT file complete?",
+        description=(
+            "Based on your specialty and provided documents, is the MDT file complete? "
+            "(True if complete, 'partial' if partially complete, False if incomplete)"
+        ),
     )
+
+    @field_validator("is_mtd_complete", mode="before")
+    @classmethod
+    def _normalize_is_mtd_complete(cls, v: Any) -> bool | Literal["partial"]:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            norm = v.strip().lower()
+            if norm in ("partial", "partiel", "partially", "partiellement"):
+                return "partial"
+            if norm in ("true", "yes", "oui", "1", "complet", "complete"):
+                return True
+            if norm in ("false", "no", "non", "0", "incomplet", "incomplete"):
+                return False
+        return bool(v)
 
     reflection: Optional[MarkdownStr] = Field(
         default=None,
         description="Detailed reflection, reasoning, or synthesis of the collaborative team discussion",
     )
 
-    what_missing: list[MarkdownStr] = Field(
+    what_missing: list[str] = Field(
         default=[], description="List of missing elements required for a decision"
     )
 

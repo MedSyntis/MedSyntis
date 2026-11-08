@@ -2565,22 +2565,60 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-missing-list__item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--ds-space-3);
-  padding: 0.45rem 0.75rem;
+  padding: 0.55rem 0.85rem;
   border-radius: var(--ds-radius-sm);
   background: var(--ds-color-surface);
   border: 0;
   font-size: var(--ds-text-sm);
   transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
-.ds-missing-list__text {
+.ds-missing-list__content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ds-missing-list__icon {
   display: inline-flex;
   align-items: center;
-  gap: var(--ds-space-2);
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--ds-color-warning);
+}
+.ds-missing-list__text {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--ds-color-text);
+  font-weight: var(--ds-weight-normal);
+  line-height: var(--ds-line-relaxed);
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.ds-missing-list__text p {
+  margin: 0;
+}
+.ds-missing-list__text p + p {
+  margin-top: var(--ds-space-1);
+}
+.ds-missing-list__text p:first-child {
   font-weight: var(--ds-weight-medium);
+}
+.ds-missing-list__text ul,
+.ds-missing-list__text ol {
+  margin: var(--ds-space-1) 0 0 0;
+  padding-left: 1.25rem;
+}
+.ds-missing-list__text li {
+  margin: 0.15rem 0;
+  line-height: var(--ds-line-relaxed);
+}
+.ds-missing-list__text li::marker {
+  color: var(--ds-color-text-subtle);
 }
 /* Manual section & M3 Tonal surface section headers (Vert / Orange / Rouge — zero border) */
 .ds-section--manual > summary { background: color-mix(in srgb, var(--ds-manual-bg) 45%, var(--ds-color-surface)); }
@@ -4296,6 +4334,41 @@ a.ds-timeline__link:hover {
   color: var(--ds-color-primary-text);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* Markdown Tables (Clinical GFM tables with responsive scroll) */
+.ds-markdown table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: var(--ds-space-2) 0;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-line-normal);
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ds-markdown thead,
+.ds-markdown tbody {
+  display: table;
+  width: 100%;
+  table-layout: auto;
+}
+.ds-markdown th,
+.ds-markdown td {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--ds-color-border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: normal;
+  min-width: 5.5rem;
+}
+.ds-markdown th {
+  background: var(--ds-surface-container);
+  color: var(--ds-color-text);
+  font-weight: var(--ds-weight-semibold);
 }
 
 /* Emojis & Pictograms in Markdown: Normalized clinical scale */

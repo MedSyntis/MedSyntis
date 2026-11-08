@@ -32,6 +32,7 @@ import {
   computeWorklistKpis,
   deriveCompletenessInfo,
   deriveOrientationInfo,
+  derivePriorityBadgeInfo,
   filterAndSortCards,
   normalizePriorityLevel,
   priorityRank,
@@ -108,6 +109,13 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(pending.status).toBe("pending");
     expect(pending.icon).toBe("ic-clock");
     expect(pending.label).toBe("À discuter en RCP");
+
+    const prioWithReasons = derivePriorityBadgeInfo("high", "fr", false, {
+      urgency_reason: "**Pancréas** : Progression sous FOLFIRINOX",
+      urgency_reasons: ["**Pancréas** : Progression sous FOLFIRINOX"],
+    });
+    expect(prioWithReasons.reason).toBe("**Pancréas** : Progression sous FOLFIRINOX");
+    expect(prioWithReasons.reasons).toEqual(["**Pancréas** : Progression sous FOLFIRINOX"]);
   });
 
   it("derives completeness status and missing count", () => {
@@ -133,6 +141,18 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(complete.status).toBe("complete");
     expect(complete.icon).toBe("ic-check-circle");
     expect(complete.label).toBe("Dossier complet");
+
+    const completeWithOptional = deriveCompletenessInfo(
+      {
+        is_complete: true,
+        missing_count: 2,
+        missing_items: ["TEP-TDM", "Oncogénétique"],
+      },
+      "fr",
+    );
+    expect(completeWithOptional.status).toBe("complete");
+    expect(completeWithOptional.badgeClass).toBe("ds-badge--complete");
+    expect(completeWithOptional.label).toBe("2 élément(s) facultatif manquant(s)");
 
     const pendingAi = deriveCompletenessInfo(
       {
@@ -1188,6 +1208,15 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(blockHtml).toContain("<code>KRAS</code>");
     expect(blockHtml).toContain("<ul>");
     expect(blockHtml).toContain("<li>Ligne 1 : <strong>FOLFIRINOX</strong></li>");
+
+    // GFM Table rendering
+    const tableMd =
+      "| Axe | Élément | Statut |\n|---|---|---|\n| Génétique | SMN1 exon 7 | Manquant |";
+    const tableHtml = renderSafeMarkdown(tableMd);
+    expect(tableHtml).toContain("<table>");
+    expect(tableHtml).toContain("<th>Axe</th>");
+    expect(tableHtml).toContain("<td>Génétique</td>");
+    expect(tableHtml).toContain("<td>SMN1 exon 7</td>");
 
     // Inline GFM rendering (no <p> wrapper)
     const inlineHtml = renderSafeInlineMarkdown(

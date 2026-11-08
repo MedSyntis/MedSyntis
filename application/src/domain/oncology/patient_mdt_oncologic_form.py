@@ -288,7 +288,7 @@ class PatientMDTOncologicForm(PatientMDTForm):
             Determine if an initiation or adaptation of medical, surgical, or radiological care should be discussed for this patient.
             If yes, specify:
             1. The suggested priority level (`suggested_priority`) for the MDT discussion.
-               CRITICAL SAFETY RULE: If even a single expert in the debate recommends or identifies that the case is urgent or high priority (e.g., due to rapid tumor progression, biliary obstruction, or suspected metastases), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts disagree or recommend a lower priority.
+               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate recommends or identifies that the case is urgent or high priority (e.g., due to rapid tumor progression, biliary obstruction, or suspected metastases), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts disagree or recommend a lower priority.
             2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., surgery, chemotherapy, biliary drainage, endoscopy, radiotherapy, or surveillance).
             Provide a clear `clinical_rationale` detailing the positions of the experts and TNCD references, especially highlighting any divergence in opinions regarding urgency.
             """

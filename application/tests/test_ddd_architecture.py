@@ -221,7 +221,38 @@ class TestPureDomainEntitiesAndValueObjects:
         assert metrics["urgency"] == "Urgent"
         assert metrics["urgency_score"] == 2
         assert metrics["experts"] == ["pancreas expert"]
+        assert "**Pancréas** : Urgence pancréatique" in metrics["urgency_reasons"]
+        assert "Urgence pancréatique" in metrics["urgency_reason"]
         assert metrics["patient"] == "Jean Dupont"
+
+        # Non-relevant expert (expert_relevant=False) priority must be ignored
+        doc_non_rel = {
+            **raw_doc,
+            "ExpertAnswer": {
+                "pancreas expert": {
+                    "expert_relevant": True,
+                    "patient_priority": "Patient is not urgent",
+                    "why_relevant": "Surveillance standard post-opératoire",
+                    "sources_relevant": [],
+                    "suggestions": [],
+                },
+                "oesophagus expert": {
+                    "expert_relevant": False,
+                    "patient_priority": "Patient must be treated urgently",
+                    "why_relevant": "Hors périmètre œsophagien",
+                    "sources_relevant": [],
+                    "suggestions": [],
+                },
+            },
+        }
+        metrics_non_rel = PatientMDTOncologicForm.extract_card_metrics(doc_non_rel)
+        assert metrics_non_rel["urgency"] == "Standard"
+        assert metrics_non_rel["urgency_score"] == 0
+        assert metrics_non_rel["experts"] == ["pancreas expert"]
+        assert metrics_non_rel["urgency_reasons"] == [
+            "**Pancréas** : Surveillance standard post-opératoire"
+        ]
+        assert "Hors périmètre" not in metrics_non_rel["urgency_reason"]
         # Without MTDCompleted section evaluated by AI, is_complete must be False
         assert metrics["is_complete"] is False
 
@@ -231,6 +262,54 @@ class TestPureDomainEntitiesAndValueObjects:
         }
         metrics_complete = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
         assert metrics_complete["is_complete"] is True
+        assert metrics_complete["completeness_status"] == "yes"
+        assert metrics_complete["completeness_label"] == "Oui"
+        assert metrics_complete["completeness_tone"] == "green"
+        assert metrics_complete["completeness_summary"] == "Dossier complet"
+
+        # If is_mtd_complete is True ("Oui") and optional missing items are present, stays complete/green with optional summary
+        raw_doc["MTDCompleted"] = {
+            "mtd_complete": {
+                "is_mtd_complete": True,
+                "what_missing": ["TEP-TDM", "Consultation oncogénétique"],
+            }
+        }
+        metrics_opt = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
+        assert metrics_opt["is_complete"] is True
+        assert metrics_opt["completeness_status"] == "yes"
+        assert metrics_opt["completeness_label"] == "Oui"
+        assert metrics_opt["completeness_tone"] == "green"
+        assert (
+            metrics_opt["completeness_summary"] == "2 élément(s) facultatif manquant(s)"
+        )
+
+        # If is_mtd_complete is "partial" ("Partiel"), tone is orange and is_complete is False
+        raw_doc["MTDCompleted"] = {
+            "mtd_complete": {
+                "is_mtd_complete": "partial",
+                "what_missing": ["IRM hépatique"],
+            }
+        }
+        metrics_partial = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
+        assert metrics_partial["is_complete"] is False
+        assert metrics_partial["completeness_status"] == "partial"
+        assert metrics_partial["completeness_label"] == "Partiel"
+        assert metrics_partial["completeness_tone"] == "orange"
+        assert metrics_partial["completeness_summary"] == "1 élément(s) manquant(s)"
+
+        # If is_mtd_complete is False ("Non"), tone is red and is_complete is False
+        raw_doc["MTDCompleted"] = {
+            "mtd_complete": {
+                "is_mtd_complete": False,
+                "what_missing": ["Anatomopathologie", "TDM TAP"],
+            }
+        }
+        metrics_no = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
+        assert metrics_no["is_complete"] is False
+        assert metrics_no["completeness_status"] == "no"
+        assert metrics_no["completeness_label"] == "Non"
+        assert metrics_no["completeness_tone"] == "red"
+        assert metrics_no["completeness_summary"] == "2 élément(s) manquant(s)"
 
         # If processing_status is not COMPLETED (e.g. PENDING_EXPERTS), is_complete must remain False
         raw_doc["processing_status"] = RCPProcessingStatus.PENDING_EXPERTS.value

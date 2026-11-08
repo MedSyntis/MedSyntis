@@ -81,12 +81,14 @@ export interface DossierFieldView {
   hiddenInReadView?: boolean;
   isModified?: boolean;
   originalAiValue?: string;
+  badgeTone?: "green" | "orange" | "red" | null;
 }
 
 export interface DossierSectionView {
   name: string;
   meta: SectionPresentationMeta;
   summaryText: string;
+  sectionTone?: "green" | "orange" | "red" | null;
   fields: DossierFieldView[];
   subCards: DossierSubCardView[];
   references: CitationRef[];
@@ -131,6 +133,7 @@ export interface PatientDossierView {
     visibleItems: string[];
     hiddenItems: string[];
     hideAll: boolean;
+    isOptional?: boolean;
   };
   orientationBadge: ReturnType<typeof deriveOrientationInfo>;
   specialties: Array<{ name: string; label: string; icon: string }>;
@@ -228,7 +231,14 @@ export class PatientDossierUseCase {
     const patientName = `${lastName} ${firstName}`.trim();
 
     const priorityLevel = normalizePriorityLevel(currentForm.metrics.priority_level);
-    const priorityBadge = derivePriorityBadgeInfo(priorityLevel, lang);
+    const priorityBadge = derivePriorityBadgeInfo(priorityLevel, lang, false, {
+      urgency_reason: currentForm.metrics.urgency_reason
+        ? String(currentForm.metrics.urgency_reason)
+        : null,
+      urgency_reasons: Array.isArray(currentForm.metrics.urgency_reasons)
+        ? currentForm.metrics.urgency_reasons.map(String)
+        : [],
+    });
 
     const mtdCompletedRaw = (currentForm.sections.MTDCompleted ?? {}) as Record<string, unknown>;
     const mtdNested =
@@ -262,16 +272,35 @@ export class PatientDossierUseCase {
       String(currentForm.processingStatus ?? "COMPLETED")
         .trim()
         .toUpperCase() === "COMPLETED";
-    const isFormComplete =
+    const rawMtdCompFlag = mtdNested.is_mtd_complete ?? mtdCompletedRaw.is_mtd_complete;
+    const rawMtdCompNorm = String(rawMtdCompFlag ?? "")
+      .trim()
+      .toLowerCase();
+    const completenessStatus: "yes" | "partial" | "no" =
       hideAllMissing || (allMissingItems.length > 0 && missingItems.length === 0)
-        ? true
+        ? "yes"
         : !isAiCompleted || !hasMtdCompleted
-          ? false
-          : missingItems.length === 0
-            ? typeof currentForm.metrics.is_complete === "boolean"
-              ? currentForm.metrics.is_complete
-              : mtdNested.is_mtd_complete !== false
-            : false;
+          ? "no"
+          : currentForm.metrics.completeness_status === "yes" ||
+              currentForm.metrics.completeness_status === "partial" ||
+              currentForm.metrics.completeness_status === "no"
+            ? currentForm.metrics.completeness_status
+            : rawMtdCompFlag === true ||
+                rawMtdCompNorm === "true" ||
+                rawMtdCompNorm === "yes" ||
+                rawMtdCompNorm === "oui"
+              ? "yes"
+              : rawMtdCompNorm === "partial" || rawMtdCompNorm === "partiel"
+                ? "partial"
+                : rawMtdCompFlag === false ||
+                    rawMtdCompNorm === "false" ||
+                    rawMtdCompNorm === "no" ||
+                    rawMtdCompNorm === "non"
+                  ? "no"
+                  : missingItems.length === 0
+                    ? "yes"
+                    : "no";
+    const isFormComplete = completenessStatus === "yes";
     const completenessBadge = deriveCompletenessInfo(
       {
         is_complete: isFormComplete,
@@ -286,6 +315,7 @@ export class PatientDossierUseCase {
       visibleItems: missingItems,
       hiddenItems: hiddenMissingItems,
       hideAll: hideAllMissing,
+      isOptional: isFormComplete,
     };
 
     const careSec = (currentForm.sections.CareOrientationProposal ?? {}) as Record<string, unknown>;
@@ -628,12 +658,38 @@ export class PatientDossierUseCase {
     }
     if (sectionName === "MTDCompleted") {
       const missing = Array.isArray(rawObj.what_missing) ? rawObj.what_missing.length : 0;
-      if (rawObj.is_mtd_complete === true && missing === 0) {
+      const rawComp = rawObj.is_mtd_complete;
+      const normComp = String(rawComp ?? "")
+        .trim()
+        .toLowerCase();
+      const status: "yes" | "partial" | "no" =
+        rawComp === true || normComp === "true" || normComp === "yes" || normComp === "oui"
+          ? "yes"
+          : normComp === "partial" || normComp === "partiel"
+            ? "partial"
+            : rawComp === false || normComp === "false" || normComp === "no" || normComp === "non"
+              ? "no"
+              : missing === 0
+                ? "yes"
+                : "no";
+      if (status === "yes") {
+        if (missing > 0) {
+          return lang === "fr"
+            ? `${missing} élément(s) facultatif manquant(s)`
+            : `${missing} optional missing item(s)`;
+        }
         return lang === "fr" ? "Dossier complet" : "Complete";
       }
-      return lang === "fr"
-        ? `${Math.max(1, missing)} élément(s) manquant(s)`
-        : `${Math.max(1, missing)} missing item(s)`;
+      if (status === "partial") {
+        if (missing > 0) {
+          return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+        }
+        return lang === "fr" ? "Dossier partiel" : "Partial";
+      }
+      if (missing > 0) {
+        return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+      }
+      return lang === "fr" ? "Dossier incomplet" : "Incomplete";
     }
     if (sectionName === "PatientAdministrative") {
       const fn =
@@ -862,6 +918,28 @@ export class PatientDossierUseCase {
           fieldSchema?.inputType ??
           (LONG_TEXT_KEYS.has(k) || finalVal.length > 90 ? "textarea" : "text");
         const editValue = formatRawEditValue(v, fieldSchema);
+        const badgeTone: "green" | "orange" | "red" | null =
+          sectionName === "MTDCompleted" && k === "is_mtd_complete"
+            ? v === true ||
+              String(v ?? "")
+                .trim()
+                .toLowerCase() === "true" ||
+              String(v ?? "")
+                .trim()
+                .toLowerCase() === "yes" ||
+              String(v ?? "")
+                .trim()
+                .toLowerCase() === "oui"
+              ? "green"
+              : String(v ?? "")
+                    .trim()
+                    .toLowerCase() === "partial" ||
+                  String(v ?? "")
+                    .trim()
+                    .toLowerCase() === "partiel"
+                ? "orange"
+                : "red"
+            : null;
 
         fields.push({
           key: k,
@@ -879,16 +957,25 @@ export class PatientDossierUseCase {
           options: mapOptions(fieldSchema?.options),
           isLongText: inputType === "textarea" || LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
           hiddenInReadView: !wasPresentInRaw,
+          badgeTone,
         });
       }
 
-      const summaryText = this.extractSectionHeaderSummary(
-        sectionName,
-        rawObj,
-        subCards,
-        fields,
-        lang,
-      );
+      const mtdFieldTone =
+        sectionName === "MTDCompleted"
+          ? (fields.find((f) => f.key === "is_mtd_complete")?.badgeTone ?? null)
+          : null;
+      const sectionTone: "green" | "orange" | "red" | null =
+        sectionName === "MTDCompleted"
+          ? (form.metrics.completeness_tone ?? mtdFieldTone ?? "green")
+          : null;
+      const summaryText =
+        sectionName === "MTDCompleted" &&
+        lang === "fr" &&
+        typeof form.metrics.completeness_summary === "string" &&
+        form.metrics.completeness_summary.trim()
+          ? form.metrics.completeness_summary.trim()
+          : this.extractSectionHeaderSummary(sectionName, rawObj, subCards, fields, lang);
 
       const canonicalSection = resolveCanonicalSectionName(sectionName);
       const rawManualMeta =
@@ -937,6 +1024,7 @@ export class PatientDossierUseCase {
         name: sectionName,
         meta,
         summaryText,
+        sectionTone,
         fields,
         subCards,
         references,

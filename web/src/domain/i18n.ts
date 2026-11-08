@@ -207,6 +207,9 @@ export const CLINICAL_TRANSLATIONS_FR: Record<string, string> = {
   False: "Non",
   true: "Oui",
   false: "Non",
+  partial: "Partiel",
+  Partiel: "Partiel",
+  Partial: "Partiel",
   Resectable: "Résécable",
   Borderline: "Borderline (limite)",
   Unresectable: "Non résécable",
@@ -347,6 +350,9 @@ export function translateValue(value: unknown, lang: Language = "fr"): string {
   if (lang === "fr") {
     const translated = CLINICAL_TRANSLATIONS_FR[str] ?? str;
     return formatCleanDateString(translated, "fr");
+  }
+  if (str.toLowerCase() === "partial" || str.toLowerCase() === "partiel") {
+    return "Partial";
   }
   if (
     str === "Not documented in record" ||

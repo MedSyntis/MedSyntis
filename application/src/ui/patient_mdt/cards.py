@@ -239,7 +239,11 @@ def display_as_list(
             row_cols[1].markdown(f"📅 {date_str}")
 
             # Urgency column
-            row_cols[2].markdown(_format_urgency_badge(item.get("urgency")))
+            urg_reason = str(item.get("urgency_reason") or "").strip() or None
+            row_cols[2].markdown(
+                _format_urgency_badge(item.get("urgency")),
+                help=urg_reason,
+            )
 
             # Status column
             with row_cols[3]:
@@ -417,7 +421,10 @@ def display_as_cards(
                     ]
                     badges_str = " ".join([b for b in badges if b])
                     if badges_str:
-                        st.markdown(badges_str)
+                        urg_reason = (
+                            str(item.get("urgency_reason") or "").strip() or None
+                        )
+                        st.markdown(badges_str, help=urg_reason)
 
                     if item["date"] is not None:
                         date_caption = (

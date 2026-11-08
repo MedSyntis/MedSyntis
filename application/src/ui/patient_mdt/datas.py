@@ -618,16 +618,25 @@ def render_mtd_completed_model(pydantic_model: BaseModel):
         render_fields(pydantic_model)
         return
 
-    if mtd_comp.is_mtd_complete and not mtd_comp.what_missing:
-        st.markdown(":green-badge[✅ Dossier complet et conforme aux prérequis RCP]")
-    else:
-        missing_count = len(mtd_comp.what_missing or [])
-        st.markdown(
-            f":orange-badge[⚠️ Dossier à compléter ({missing_count} élément(s) requis)]"
-        )
+    metrics = PatientMDTForm.extract_card_metrics(
+        {
+            "MTDCompleted": pydantic_model.model_dump(),
+            "processing_status": "COMPLETED",
+        }
+    )
+    tone = metrics.get("completeness_tone", "green")
+    label = metrics.get("completeness_label", "Oui")
+    summary = metrics.get("completeness_summary", "Dossier complet")
+    icon = "✅" if tone == "green" else ("⚠️" if tone == "orange" else "❌")
+    st.markdown(f"**Dossier complet ?** :{tone}-badge[{icon} {label} — {summary}]")
 
     if mtd_comp.what_missing:
-        st.markdown("**⚠️ Éléments manquants requis avant ou pour la décision :**")
+        heading = (
+            "**ℹ️ Éléments facultatifs manquants :**"
+            if metrics.get("completeness_status") == "yes"
+            else "**⚠️ Éléments manquants requis avant ou pour la décision :**"
+        )
+        st.markdown(heading)
         for item in mtd_comp.what_missing:
             st.markdown(f"- {item}")
 
@@ -693,13 +702,13 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
         if req is False:
             return " — Surveillance / Suivi habituel"
     elif model_name == "MTDCompleted":
-        mc = model_data.get("mtd_complete")
-        if isinstance(mc, dict):
-            missing = mc.get("what_missing") or []
-            if missing:
-                return f" — ⚠️ {len(missing)} élément(s) à compléter"
-            if mc.get("is_mtd_complete") is True:
-                return " — ✅ Conforme"
+        metrics = PatientMDTForm.extract_card_metrics(
+            {"MTDCompleted": model_data, "processing_status": "COMPLETED"}
+        )
+        tone = metrics.get("completeness_tone", "green")
+        summary = metrics.get("completeness_summary", "Dossier complet")
+        icon = "✅" if tone == "green" else ("⚠️" if tone == "orange" else "❌")
+        return f" — {icon} {summary}"
     elif model_name == "ExpertAnswer":
         rel_count = sum(
             1
@@ -2206,6 +2215,7 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
     """Render a structured synoptic clinical highlight banner at the top of the clinical data panel."""
     metrics = PatientMDTForm.extract_card_metrics(data)
     urgency = metrics.get("urgency", "Indéfini")
+    urg_reason = str(metrics.get("urgency_reason") or "").strip() or None
     missing = metrics.get("missing", [])
     int_req = metrics.get(
         "care_adaptation_suggested", metrics.get("intervention_required")
@@ -2318,6 +2328,8 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
 
     with st.container(border=True):
         help_parts: list[str] = []
+        if urg_reason:
+            help_parts.append(f"**Justification de la priorité :**\n{urg_reason}")
         if int_type and len(str(int_type)) > 24:
             help_parts.append(f"**Orientation pré-RCP :** {int_type}")
         if missing:
@@ -2533,9 +2545,20 @@ def _render_inline_section_editor(
                 if isinstance(raw.get("mtd_complete"), dict)
                 else {}
             )
-            is_comp_val = st.toggle(
-                "Dossier complet et conforme aux prérequis RCP",
-                value=bool(mc_raw.get("is_mtd_complete", True)),
+            raw_comp = mc_raw.get("is_mtd_complete", True)
+            comp_options: list[bool | str] = [True, "partial", False]
+            default_idx = (
+                1
+                if str(raw_comp).strip().lower() in ("partial", "partiel")
+                else (0 if bool(raw_comp) else 2)
+            )
+            is_comp_val = st.selectbox(
+                "Dossier complet ?",
+                options=comp_options,
+                index=default_idx,
+                format_func=lambda v: (
+                    "Oui" if v is True else ("Partiel" if v == "partial" else "Non")
+                ),
             )
             existing_missing = mc_raw.get("what_missing") or []
             missing_df = DataFrame(
@@ -2583,9 +2606,7 @@ def _render_inline_section_editor(
                         section_name=model_name,
                         section_data={
                             "mtd_complete": {
-                                "is_mtd_complete": (
-                                    False if cleaned_missing else is_comp_val
-                                ),
+                                "is_mtd_complete": is_comp_val,
                                 "reflection": refl_val.strip() or None,
                                 "what_missing": cleaned_missing,
                                 "references": mc_raw.get("references") or [],
@@ -3498,7 +3519,7 @@ def form():
         PatientMDTForm.select_latest_analyzed(patient_rcps) if patient_rcps else None
     )
     latest_file = (
-        latest_doc["file"] if latest_doc and "file" in latest_doc else filename
+        str(latest_doc["file"]) if latest_doc and latest_doc.get("file") else filename
     )
 
     selected_file, has_pdf, file_path, active_state = render_unified_patient_banner(

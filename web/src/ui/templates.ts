@@ -18,6 +18,7 @@ import type {
   AgentModuleInfo,
   BatchStatus,
   ClinicalDomain,
+  Language,
   MdtAgendaView,
   PatientListItem,
   QueueJobItem,
@@ -628,6 +629,45 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   return session.hostBoundDomain ? stripDomainQuery(html) : html;
 }
 
+function renderPriorityBadgeHtml(
+  prio: {
+    level: string;
+    icon: string;
+    badgeClass: string;
+    label: string;
+    reason?: string | null;
+    reasons?: string[];
+  },
+  options?: {
+    reason?: string | null;
+    reasons?: string[];
+    testId?: string;
+    lang?: Language;
+  },
+): string {
+  const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
+  const badgeHtml = `<span class="ds-badge ${prio.badgeClass} ds-badge--sm"${testIdAttr}>${iconSvg(prio.icon)} ${esc(prio.label)}</span>`;
+  const rawReasons =
+    options?.reasons && options.reasons.length > 0 ? options.reasons : (prio.reasons ?? []);
+  const rawReason = options?.reason ?? prio.reason ?? null;
+  const reasons = rawReasons.length > 0 ? rawReasons : rawReason ? [rawReason] : [];
+  if (reasons.length === 0) {
+    return badgeHtml;
+  }
+  const titleLabel = options?.lang === "en" ? "Priority rationale" : "Justification de la priorité";
+  const bodyHtml =
+    reasons.length > 1
+      ? `<ul class="ds-hovercard__list">${reasons.map((r) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(r)}</li>`).join("")}</ul>`
+      : `<div class="ds-markdown">${renderSafeMarkdown(reasons[0] ?? "")}</div>`;
+  return `<div class="ds-hovercard" tabindex="0">
+    ${badgeHtml}
+    <div class="ds-hovercard__panel" role="tooltip">
+      <span class="ds-hovercard__title">${iconSvg(prio.icon)} ${esc(titleLabel)}</span>
+      ${bodyHtml}
+    </div>
+  </div>`;
+}
+
 export function renderWorklistPage(
   view: WorklistViewResult,
   session: UserSession,
@@ -745,9 +785,12 @@ export function renderWorklistPage(
 
             return `<tr class="${rowCls}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
               <td data-label="Priorité" data-sort-value="${prioSortVal}">
-                <span class="ds-badge ${prio.badgeClass} ds-badge--sm" data-testid="badge-priority-${esc(c.priorityLevel)}">
-                  ${iconSvg(prio.icon)} ${esc(prio.label)}
-                </span>
+                ${renderPriorityBadgeHtml(prio, {
+                  reason: c.priorityReason,
+                  reasons: c.priorityReasons,
+                  testId: `badge-priority-${c.priorityLevel}`,
+                  lang,
+                })}
               </td>
               <td data-label="Patient" class="ds-table__primary-cell" data-sort-value="${esc(c.patientName)}">
                 <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a><br>
@@ -873,7 +916,11 @@ export function renderWorklistPage(
                 <div class="ds-card__body">
                   <div class="ds-cluster">
                     ${procBadgeHtml}
-                    <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+                    ${renderPriorityBadgeHtml(prio, {
+                      reason: c.priorityReason,
+                      reasons: c.priorityReasons,
+                      lang,
+                    })}
                     ${
                       !effectiveComplete && c.missingItems.length > 0
                         ? `<div class="ds-hovercard" tabindex="0">
@@ -1378,6 +1425,28 @@ export function renderSectionDetailsPartial(
             .join("")}
         </div>`;
 
+  const renderShortFieldValue = (f: (typeof shortFields)[number]): string => {
+    const tone =
+      f.badgeTone ??
+      (sec.name === "MTDCompleted" && f.key === "is_mtd_complete"
+        ? f.value.toLowerCase() === "oui" || f.value.toLowerCase() === "yes"
+          ? "green"
+          : f.value.toLowerCase() === "partiel" || f.value.toLowerCase() === "partial"
+            ? "orange"
+            : "red"
+        : null);
+    if (tone === "green") {
+      return `<span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="badge-mtd-complete-yes">${iconSvg("ic-check-circle", "ds-icon--xs")} ${esc(f.value)}</span>`;
+    }
+    if (tone === "orange") {
+      return `<span class="ds-badge ds-badge--incomplete ds-badge--sm" data-testid="badge-mtd-complete-partial">${iconSvg("ic-warning", "ds-icon--xs")} ${esc(f.value)}</span>`;
+    }
+    if (tone === "red") {
+      return `<span class="ds-badge ds-badge--urgency-high ds-badge--sm" data-testid="badge-mtd-complete-no">${iconSvg("ic-error", "ds-icon--xs")} ${esc(f.value)}</span>`;
+    }
+    return renderSafeInlineMarkdown(f.value);
+  };
+
   const shortFieldsHtml =
     shortFields.length === 0
       ? ""
@@ -1390,7 +1459,7 @@ export function renderSectionDetailsPartial(
                   : ""
               }>
                 <span class="ds-kv__label">${f.isModified ? `${iconSvg("ic-edit-note", "ds-icon--xs")} ` : ""}${esc(f.label)}</span>
-                <span class="ds-kv__value ${f.value === "Non renseigné" || f.value === "Not documented" ? "is-missing" : ""} ds-markdown-inline">${renderSafeInlineMarkdown(f.value)}</span>
+                <span class="ds-kv__value ${f.value === "Non renseigné" || f.value === "Not documented" ? "is-missing" : ""} ds-markdown-inline">${renderShortFieldValue(f)}</span>
               </div>`,
             )
             .join("")}
@@ -1413,11 +1482,17 @@ export function renderSectionDetailsPartial(
           .join("");
 
   const canDismissPerItem = (missingItemsState?.allItems.length ?? 0) > 1;
+  const isOptionalMissingList = Boolean(
+    missingItemsState?.isOptional || sec.sectionTone === "green",
+  );
+  const missingListTitle = isOptionalMissingList
+    ? "Éléments facultatifs manquants"
+    : "Éléments manquants détectés";
   const missingItemsInteractiveHtml =
     sec.name === "MTDCompleted" && missingItemsState && missingItemsState.allItems.length > 0
       ? `<div class="ds-missing-panel" data-testid="missing-items-panel">
           <div class="ds-cluster" style="justify-content:space-between;margin-bottom:var(--ds-space-2)">
-            <span class="ds-label">${iconSvg("ic-warning", "ds-icon--xs")} Éléments manquants détectés (${missingItemsState.visibleItems.length} affiché${missingItemsState.visibleItems.length > 1 ? "s" : ""}${missingItemsState.hiddenItems.length > 0 ? ` · ${missingItemsState.hiddenItems.length} masqué${missingItemsState.hiddenItems.length > 1 ? "s" : ""}` : ""})</span>
+            <span class="ds-label">${iconSvg("ic-warning", "ds-icon--xs")} ${missingListTitle} (${missingItemsState.visibleItems.length} affiché${missingItemsState.visibleItems.length > 1 ? "s" : ""}${missingItemsState.hiddenItems.length > 0 ? ` · ${missingItemsState.hiddenItems.length} masqué${missingItemsState.hiddenItems.length > 1 ? "s" : ""}` : ""})</span>
             <form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex">
               <input type="hidden" name="hidden" value="${missingItemsState.hideAll ? "false" : "true"}">
               <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" data-testid="btn_toggle_missing_list">
@@ -1434,10 +1509,13 @@ export function renderSectionDetailsPartial(
                         item: string,
                         idx: number,
                       ) => `<li class="ds-missing-list__item" data-testid="missing-item-${idx}">
-                        <span class="ds-missing-list__text ds-markdown-inline">${iconSvg("ic-warning", "ds-icon--xs")} ${renderSafeInlineMarkdown(item)}</span>
+                        <div class="ds-missing-list__content">
+                          <span class="ds-missing-list__icon" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--xs")}</span>
+                          <div class="ds-missing-list__text ds-markdown">${renderSafeMarkdown(item)}</div>
+                        </div>
                         ${
                           canDismissPerItem
-                            ? `<form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex">
+                            ? `<form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex;flex-shrink:0">
                                 <input type="hidden" name="toggle_item" value="${esc(item)}">
                                 <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" title="Masquer cet élément" data-testid="btn_dismiss_missing_${idx}">
                                   Masquer
@@ -1459,8 +1537,10 @@ export function renderSectionDetailsPartial(
                     ${missingItemsState.hiddenItems
                       .map(
                         (item: string) => `<li class="ds-missing-list__item is-dismissed">
-                          <span class="ds-missing-list__text ds-markdown-inline" style="text-decoration:line-through;opacity:0.7">${renderSafeInlineMarkdown(item)}</span>
-                          <form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex">
+                          <div class="ds-missing-list__content">
+                            <div class="ds-missing-list__text ds-markdown" style="text-decoration:line-through;opacity:0.7">${renderSafeMarkdown(item)}</div>
+                          </div>
+                          <form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex;flex-shrink:0">
                             <input type="hidden" name="toggle_item" value="${esc(item)}">
                             <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm">Restaurer</button>
                           </form>
@@ -1542,13 +1622,25 @@ export function renderSectionDetailsPartial(
       : "";
 
   // Collapsed by default (no `open` attribute) as requested by the user
-  const secToneClass =
+  const resolvedMtdTone =
     sec.name === "MTDCompleted"
-      ? sec.summaryText.toLowerCase().includes("incomplet") ||
-        sec.summaryText.toLowerCase().includes("manquant")
+      ? (sec.sectionTone ??
+        (sec.summaryText.toLowerCase().includes("partiel")
+          ? "orange"
+          : sec.summaryText.toLowerCase().includes("incomplet") ||
+              (sec.summaryText.toLowerCase().includes("manquant") &&
+                !sec.summaryText.toLowerCase().includes("facultatif"))
+            ? "red"
+            : "green"))
+      : null;
+  const secToneClass =
+    resolvedMtdTone === "green"
+      ? "ds-section--green"
+      : resolvedMtdTone === "orange"
         ? "ds-section--orange"
-        : "ds-section--green"
-      : "";
+        : resolvedMtdTone === "red"
+          ? "ds-section--red"
+          : "";
   return `<details class="ds-section ${sec.isManual ? "ds-section--manual" : ""} ${secToneClass}${isProcessingSection ? " is-processing" : ""}" id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}"${isProcessingSection ? ' data-processing-active="true"' : ""}>
     <summary>
       <span class="ds-section__title">${iconSvg(sec.meta.icon)} ${esc(sec.meta.title)}</span>
@@ -2105,7 +2197,7 @@ export function renderDossierPage(
 
           <div class="ds-patient-header__badges">
             ${dossierProcBadgeHtml}
-            <span class="ds-badge ${dossier.priorityBadge.badgeClass} ds-badge--sm">${iconSvg(dossier.priorityBadge.icon)} ${esc(dossier.priorityBadge.label)}</span>
+            ${renderPriorityBadgeHtml(dossier.priorityBadge, { lang })}
             <div class="ds-hovercard" tabindex="0">
               <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm">
                 ${iconSvg(dossier.completenessBadge.icon)} ${esc(dossier.completenessBadge.label)}
@@ -2138,14 +2230,14 @@ export function renderDossierPage(
                   </span>`
             }
             ${
-              dossier.specialties[0]
+              dossier.specialties.length === 1 && dossier.specialties[0]
                 ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
                 : ""
             }
             ${
               dossier.specialties.length > 1
                 ? `<div class="ds-hovercard" tabindex="0">
-                    <span class="ds-badge ds-badge--specialty ds-badge--sm">+${dossier.specialties.length - 1} ${lang === "fr" ? "spécialité(s)" : "specialties"}</span>
+                    <span class="ds-badge ds-badge--specialty ds-badge--sm">${iconSvg("ic-stethoscope")} ${dossier.specialties.length} ${lang === "fr" ? "spécialités" : "specialties"}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-stethoscope")} ${lang === "fr" ? "Spécialités mobilisées" : "Involved specialties"} (${dossier.specialties.length})</span>
                       <ul class="ds-hovercard__list">
@@ -3325,7 +3417,11 @@ export function renderAgendaPage(
                       ${item.dateBirth ? `<span class="ds-small ds-muted">Né(e) le ${esc(item.dateBirth)}</span>` : ""}
                     </div>
                     <div class="ds-cluster">
-                      <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+                      ${renderPriorityBadgeHtml(prio, {
+                        reason: item.priorityReason,
+                        reasons: item.priorityReasons,
+                        lang,
+                      })}
                       ${completenessBadge}
                       <span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>
                     </div>

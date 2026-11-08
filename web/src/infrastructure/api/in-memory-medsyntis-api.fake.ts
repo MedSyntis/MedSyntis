@@ -443,6 +443,12 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       },
       metrics: {
         priority_level: "high",
+        urgency_reason:
+          "**Pancréas** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.\n\nProgression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
+        urgency_reasons: [
+          "**Pancréas** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
+          "Progression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
+        ],
         is_complete: false,
         missing_count: 2,
         missing_items: [
@@ -512,6 +518,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       executionTimes: { TumorLocation: 8.2 },
       metrics: {
         priority_level: "medium",
+        urgency_reason: "Bilan d'extension complet et conforme au référentiel TNCD Œsophage.",
+        urgency_reasons: ["Bilan d'extension complet et conforme au référentiel TNCD Œsophage."],
         is_complete: true,
         missing_count: 0,
         missing_items: [],
@@ -674,6 +682,13 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       },
       metrics: {
         priority_level: "low",
+        urgency_reason:
+          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).\n\n**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).\n\nÉvolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+        urgency_reasons: [
+          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).",
+          "**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).",
+          "Évolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+        ],
         is_complete: true,
         missing_count: 0,
         missing_items: [],
@@ -865,6 +880,16 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           : missingCount === 0) &&
         missingCount === 0;
 
+    const priorityLevel = normalizePriorityLevel(form.metrics.priority_level);
+    const priorityReasons = Array.isArray(form.metrics.urgency_reasons)
+      ? form.metrics.urgency_reasons.map((r) => String(r).trim()).filter(Boolean)
+      : [];
+    const priorityReason = form.metrics.urgency_reason
+      ? String(form.metrics.urgency_reason).trim()
+      : priorityReasons.length > 0
+        ? priorityReasons.join("\n\n")
+        : null;
+
     return {
       id: form.patientId ?? form.file,
       file: form.file,
@@ -877,7 +902,9 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       gender: admin.gender ? String(admin.gender) : null,
       domain: form.domain,
       mdtDate: form.mdtDate,
-      priorityLevel: normalizePriorityLevel(form.metrics.priority_level),
+      priorityLevel,
+      priorityReason,
+      priorityReasons,
       isComplete,
       missingCount,
       missingItems,
@@ -1751,6 +1778,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         urgency: urgencyLabel,
         urgencyScore,
         priorityLevel: card.priorityLevel,
+        priorityReason: card.priorityReason ?? null,
+        priorityReasons: card.priorityReasons ?? [],
         isComplete: card.isComplete,
         missingCount: card.missingCount,
         missingItems: card.missingItems,
@@ -1882,6 +1911,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           urgency: urgencyLabel,
           urgencyScore,
           priorityLevel: c.priorityLevel,
+          priorityReason: c.priorityReason ?? null,
+          priorityReasons: c.priorityReasons ?? [],
           isComplete: c.isComplete,
           missingCount: c.missingCount,
           missingItems: c.missingItems,

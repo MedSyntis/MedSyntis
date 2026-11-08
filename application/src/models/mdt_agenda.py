@@ -110,6 +110,8 @@ class MDTAgendaScheduledItemResponse(BaseModel):
     date_birth: Optional[datetime] = None
     urgency: str
     urgency_score: int
+    urgency_reason: str = ""
+    urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral
     is_complete: bool
     missing_count: int = 0
@@ -151,6 +153,8 @@ class MDTAgendaCandidateResponse(BaseModel):
     date_birth: Optional[datetime] = None
     urgency: str
     urgency_score: int
+    urgency_reason: str = ""
+    urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral
     is_complete: bool
     missing_count: int = 0

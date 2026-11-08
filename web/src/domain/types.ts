@@ -30,6 +30,8 @@ export interface MdtFormCard {
   domain: ClinicalDomain;
   mdtDate: string | null;
   priorityLevel: PriorityLevel;
+  priorityReason?: string | null;
+  priorityReasons?: string[];
   isComplete: boolean;
   missingCount: number;
   missingItems: string[];
@@ -58,7 +60,13 @@ export interface ManualEditMetadata {
 
 export interface CardMetrics {
   priority_level?: string | null;
+  urgency_reason?: string | null;
+  urgency_reasons?: string[];
   is_complete?: boolean;
+  completeness_status?: "yes" | "partial" | "no";
+  completeness_label?: string;
+  completeness_tone?: "green" | "orange" | "red";
+  completeness_summary?: string;
   missing_count?: number;
   missing_items?: string[];
   all_missing_items?: string[];
@@ -261,6 +269,8 @@ export interface MdtAgendaItem {
   urgency: string;
   urgencyScore: number;
   priorityLevel: PriorityLevel;
+  priorityReason?: string | null;
+  priorityReasons?: string[];
   isComplete: boolean;
   missingCount: number;
   missingItems: string[];
@@ -298,6 +308,8 @@ export interface MdtAgendaCandidate {
   urgency: string;
   urgencyScore: number;
   priorityLevel: PriorityLevel;
+  priorityReason?: string | null;
+  priorityReasons?: string[];
   isComplete: boolean;
   missingCount: number;
   missingItems: string[];
