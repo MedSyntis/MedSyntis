@@ -6202,11 +6202,25 @@ a.ds-timeline__link:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--ds-space-4);
+  align-items: stretch;
 }
 @media (min-width: 64rem) {
   .ds-metric-charts-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+.ds-metric-chart-card > .ds-card__header > div {
+  min-width: 0;
+  width: 100%;
+}
+.ds-metric-chart-card .ds-card__title,
+.ds-metric-chart-card .ds-card__subtitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-metric-chart-card .ds-card__subtitle {
+  display: block;
 }
 .ds-metric-chart-card__canvas {
   position: relative;

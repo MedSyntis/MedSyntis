@@ -380,8 +380,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — MedSyntis</title>
   <link rel="icon" href="/public/img/medsyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=32">
-  <link rel="stylesheet" href="/public/css/components.css?v=32">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=33">
+  <link rel="stylesheet" href="/public/css/components.css?v=33">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -623,7 +623,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=32"></script>
+  <script src="/public/js/app.js?v=33"></script>
 </body>
 </html>`;
   return session.hostBoundDomain ? stripDomainQuery(html) : html;
