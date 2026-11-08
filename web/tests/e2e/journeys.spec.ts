@@ -123,8 +123,8 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await expect(page.getByTestId("worklist-table")).toContainText("EXEMPLE Léo");
 
     await page.getByTestId("btn_open_S-0007").click();
-    await expect(page.getByTestId("synoptic-card")).toContainText("42/66");
-    await expect(page.getByTestId("synoptic-card")).toContainText("+2 vs 2026-05-18");
+    await expect(page.getByTestId("synoptic-card")).toContainText("65.6 %");
+    await expect(page.getByTestId("synoptic-card")).toContainText("+3.1 vs 2026-05-18");
 
     // Navigate to Guidelines & Agents for SMA
     await page.getByTestId("nav-guidelines").click();

@@ -438,7 +438,7 @@ export function computeLongitudinalDeltas(
     const curNum = curMatch ? Number(curMatch[0]) : Number.NaN;
     const prevNum = prevMatch ? Number(prevMatch[0]) : Number.NaN;
     if (!Number.isNaN(curNum) && !Number.isNaN(prevNum)) {
-      const diff = curNum - prevNum;
+      const diff = Math.round((curNum - prevNum) * 100) / 100;
       if (diff === 0) {
         deltas.push({
           key: item.field,

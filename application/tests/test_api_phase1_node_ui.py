@@ -1078,11 +1078,17 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
 # ---------------------------------------------------------------------------
 # 16. Resources metadata, POST /resources/upload, and DELETE /resources/{filename}
 # ---------------------------------------------------------------------------
-def test_resources_list_metadata_upload_and_delete(api_app, client, tmp_path):
+def test_resources_list_metadata_upload_and_delete(
+    api_app, client, tmp_path, monkeypatch
+):
     """Verify GET /resources returns size_bytes & updated_at, POST /resources/upload, and DELETE /resources/{f}."""
     conf = api_deps.get_base_config().model_copy()
     conf.rcp.additional_path = str(tmp_path)
     api_app.dependency_overrides[get_domain_config] = lambda: conf
+    monkeypatch.setattr(
+        "src.application.ressources.Ressources.is_indexed",
+        lambda self, _f: False,
+    )
 
     # Upload a new PDF resource
     up_resp = client.post(
