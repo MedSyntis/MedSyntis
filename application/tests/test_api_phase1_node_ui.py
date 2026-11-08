@@ -777,11 +777,14 @@ def test_upload_with_batch_id_and_batch_and_file_status_endpoints(
 def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
     """Verify GET /api/v1/me and require_admin enforce proxy secret and admin role."""
     conf = api_deps.get_base_config().model_copy()
+    conf.rcp = conf.rcp.model_copy()
+    conf.rcp.display_type = "stdout"
     conf.proxy_secret = SecretStr("top-secret-proxy")
     conf.admin_users = "dr_admin,Dr Admin"
     monkeypatch.setattr(api_deps, "get_base_config", lambda: conf)
 
-    manager = InMemoryQueueManager(auto_start_workers=False)
+    manager = InMemoryQueueManager(base_config=conf, auto_start_workers=False)
+    monkeypatch.setattr(manager.executor, "stabilize_status", lambda **_kw: None)
     api_app.dependency_overrides[get_queue_manager] = lambda: manager
 
     # 1. Spoofed user header WITHOUT valid proxy secret -> ignored on /me

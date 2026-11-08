@@ -511,7 +511,7 @@
     if (e.defaultPrevented) return;
     if (
       e.target.closest(
-        "a, button, summary, details, input, select, textarea, dialog, form, label, .ds-m3-select, .ds-hovercard, .ds-field__clear, .ds-agenda-item__rank, [data-agenda-drag-handle]",
+        "a, button, summary, details, input, select, textarea, dialog, form, label, .ds-m3-select, .ds-hovercard__panel, .ds-field__clear, .ds-agenda-item__rank, [data-agenda-drag-handle]",
       )
     ) {
       return;

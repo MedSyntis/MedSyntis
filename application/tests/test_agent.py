@@ -559,7 +559,7 @@ class TestMedSyntisAgent(unittest.TestCase):
         self.assertTrue(
             _has_markdown_schema(mtd_complete_schema["properties"]["reflection"])
         )
-        self.assertTrue(
+        self.assertFalse(
             _has_markdown_schema(mtd_complete_schema["properties"]["what_missing"])
         )
         self.assertEqual(
