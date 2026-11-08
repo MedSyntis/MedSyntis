@@ -153,25 +153,16 @@ class PatientMDTSmaForm(PatientMDTForm):
                 return cls._parse_motor_scale_string(value, min_val, max_val, label)
             raise ValueError(f"Unsupported type for {label}.")
 
-        @field_validator("mfm_total_score", mode="before")
+        @field_validator(
+            "mfm_total_score",
+            "mfm_d1_score",
+            "mfm_d2_score",
+            "mfm_d3_score",
+            mode="before",
+        )
         @classmethod
-        def validate_mfm_total_score(cls, v: Any) -> int | float | str | None:
-            return cls._validate_raw_motor_scale(v, 0, 100, "MFM Total")
-
-        @field_validator("mfm_d1_score", mode="before")
-        @classmethod
-        def validate_mfm_d1_score(cls, v: Any) -> int | float | str | None:
-            return cls._validate_raw_motor_scale(v, 0, 100, "MFM D1")
-
-        @field_validator("mfm_d2_score", mode="before")
-        @classmethod
-        def validate_mfm_d2_score(cls, v: Any) -> int | float | str | None:
-            return cls._validate_raw_motor_scale(v, 0, 100, "MFM D2")
-
-        @field_validator("mfm_d3_score", mode="before")
-        @classmethod
-        def validate_mfm_d3_score(cls, v: Any) -> int | float | str | None:
-            return cls._validate_raw_motor_scale(v, 0, 100, "MFM D3")
+        def validate_mfm_scores(cls, v: Any) -> int | float | str | None:
+            return cls._validate_raw_motor_scale(v, 0, 100, "MFM")
 
         @field_validator("rulm_score", mode="before")
         @classmethod

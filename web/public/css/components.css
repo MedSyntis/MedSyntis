@@ -6241,51 +6241,6 @@ a.ds-timeline__link:hover {
   stroke: var(--chart-point-color, var(--ds-color-primary));
 }
 
-/* M3 Multi-Curve Chart Legend */
-.ds-chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ds-space-2);
-}
-.ds-chart-legend__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.28rem 0.65rem;
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-surface-nested);
-  border: 1px solid var(--ds-border-nested);
-  font-size: var(--ds-text-xs);
-  color: var(--ds-color-text);
-  cursor: pointer;
-  transition:
-    background-color var(--ds-duration-short3) var(--ds-ease-standard),
-    border-color var(--ds-duration-short3) var(--ds-ease-standard),
-    box-shadow var(--ds-duration-short3) var(--ds-ease-standard);
-}
-.ds-chart-legend__item:hover,
-.ds-chart-legend__item:focus-visible,
-.ds-chart-legend__item.is-active {
-  background: color-mix(in srgb, var(--legend-color, var(--ds-color-primary)) 12%, var(--ds-surface-nested));
-  border-color: var(--legend-color, var(--ds-color-border-strong));
-  box-shadow: var(--ds-shadow-xs);
-  outline: none;
-}
-.ds-chart-legend__swatch {
-  display: inline-block;
-  width: 1.25rem;
-  height: 0;
-  border-top: 3px solid var(--legend-color, var(--ds-color-primary));
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-.ds-chart-legend__swatch--dashed {
-  border-top-style: dashed;
-}
-.ds-chart-legend__swatch--dotted {
-  border-top-style: dotted;
-}
 .ds-chart-legend__dot {
   display: inline-block;
   width: 0.55rem;
@@ -6294,75 +6249,37 @@ a.ds-timeline__link:hover {
   background: var(--legend-color, var(--ds-color-primary));
   flex-shrink: 0;
 }
-.ds-chart-legend__label {
-  font-weight: var(--ds-weight-medium);
-  color: var(--ds-color-text);
-}
-.ds-chart-legend__value {
-  font-weight: var(--ds-weight-bold);
-  font-variant-numeric: tabular-nums;
-  color: var(--ds-color-text);
-}
-.ds-chart-legend__delta {
-  font-size: 0.72rem;
-  font-weight: var(--ds-weight-semibold);
-  font-variant-numeric: tabular-nums;
-  color: var(--ds-color-primary-text);
-}
 .ds-raw-pill__series {
   font-weight: var(--ds-weight-semibold);
   color: var(--ds-color-text);
 }
 
-/* M3 Floating Chart Point Hover Popover */
+/* M3 Plain Tooltip for Chart Points (matches [data-tooltip]::after: inverse surface, no border) */
 .ds-chart-tooltip {
   position: absolute;
-  z-index: var(--ds-z-popover);
-  pointer-events: none;
-  min-width: 12.5rem;
-  max-width: 20rem;
-  padding: var(--ds-space-2) var(--ds-space-3);
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-surface-card);
-  color: var(--ds-color-text);
-  border: 1px solid var(--ds-color-border-strong);
-  box-shadow: var(--ds-shadow-md);
+  z-index: var(--ds-z-toast);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border: 0;
+  border-radius: var(--ds-radius-xs);
+  background: var(--ds-inverse-surface);
+  color: var(--ds-inverse-on-surface);
   font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
   line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
   transform: translate(-50%, -100%);
-  margin-top: -0.55rem;
+  margin-top: -0.5rem;
+}
+.ds-chart-tooltip[hidden] {
+  display: none;
 }
 .ds-chart-tooltip[data-placement="bottom"] {
   transform: translate(-50%, 0);
-  margin-top: 0.55rem;
-}
-.ds-chart-tooltip__header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 0.2rem;
-  font-weight: var(--ds-weight-semibold);
-  color: var(--ds-color-text);
-}
-.ds-chart-tooltip__meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
-  font-variant-numeric: tabular-nums;
-}
-.ds-chart-tooltip__date {
-  color: var(--ds-color-text-muted);
-}
-.ds-chart-tooltip__value {
-  font-size: var(--ds-text-sm);
-  font-weight: var(--ds-weight-bold);
-  color: var(--ds-color-text);
-}
-.ds-chart-tooltip__delta {
-  margin-left: 0.35rem;
-  font-weight: var(--ds-weight-semibold);
-  color: var(--ds-color-primary-text);
+  margin-top: 0.5rem;
 }
 .ds-metric-points-strip {
   display: flex;

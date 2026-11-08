@@ -77,48 +77,64 @@ interface SeriesVisualConfig {
   shortEn: string;
 }
 
-const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = {
-  "MotorFunctionStatus.mfm_total_score": {
-    color: "#0f766e",
-    symbol: "circle",
-    lineType: "solid",
-    lineWidth: 3,
-    labelFr: "MFM Total (Score global)",
-    labelEn: "MFM Total (Global score)",
-    shortFr: "MFM Total",
-    shortEn: "MFM Total",
-  },
-  "MotorFunctionStatus.mfm_d1_score": {
-    color: "#0284c7",
-    symbol: "diamond",
-    lineType: "solid",
-    lineWidth: 2.2,
-    labelFr: "MFM D1 (Debout & transferts)",
-    labelEn: "MFM D1 (Standing & transfers)",
-    shortFr: "MFM D1",
-    shortEn: "MFM D1",
-  },
-  "MotorFunctionStatus.mfm_d2_score": {
-    color: "#7c3aed",
-    symbol: "rect",
-    lineType: "dashed",
-    lineWidth: 2.2,
-    labelFr: "MFM D2 (Motricité axiale & proximale)",
-    labelEn: "MFM D2 (Axial & proximal motor)",
-    shortFr: "MFM D2",
-    shortEn: "MFM D2",
-  },
-  "MotorFunctionStatus.mfm_d3_score": {
-    color: "#d97706",
-    symbol: "triangle",
-    lineType: "dotted",
-    lineWidth: 2.2,
-    labelFr: "MFM D3 (Motricité distale)",
-    labelEn: "MFM D3 (Distal motor)",
-    shortFr: "MFM D3",
-    shortEn: "MFM D3",
-  },
-};
+const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = Object.fromEntries(
+  (
+    [
+      [
+        "MotorFunctionStatus.mfm_total_score",
+        "#0f766e",
+        "circle",
+        "solid",
+        3,
+        "MFM Total (Score global)",
+        "MFM Total (Global score)",
+        "MFM Total",
+      ],
+      [
+        "MotorFunctionStatus.mfm_d1_score",
+        "#0284c7",
+        "diamond",
+        "solid",
+        2.2,
+        "MFM D1 (Debout & transferts)",
+        "MFM D1 (Standing & transfers)",
+        "MFM D1",
+      ],
+      [
+        "MotorFunctionStatus.mfm_d2_score",
+        "#7c3aed",
+        "rect",
+        "dashed",
+        2.2,
+        "MFM D2 (Motricité axiale & proximale)",
+        "MFM D2 (Axial & proximal motor)",
+        "MFM D2",
+      ],
+      [
+        "MotorFunctionStatus.mfm_d3_score",
+        "#d97706",
+        "triangle",
+        "dotted",
+        2.2,
+        "MFM D3 (Motricité distale)",
+        "MFM D3 (Distal motor)",
+        "MFM D3",
+      ],
+    ] as const
+  ).map(([key, color, symbol, lineType, lineWidth, labelFr, labelEn, shortLabel]) => [
+    key,
+    {
+      color,
+      symbol,
+      lineType,
+      lineWidth,
+      labelFr,
+      labelEn,
+      shortFr: shortLabel,
+      shortEn: shortLabel,
+    },
+  ]),
+);
 
 function resolveSeriesVisual(
   series: PatientMetricSeriesView,
@@ -302,14 +318,7 @@ export function renderMultiMetricSeriesEChartsSvg(
           color: vis.color,
         },
         label: {
-          show: !isMultiSeries || sIdx === 0,
-          position: "top",
-          distance: 6,
-          color: "#0f172a",
-          fontSize: 11,
-          fontWeight: "bold",
-          formatter: (params: { data?: { rawDisplay?: string } }) =>
-            stripMarkdown(params?.data?.rawDisplay ?? ""),
+          show: false,
         },
         data: dataPoints,
       });
@@ -323,74 +332,56 @@ export function renderMultiMetricSeriesEChartsSvg(
           (pt) => pt.subValues && typeof pt.subValues.G === "number",
         );
         if (hasBilateralD && hasBilateralG) {
-          const rightLabel =
-            lang === "fr" ? `${vis.label} — Droite (D)` : `${vis.label} — Right (D)`;
-          const leftLabel = lang === "fr" ? `${vis.label} — Gauche (G)` : `${vis.label} — Left (G)`;
-          const dSeriesIndex = echartsSeries.length;
-          echartsSeries.push({
-            name: lang === "fr" ? "Droite (D)" : "Right (D)",
-            type: "line",
-            smooth: false,
-            symbol: "diamond",
-            symbolSize: 7,
-            lineStyle: { width: 1.5, type: "dashed", color: "#0284c7" },
-            itemStyle: { color: "#0284c7" },
-            data: sessions.map((sess, xIdx) => {
-              const pt = ptsByForm.get(sess.formId);
-              const valD = pt?.subValues?.D;
-              if (pt && typeof valD === "number") {
-                hitTargets.push({
-                  seriesIndex: dSeriesIndex,
-                  xIndex: xIdx,
-                  numericValue: valD,
-                  seriesKey: `${series.metricKey}:D`,
-                  seriesLabel: rightLabel,
-                  seriesColor: "#0284c7",
-                  dateLabel: pt.formDateLabel || sess.formDateLabel,
-                  exactValue: formatExactPointValueWithUnit(String(valD), series.unit),
-                  deltaDisplay: "",
-                  isManual: pt.isManual,
-                  formId: pt.formId,
-                  sectionName: series.section,
-                });
-                return valD;
-              }
-              return null;
-            }),
-          });
-
-          const gSeriesIndex = echartsSeries.length;
-          echartsSeries.push({
-            name: lang === "fr" ? "Gauche (G)" : "Left (G)",
-            type: "line",
-            smooth: false,
-            symbol: "triangle",
-            symbolSize: 7,
-            lineStyle: { width: 1.5, type: "dotted", color: "#7c3aed" },
-            itemStyle: { color: "#7c3aed" },
-            data: sessions.map((sess, xIdx) => {
-              const pt = ptsByForm.get(sess.formId);
-              const valG = pt?.subValues?.G;
-              if (pt && typeof valG === "number") {
-                hitTargets.push({
-                  seriesIndex: gSeriesIndex,
-                  xIndex: xIdx,
-                  numericValue: valG,
-                  seriesKey: `${series.metricKey}:G`,
-                  seriesLabel: leftLabel,
-                  seriesColor: "#7c3aed",
-                  dateLabel: pt.formDateLabel || sess.formDateLabel,
-                  exactValue: formatExactPointValueWithUnit(String(valG), series.unit),
-                  deltaDisplay: "",
-                  isManual: pt.isManual,
-                  formId: pt.formId,
-                  sectionName: series.section,
-                });
-                return valG;
-              }
-              return null;
-            }),
-          });
+          for (const side of [
+            {
+              sideKey: "D" as const,
+              name: lang === "fr" ? "Droite (D)" : "Right (D)",
+              symbol: "diamond" as const,
+              lineType: "dashed" as const,
+              color: "#0284c7",
+            },
+            {
+              sideKey: "G" as const,
+              name: lang === "fr" ? "Gauche (G)" : "Left (G)",
+              symbol: "triangle" as const,
+              lineType: "dotted" as const,
+              color: "#7c3aed",
+            },
+          ]) {
+            const sideSeriesIndex = echartsSeries.length;
+            const sideFullLabel = `${vis.label} — ${side.name}`;
+            echartsSeries.push({
+              name: side.name,
+              type: "line",
+              smooth: false,
+              symbol: side.symbol,
+              symbolSize: 7,
+              lineStyle: { width: 1.5, type: side.lineType, color: side.color },
+              itemStyle: { color: side.color },
+              data: sessions.map((sess, xIdx) => {
+                const pt = ptsByForm.get(sess.formId);
+                const valSide = pt?.subValues?.[side.sideKey];
+                if (pt && typeof valSide === "number") {
+                  hitTargets.push({
+                    seriesIndex: sideSeriesIndex,
+                    xIndex: xIdx,
+                    numericValue: valSide,
+                    seriesKey: `${series.metricKey}:${side.sideKey}`,
+                    seriesLabel: sideFullLabel,
+                    seriesColor: side.color,
+                    dateLabel: pt.formDateLabel || sess.formDateLabel,
+                    exactValue: formatExactPointValueWithUnit(String(valSide), series.unit),
+                    deltaDisplay: "",
+                    isManual: pt.isManual,
+                    formId: pt.formId,
+                    sectionName: series.section,
+                  });
+                  return valSide;
+                }
+                return null;
+              }),
+            });
+          }
         }
       }
     });
@@ -450,7 +441,7 @@ export function renderMultiMetricSeriesEChartsSvg(
         const summaryTitle = `${target.seriesLabel} — ${target.dateLabel} : ${target.exactValue}${
           target.deltaDisplay ? ` (Δ ${target.deltaDisplay})` : ""
         }`;
-        return `<circle class="ds-chart-point" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9" tabindex="0" role="button" aria-label="${esc(summaryTitle)}" data-chart-point="true" data-series-key="${esc(target.seriesKey)}" data-series-label="${esc(target.seriesLabel)}" data-series-color="${esc(target.seriesColor)}" data-point-date="${esc(target.dateLabel)}" data-point-value="${esc(target.exactValue)}" data-point-delta="${esc(target.deltaDisplay)}" data-point-manual="${target.isManual ? "true" : "false"}" data-form-id="${esc(target.formId)}" data-jump-section="${esc(target.sectionName)}" data-jump-tab="clinical" style="--chart-point-color:${esc(target.seriesColor)}"><title>${esc(summaryTitle)}</title></circle>`;
+        return `<circle class="ds-chart-point" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9" tabindex="0" role="button" aria-label="${esc(summaryTitle)}" data-chart-point="true" data-series-key="${esc(target.seriesKey)}" data-series-label="${esc(target.seriesLabel)}" data-series-color="${esc(target.seriesColor)}" data-point-date="${esc(target.dateLabel)}" data-point-value="${esc(target.exactValue)}" data-point-delta="${esc(target.deltaDisplay)}" data-point-manual="${target.isManual ? "true" : "false"}" data-form-id="${esc(target.formId)}" data-jump-section="${esc(target.sectionName)}" data-jump-tab="clinical" style="--chart-point-color:${esc(target.seriesColor)}"></circle>`;
       })
       .filter(Boolean)
       .join("");
@@ -701,6 +692,23 @@ function renderSummaryCard(
   </section>`;
 }
 
+function formatSpanDuration(days: number, lang: Language): string {
+  if (days >= 365) {
+    return `${(days / 365.25).toFixed(1)} ${lang === "fr" ? "ans" : "yrs"}`;
+  }
+  if (days > 0) {
+    return `${days} ${lang === "fr" ? "jours" : "days"}`;
+  }
+  return lang === "fr" ? "1 séance" : "1 session";
+}
+
+function renderManualPointBadge(isManual: boolean, lang: Language): string {
+  if (!isManual) return "";
+  return `<span class="ds-badge ds-badge--manual ds-badge--sm" data-tooltip="${
+    lang === "fr" ? "Valeur corrigée manuellement" : "Manually edited value"
+  }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`;
+}
+
 function renderPointPills(
   points: PatientMetricPointView[],
   unit: string,
@@ -714,11 +722,7 @@ function renderPointPills(
       .map((pt) => {
         const unitStr =
           unit && !pt.displayValue.includes(unit.replace(/\s+/g, "")) ? ` ${unit}` : "";
-        const manualBadge = pt.isManual
-          ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-tooltip="${
-              lang === "fr" ? "Valeur corrigée manuellement" : "Manually edited value"
-            }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`
-          : "";
+        const manualBadge = renderManualPointBadge(pt.isManual, lang);
         const deltaBadge = pt.deltaDisplay
           ? `<span class="ds-raw-pill__delta">Δ ${esc(pt.deltaDisplay)}</span>`
           : "";
@@ -737,6 +741,50 @@ function renderPointPills(
   </div>`;
 }
 
+interface ChartCardShellProps {
+  metricKey: string;
+  extraAttrs?: string;
+  extraClass?: string;
+  sectionName: string;
+  iconId: string;
+  title: string;
+  subtitle: string;
+  headerBadgeText?: string;
+  headerBadgeTooltip?: string;
+  svgMarkup: string;
+  pillsHtml: string;
+}
+
+function renderChartCardShell(props: ChartCardShellProps): string {
+  const headerBadgeHtml = props.headerBadgeText
+    ? `<div class="ds-card__header-actions">
+        <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(props.sectionName)}" data-jump-tab="clinical" data-tooltip="${esc(props.headerBadgeTooltip ?? "")}">
+          ${iconSvg("ic-trend-up")} ${esc(props.headerBadgeText)}
+        </span>
+      </div>`
+    : "";
+
+  return `<article class="ds-card ds-metric-chart-card${props.extraClass ? ` ${props.extraClass}` : ""}" data-testid="metric_chart_${esc(props.metricKey)}"${props.extraAttrs ? ` ${props.extraAttrs}` : ""} data-metric-key="${esc(props.metricKey)}" data-section="${esc(props.sectionName)}">
+    <div class="ds-card__header" data-jump-section="${esc(props.sectionName)}" data-jump-tab="clinical" tabindex="0">
+      <div>
+        <h4 class="ds-card__title">
+          <span class="ds-icon-box">${iconSvg(props.iconId)}</span>
+          ${esc(props.title)}
+        </h4>
+        <span class="ds-card__subtitle">${esc(props.subtitle)}</span>
+      </div>
+      ${headerBadgeHtml}
+    </div>
+    <div class="ds-card__body ds-stack">
+      <div class="ds-metric-chart-card__canvas" data-chart-canvas role="img" aria-label="${esc(props.title)}">
+        ${props.svgMarkup}
+        <div class="ds-chart-tooltip" data-chart-tooltip data-testid="chart_point_tooltip" hidden aria-hidden="true"></div>
+      </div>
+      ${props.pillsHtml}
+    </div>
+  </article>`;
+}
+
 function renderNumericChartCard(
   series: PatientMetricSeriesView,
   domain: ClinicalDomain,
@@ -747,69 +795,24 @@ function renderNumericChartCard(
   const clinicalLabel = resolveClinicalMetricLabel(series, lang);
   const lastPt = series.points[series.points.length - 1];
   const firstPt = series.points[0];
-  const spanYears =
-    firstPt && lastPt && lastPt.daysSinceFirstRcp >= 365
-      ? `${(lastPt.daysSinceFirstRcp / 365.25).toFixed(1)} ${lang === "fr" ? "ans" : "yrs"}`
-      : firstPt && lastPt && lastPt.daysSinceFirstRcp > 0
-        ? `${lastPt.daysSinceFirstRcp} ${lang === "fr" ? "jours" : "days"}`
-        : lang === "fr"
-          ? "1 séance"
-          : "1 session";
+  const spanYears = formatSpanDuration(firstPt && lastPt ? lastPt.daysSinceFirstRcp : 0, lang);
+  const subtitle = `${secMeta.title} · ${lang === "fr" ? "Données brutes" : "Raw data"}${series.unit ? ` (${series.unit})` : ""} · ${series.points.length} ${lang === "fr" ? "séance(s)" : "session(s)"} (${spanYears})`;
 
-  const hasBilateralD = series.points.some(
-    (pt) => pt.subValues && typeof pt.subValues.D === "number",
-  );
-  const hasBilateralG = series.points.some(
-    (pt) => pt.subValues && typeof pt.subValues.G === "number",
-  );
-  const bilateralLegendHtml =
-    hasBilateralD && hasBilateralG
-      ? `<div class="ds-chart-legend" role="list" aria-label="${lang === "fr" ? "Légende des courbes" : "Chart curves legend"}">
-          <div class="ds-chart-legend__item" role="listitem" data-legend-series-key="${esc(series.metricKey)}" tabindex="0">
-            <span class="ds-chart-legend__swatch ds-chart-legend__swatch--solid" style="--legend-color:#0f766e" aria-hidden="true"></span>
-            <span class="ds-chart-legend__label">${esc(clinicalLabel)}</span>
-          </div>
-          <div class="ds-chart-legend__item" role="listitem" data-legend-series-key="${esc(series.metricKey)}:D" tabindex="0">
-            <span class="ds-chart-legend__swatch ds-chart-legend__swatch--dashed" style="--legend-color:#0284c7" aria-hidden="true"></span>
-            <span class="ds-chart-legend__label">${lang === "fr" ? "Droite (D)" : "Right (D)"}</span>
-          </div>
-          <div class="ds-chart-legend__item" role="listitem" data-legend-series-key="${esc(series.metricKey)}:G" tabindex="0">
-            <span class="ds-chart-legend__swatch ds-chart-legend__swatch--dotted" style="--legend-color:#7c3aed" aria-hidden="true"></span>
-            <span class="ds-chart-legend__label">${lang === "fr" ? "Gauche (G)" : "Left (G)"}</span>
-          </div>
-        </div>`
-      : "";
-
-  return `<article class="ds-card ds-metric-chart-card" data-testid="metric_chart_${esc(series.metricKey)}" data-metric-key="${esc(series.metricKey)}" data-section="${esc(series.section)}">
-    <div class="ds-card__header" data-jump-section="${esc(series.section)}" data-jump-tab="clinical" tabindex="0">
-      <div>
-        <h4 class="ds-card__title">
-          <span class="ds-icon-box">${iconSvg(secMeta.icon)}</span>
-          ${esc(clinicalLabel)}
-        </h4>
-        <span class="ds-card__subtitle">
-          ${esc(secMeta.title)} · ${lang === "fr" ? "Données brutes" : "Raw data"}${series.unit ? ` (${esc(series.unit)})` : ""} · ${series.points.length} ${lang === "fr" ? "séance(s)" : "session(s)"} (${esc(spanYears)})
-        </span>
-      </div>
-      ${
-        lastPt
-          ? `<div class="ds-card__header-actions">
-              <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(series.section)}" data-jump-tab="clinical" data-tooltip="${lang === "fr" ? "Dernier relevé" : "Latest"} (${esc(lastPt.formDateLabel)})">
-                ${iconSvg("ic-trend-up")} ${esc(stripMarkdown(lastPt.displayValue))}${series.unit ? ` ${esc(series.unit)}` : ""} · ${esc(lastPt.formDateLabel)}
-              </span>
-            </div>`
-          : ""
-      }
-    </div>
-    <div class="ds-card__body ds-stack">
-      ${bilateralLegendHtml}
-      <div class="ds-metric-chart-card__canvas" data-chart-canvas role="img" aria-label="${esc(clinicalLabel)}">
-        ${svgMarkup}
-        <div class="ds-chart-tooltip" data-chart-tooltip data-testid="chart_point_tooltip" hidden aria-hidden="true"></div>
-      </div>
-      ${renderPointPills(series.points, series.unit, series.section, lang)}
-    </div>
-  </article>`;
+  return renderChartCardShell({
+    metricKey: series.metricKey,
+    sectionName: series.section,
+    iconId: secMeta.icon,
+    title: clinicalLabel,
+    subtitle,
+    headerBadgeText: lastPt
+      ? `${stripMarkdown(lastPt.displayValue)}${series.unit ? ` ${series.unit}` : ""} · ${lastPt.formDateLabel}`
+      : undefined,
+    headerBadgeTooltip: lastPt
+      ? `${lang === "fr" ? "Dernier relevé" : "Latest"} (${lastPt.formDateLabel})`
+      : undefined,
+    svgMarkup,
+    pillsHtml: renderPointPills(series.points, series.unit, series.section, lang),
+  });
 }
 
 function renderMfmCombinedChartCard(
@@ -833,58 +836,30 @@ function renderMfmCombinedChartCard(
   const allPoints = mfmSeriesList.flatMap((s) => s.points);
   const uniqueForms = new Set(allPoints.map((p) => p.formId));
   const maxDays = allPoints.reduce((acc, p) => Math.max(acc, p.daysSinceFirstRcp), 0);
-  const spanYears =
-    maxDays >= 365
-      ? `${(maxDays / 365.25).toFixed(1)} ${lang === "fr" ? "ans" : "yrs"}`
-      : maxDays > 0
-        ? `${maxDays} ${lang === "fr" ? "jours" : "days"}`
-        : lang === "fr"
-          ? "1 séance"
-          : "1 session";
+  const spanYears = formatSpanDuration(maxDays, lang);
 
   const lastPrimaryPt = primarySeries.points[primarySeries.points.length - 1];
   const primaryVis = resolveSeriesVisual(primarySeries, lang, 0);
 
-  const legendHtml = `<div class="ds-chart-legend" role="list" data-testid="mfm_chart_legend" aria-label="${
-    lang === "fr" ? "Légende des courbes MFM" : "MFM curves legend"
-  }">
-    ${mfmSeriesList
-      .map((s, idx) => {
-        const vis = resolveSeriesVisual(s, lang, idx);
-        const latestPt = s.points[s.points.length - 1];
-        const latestVal = latestPt
-          ? formatExactPointValueWithUnit(latestPt.displayValue, s.unit)
-          : "";
-        const deltaBadge = latestPt?.deltaDisplay
-          ? `<span class="ds-chart-legend__delta">Δ ${esc(latestPt.deltaDisplay)}${s.unit && !latestPt.deltaDisplay.includes(s.unit) ? ` ${esc(s.unit)}` : ""}</span>`
-          : "";
-        return `<div class="ds-chart-legend__item" role="listitem" data-testid="mfm_legend_item_${esc(s.metricKey)}" data-legend-series-key="${esc(s.metricKey)}" tabindex="0" style="--legend-color:${esc(vis.color)}">
-          <span class="ds-chart-legend__swatch ds-chart-legend__swatch--${esc(vis.lineType)}" style="--legend-color:${esc(vis.color)}" aria-hidden="true"></span>
-          <span class="ds-chart-legend__label">${esc(vis.label)}</span>
-          ${latestVal ? `<strong class="ds-chart-legend__value">${esc(latestVal)}</strong>` : ""}
-          ${deltaBadge}
-        </div>`;
-      })
-      .join("")}
-  </div>`;
-
-  const combinedPillsHtml = `<div class="ds-metric-points-strip" role="list" aria-label="${
-    lang === "fr" ? "Valeurs MFM brutes par séance RCP" : "Raw MFM values per MDT session"
+  const combinedPillsHtml = `<div class="ds-metric-points-strip" role="list" data-testid="mfm_chart_legend" aria-label="${
+    lang === "fr"
+      ? "Légende et valeurs MFM brutes par séance RCP"
+      : "MFM legend and raw values per MDT session"
   }">
     ${mfmSeriesList
       .flatMap((s, idx) => {
         const vis = resolveSeriesVisual(s, lang, idx);
-        return s.points.map((pt) => {
+        return s.points.map((pt, ptIdx) => {
           const exactVal = formatExactPointValueWithUnit(pt.displayValue, s.unit);
-          const manualBadge = pt.isManual
-            ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-tooltip="${
-                lang === "fr" ? "Valeur corrigée manuellement" : "Manually edited value"
-              }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`
-            : "";
+          const manualBadge = renderManualPointBadge(pt.isManual, lang);
           const deltaBadge = pt.deltaDisplay
             ? `<span class="ds-raw-pill__delta">Δ ${esc(pt.deltaDisplay)}</span>`
             : "";
-          return `<div class="ds-raw-pill" role="listitem" data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0" data-tooltip="${esc(vis.label)} — ${esc(pt.formDateLabel)} : ${esc(exactVal)}">
+          const legendTestIdAttr =
+            ptIdx === s.points.length - 1
+              ? ` data-testid="mfm_legend_item_${esc(s.metricKey)}"`
+              : "";
+          return `<div class="ds-raw-pill" role="listitem"${legendTestIdAttr} data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0" data-tooltip="${esc(vis.label)} — ${esc(pt.formDateLabel)} : ${esc(exactVal)}">
             <span class="ds-chart-legend__dot" style="--legend-color:${esc(vis.color)}" aria-hidden="true"></span>
             <span class="ds-raw-pill__series">${esc(vis.shortLabel)}</span>
             <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
@@ -896,36 +871,25 @@ function renderMfmCombinedChartCard(
       .join("")}
   </div>`;
 
-  return `<article class="ds-card ds-metric-chart-card ds-metric-chart-card--mfm-combined" data-testid="metric_chart_${esc(primarySeries.metricKey)}" data-mfm-combined="true" data-metric-key="${esc(primarySeries.metricKey)}" data-metric-keys="${esc(mfmSeriesList.map((s) => s.metricKey).join(","))}" data-section="${esc(primarySeries.section)}">
-    <div class="ds-card__header" data-jump-section="${esc(primarySeries.section)}" data-jump-tab="clinical" tabindex="0">
-      <div>
-        <h4 class="ds-card__title">
-          <span class="ds-icon-box">${iconSvg(secMeta.icon)}</span>
-          ${esc(cardTitle)}
-        </h4>
-        <span class="ds-card__subtitle">
-          ${esc(secMeta.title)} · ${lang === "fr" ? "Données brutes" : "Raw data"} (%) · ${mfmSeriesList.length} ${lang === "fr" ? "courbe(s)" : "curve(s)"} · ${uniqueForms.size} ${lang === "fr" ? "séance(s)" : "session(s)"} (${esc(spanYears)})
-        </span>
-      </div>
-      ${
-        lastPrimaryPt
-          ? `<div class="ds-card__header-actions">
-              <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="${esc(primarySeries.section)}" data-jump-tab="clinical" data-tooltip="${esc(primaryVis.shortLabel)} — ${lang === "fr" ? "Dernier relevé" : "Latest"} (${esc(lastPrimaryPt.formDateLabel)})">
-                ${iconSvg("ic-trend-up")} ${esc(primaryVis.shortLabel)} : ${esc(formatExactPointValueWithUnit(lastPrimaryPt.displayValue, primarySeries.unit))} · ${esc(lastPrimaryPt.formDateLabel)}
-              </span>
-            </div>`
-          : ""
-      }
-    </div>
-    <div class="ds-card__body ds-stack">
-      ${legendHtml}
-      <div class="ds-metric-chart-card__canvas" data-chart-canvas role="img" aria-label="${esc(cardTitle)}">
-        ${svgMarkup}
-        <div class="ds-chart-tooltip" data-chart-tooltip data-testid="chart_point_tooltip" hidden aria-hidden="true"></div>
-      </div>
-      ${combinedPillsHtml}
-    </div>
-  </article>`;
+  const subtitle = `${secMeta.title} · ${lang === "fr" ? "Données brutes" : "Raw data"} (%) · ${mfmSeriesList.length} ${lang === "fr" ? "courbe(s)" : "curve(s)"} · ${uniqueForms.size} ${lang === "fr" ? "séance(s)" : "session(s)"} (${spanYears})`;
+
+  return renderChartCardShell({
+    metricKey: primarySeries.metricKey,
+    extraClass: "ds-metric-chart-card--mfm-combined",
+    extraAttrs: `data-mfm-combined="true" data-metric-keys="${esc(mfmSeriesList.map((s) => s.metricKey).join(","))}"`,
+    sectionName: primarySeries.section,
+    iconId: secMeta.icon,
+    title: cardTitle,
+    subtitle,
+    headerBadgeText: lastPrimaryPt
+      ? `${primaryVis.shortLabel} : ${formatExactPointValueWithUnit(lastPrimaryPt.displayValue, primarySeries.unit)} · ${lastPrimaryPt.formDateLabel}`
+      : undefined,
+    headerBadgeTooltip: lastPrimaryPt
+      ? `${primaryVis.shortLabel} — ${lang === "fr" ? "Dernier relevé" : "Latest"} (${lastPrimaryPt.formDateLabel})`
+      : undefined,
+    svgMarkup,
+    pillsHtml: combinedPillsHtml,
+  });
 }
 
 function renderQualitativeSwimlanes(
