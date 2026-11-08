@@ -1,6 +1,8 @@
-import { Marked } from "marked";
 import type { ChatReply } from "../../application/ports/medsyntis-api.port.js";
 import type { AgentModuleInfo, ClinicalDomain } from "../../domain/types.js";
+import { renderSafeInlineMarkdown, renderSafeMarkdown, stripMarkdown } from "../views/html.js";
+
+export { renderSafeInlineMarkdown, renderSafeMarkdown, stripMarkdown };
 
 function esc(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -15,35 +17,6 @@ function esc(value: unknown): string {
 function iconSvg(id: string, extraClass = ""): string {
   const cls = extraClass ? `ds-icon ${extraClass}` : "ds-icon";
   return `<svg class="${cls}" aria-hidden="true" focusable="false"><use href="#${id}"/></svg>`;
-}
-
-const clinicalMarkdown = new Marked({
-  gfm: true,
-  breaks: true,
-  renderer: {
-    html({ text }) {
-      return esc(text);
-    },
-    link({ href, title, tokens }) {
-      const label = this.parser.parseInline(tokens);
-      const safeHref = (href ?? "").trim();
-      if (!/^(?:https?:\/\/|mailto:|\/|#)/i.test(safeHref)) {
-        return label;
-      }
-      const titleAttr = title ? ` title="${esc(title)}"` : "";
-      return `<a href="${esc(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
-    },
-  },
-});
-
-/**
- * Safely renders clinical LLM Markdown replies into sanitized semantic HTML using `marked`.
- * Raw HTML blocks/tags are escaped via the custom `html` renderer.
- */
-export function renderSafeMarkdown(markdown: string): string {
-  const normalized = String(markdown ?? "").trim();
-  if (!normalized) return "";
-  return clinicalMarkdown.parse(normalized, { async: false }) as string;
 }
 
 export function resolveCitationPdfHref(
@@ -149,7 +122,7 @@ export function renderChatLogMessagePartial(
           ${reply.references
             .map((r) => {
               const pdfHref = resolveCitationPdfHref(r.name, r.page, domain, fallbackFormFile);
-              return `<li class="ds-ref"><a class="ds-ref__source ds-ref__link" href="${pdfHref}" target="_blank" rel="noopener" title="Ouvrir ${esc(r.name)}${r.page ? ` à la page ${esc(r.page)}` : ""}">${iconSvg("ic-file-pdf", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</a>${r.excerpt ? `<span class="ds-ref__quote">« ${esc(r.excerpt)} »</span>` : ""}</li>`;
+              return `<li class="ds-ref"><a class="ds-ref__source ds-ref__link" href="${pdfHref}" target="_blank" rel="noopener" title="Ouvrir ${esc(r.name)}${r.page ? ` à la page ${esc(r.page)}` : ""}">${iconSvg("ic-file-pdf", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</a>${r.excerpt ? `<span class="ds-ref__quote ds-markdown-inline">« ${renderSafeInlineMarkdown(r.excerpt)} »</span>` : ""}</li>`;
             })
             .join("")}
         </ul>`;

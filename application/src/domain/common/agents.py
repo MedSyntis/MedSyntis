@@ -45,6 +45,7 @@ class Agents:
         4. Synthesize your final answer strictly using the retrieved evidence. Do not extrapolate, assume, or provide medical opinions not documented in the text.
         5. If the information cannot be found in the resource after searching, clearly state that the resource does not contain information to answer the question.
         6. Respect strictly the required JSON output format.
+        7. Free-text string fields support Markdown formatting (**bold** for key concepts/guidelines, *italics*, and bullet lists), while Reference.name and enum/select fields must remain exact plain strings.
         """
 
     class Administratives_agent(MedSyntisAgent):
@@ -73,6 +74,7 @@ class Agents:
         3. Do not call external tools: rely strictly on the expert opinions provided in the prompt.
         4. If information is missing according to the experts, clearly state what is needed and why.
         5. Respect strictly the response output format.
+        6. Free-text string fields (such as reflection, what_missing, proposed_care_type, and clinical_rationale) support Markdown formatting (**bold**, *italics*, and bullet lists), while Reference.name and enum/select fields must remain exact plain strings.
         """
 
     class Expert_model(MedSyntisAgent):
@@ -96,6 +98,7 @@ class Agents:
                 - **Patient Record**: Use the patient record as the sole source of truth for the patient's status.
                 - **Scope**: Focus strictly on {cls.expert_type}. Do not provide advice outside this specialty.
                 - **No Interaction**: Do not ask the user for additional information. If data is missing, note it in your response.
+                - **Markdown Formatting**: Free-text string fields (such as why_relevant, suggestion, why, excerpt, and clinical descriptions) support Markdown formatting (**bold** for key clinical findings/guidelines, *italics*, and bullet lists), while Reference.name and enum/select fields must remain exact plain strings.
                 - If a value is not found, set it to null in the JSON.
                 """
 

@@ -405,6 +405,52 @@ textarea,
   text-align: center;
   line-height: 1.25;
 }
+.ds-nav__badges {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  z-index: 1;
+}
+.ds-nav__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 1.25rem;
+  height: 1.125rem;
+  padding: 0 0.375rem;
+  border-radius: var(--ds-radius-pill);
+  border: 0;
+  font-size: 0.6875rem;
+  font-weight: var(--ds-weight-bold);
+  line-height: 1;
+  white-space: nowrap;
+}
+.ds-nav__badge-text {
+  display: inline-block;
+  line-height: 1;
+}
+.ds-nav__badge--running {
+  background: var(--ds-color-primary);
+  color: var(--ds-color-on-primary);
+  border: 0;
+}
+.ds-nav__badge--pending {
+  background: var(--ds-color-primary-soft);
+  color: var(--ds-color-primary-text);
+  border: 0;
+}
+.ds-nav__badge--failed {
+  background: var(--ds-color-danger);
+  color: var(--ds-color-on-danger);
+  border: 0;
+}
+.ds-spinner--xs {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-width: 1.5px;
+}
 .ds-sidebar__footer {
   margin-top: auto;
   font-size: var(--ds-text-xs);
@@ -645,6 +691,33 @@ textarea,
   padding: 0 0.25rem;
   font-size: 0.625rem;
   line-height: 1.1rem;
+}
+.ds-shell--sidebar-collapsed .ds-nav__badges,
+.ds-shell[data-sidebar="collapsed"] .ds-nav__badges,
+:root[data-sidebar="collapsed"] .ds-nav__badges {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  margin-left: 0;
+  display: inline-flex;
+  gap: 2px;
+  z-index: 2;
+}
+.ds-shell--sidebar-collapsed .ds-nav__badge,
+.ds-shell[data-sidebar="collapsed"] .ds-nav__badge,
+:root[data-sidebar="collapsed"] .ds-nav__badge {
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.2rem;
+  font-size: 0.625rem;
+  line-height: 1rem;
+}
+.ds-shell--sidebar-collapsed .ds-nav__badge .ds-spinner--xs,
+.ds-shell[data-sidebar="collapsed"] .ds-nav__badge .ds-spinner--xs,
+:root[data-sidebar="collapsed"] .ds-nav__badge .ds-spinner--xs {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-width: 1px;
 }
 
 /* M3 Navigation Rail Flyout Label on Hover (when Rail is collapsed) */
@@ -947,54 +1020,10 @@ textarea,
   }
 }
 
-/* 2. Queue status floating bottom pill + M3 Side Sheet drawer ============= */
+/* 2. Queue status floating bottom pill (removed) ============= */
 .ds-queue-banner {
-  position: fixed;
-  left: calc(var(--ds-sidebar-width) + var(--ds-space-6));
-  right: auto;
-  bottom: var(--ds-space-5);
-  z-index: var(--ds-z-banner);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ds-space-3);
-  min-height: 2.75rem;
-  max-width: min(34rem, calc(100vw - var(--ds-sidebar-width) - 14rem));
-  padding: var(--ds-space-2) var(--ds-space-4);
-  font-size: var(--ds-text-sm);
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-surface-container-high);
-  color: var(--ds-color-text);
-  border: 1px solid var(--ds-color-border-strong);
-  box-shadow: var(--ds-shadow-lg);
-}
-@media (max-width: 64rem) {
-  .ds-queue-banner {
-    left: var(--ds-space-4);
-    right: var(--ds-space-4);
-    max-width: calc(100vw - 2rem);
-  }
-  .ds-main:has(> .ds-queue-banner:not(.ds-queue-banner--idle)) .ds-fab-menu {
-    bottom: 5.25rem;
-  }
-}
-.ds-workspace .ds-queue-banner {
-  position: static;
-  display: flex;
-  max-width: 100%;
-}
-.ds-queue-banner__text { flex: 1 1 auto; display: flex; align-items: center; gap: var(--ds-space-2); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ds-queue-banner__msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ds-queue-banner__text strong { font-weight: var(--ds-weight-semibold); }
-.ds-queue-banner .ds-queue-banner__progress { width: 6.5rem; flex: none; }
-.ds-queue-banner__action { margin-left: auto; flex: none; }
-.ds-queue-banner--idle { background: var(--ds-surface-container); color: var(--ds-color-text-muted); }
-body > .ds-queue-banner--idle,
-.ds-main > .ds-queue-banner--idle {
   display: none !important;
 }
-.ds-queue-banner--success { background: var(--ds-color-success-bg); color: var(--ds-color-success-fg); border-color: transparent; }
-.ds-queue-banner--error { background: var(--ds-color-danger-bg); color: var(--ds-color-danger-fg); border-color: transparent; }
-.ds-queue-banner--offline { background: var(--ds-color-warning-bg); color: var(--ds-color-warning-fg); border-color: transparent; }
 
 /* M3 Modal Side Sheet (28px extra-large leading corners) */
 .ds-drawer {
@@ -4174,6 +4203,60 @@ a.ds-timeline__link:hover {
   white-space: pre-line;
   line-height: 1.65;
   max-width: 85ch;
+}
+.ds-rationale--orientation .ds-rationale__text.ds-markdown {
+  white-space: normal;
+}
+
+/* Safe Clinical Markdown Typography (Block & Inline) */
+.ds-markdown,
+.ds-thinking-popover__body.ds-markdown {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ds-markdown p {
+  margin: 0 0 var(--ds-space-2) 0;
+}
+.ds-markdown p:last-child {
+  margin-bottom: 0;
+}
+.ds-markdown ul,
+.ds-markdown ol {
+  margin: var(--ds-space-1) 0 var(--ds-space-2) 0;
+  padding-left: 1.25rem;
+}
+.ds-markdown ul:last-child,
+.ds-markdown ol:last-child {
+  margin-bottom: 0;
+}
+.ds-markdown li {
+  margin-bottom: 0.2rem;
+}
+.ds-markdown li:last-child {
+  margin-bottom: 0;
+}
+.ds-markdown strong,
+.ds-markdown-inline strong {
+  font-weight: 600;
+  color: var(--ds-text-primary, var(--ds-color-text));
+}
+.ds-markdown em,
+.ds-markdown-inline em {
+  font-style: italic;
+}
+.ds-markdown code,
+.ds-markdown-inline code {
+  font-family: var(--ds-font-mono);
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: var(--ds-radius-xs, 4px);
+  background: var(--ds-surface-variant, rgba(148, 163, 184, 0.15));
+}
+.ds-markdown a,
+.ds-markdown-inline a {
+  color: var(--ds-color-primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* Guidelines 2-Column Split Layout (Left Document Menu + Right PDF Preview) */

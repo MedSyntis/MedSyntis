@@ -2,9 +2,14 @@ from enum import Enum
 from datetime import date, datetime
 import re
 
-from typing import Any, Optional, ClassVar
+from typing import Annotated, Any, Optional, ClassVar
 
 from pydantic import BaseModel, Field, PastDate, field_validator
+
+MarkdownStr = Annotated[
+    str,
+    Field(json_schema_extra={"format": "markdown", "markdown": True}),
+]
 
 
 def _coerce_clinical_date(v: Any) -> Optional[date]:
@@ -286,7 +291,7 @@ class RadiologicalExamination(BaseModel):
     exam_type: RadiologicExamType = Field(
         description="The type of radiological examination performed (e.g., CT, MRI, X-ray, EUS)."
     )
-    exam_result: Optional[str] = Field(
+    exam_result: Optional[MarkdownStr] = Field(
         description="Summary of key findings from the radiological report",
         default="N/A",
     )
@@ -316,7 +321,9 @@ class HistologicAnalysis(BaseModel):
 
     histology_date: date = Field(description="Date of biopsy or resection")
     contributive: bool = Field(description="Importance of results (conclusive or not)")
-    result: str = Field(description="Complete result of the histological analysis")
+    result: MarkdownStr = Field(
+        description="Complete result of the histological analysis"
+    )
 
 
 class RadiologicalExaminations(BaseModel):
@@ -363,15 +370,17 @@ class Reference(BaseModel):
     name: str = Field(description="Name of the reference")
     page: int = Field(description="Page of the document")
     position: str = Field(description="Position of the reference")
-    excerpt: str = Field(
+    excerpt: MarkdownStr = Field(
         description="Summarize relevant excerpt from the document, no more than 3 lines"
     )
 
 
 class ExpertSuggestion(BaseModel):
-    suggestion: str = Field(description="Expert suggestion for the patient")
+    suggestion: MarkdownStr = Field(description="Expert suggestion for the patient")
 
-    why: str = Field(description="Explanation of the reasoning behind the suggestion")
+    why: MarkdownStr = Field(
+        description="Explanation of the reasoning behind the suggestion"
+    )
 
     references: list[Reference] = Field(
         description="list of clinical guideline references supporting the suggestion"
@@ -384,12 +393,12 @@ class MTDComplete(BaseModel):
         description="Based on your specialty and provided documents, is the MDT file complete?",
     )
 
-    reflection: Optional[str] = Field(
+    reflection: Optional[MarkdownStr] = Field(
         default=None,
         description="Detailed reflection, reasoning, or synthesis of the collaborative team discussion",
     )
 
-    what_missing: list[str] = Field(
+    what_missing: list[MarkdownStr] = Field(
         default=[], description="List of missing elements required for a decision"
     )
 

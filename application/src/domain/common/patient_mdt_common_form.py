@@ -15,6 +15,7 @@ from src.application.agent.agent import MedSyntisAgent
 from src.domain.common import common_ressources
 from src.domain.common.agents import Agents
 from src.domain.common.common_ressources import *  # noqa: F403
+from src.domain.common.common_ressources import MarkdownStr
 from src.domain.worker.queue_job import RCPProcessingStatus
 
 PARIS_TZ = ZoneInfo("Europe/Paris")
@@ -1025,7 +1026,7 @@ class PatientMDTForm:
             default="Inconnu",
             description="Type of document detected in French (e.g. 'Fiche RCP', 'Compte-rendu radiologique', 'Facture', 'Courrier médical', 'Autre document')",
         )
-        justification: str = Field(
+        justification: MarkdownStr = Field(
             default="",
             description="Short explanation in French justifying why this document is or is not an RCP/MDT report",
         )
@@ -1098,7 +1099,7 @@ class PatientMDTForm:
         patient_priority: PatientPriority = Field(  # noqa: F405
             description="Urgency of the patient's treatment"
         )
-        why_relevant: str = Field(
+        why_relevant: MarkdownStr = Field(
             description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
         )
         sources_relevant: list[Reference] = Field(  # noqa: F405
@@ -1145,7 +1146,7 @@ class PatientMDTForm:
             default=None,
             description="Suggested priority level for MDT discussion and care management. None if routine follow-up.",
         )
-        proposed_care_type: Optional[str] = Field(
+        proposed_care_type: Optional[MarkdownStr] = Field(
             default=None,
             description=(
                 "Suggested area or modality of care to discuss during the MDT meeting "
@@ -1153,7 +1154,7 @@ class PatientMDTForm:
                 "None if no specific adaptation is suggested."
             ),
         )
-        clinical_rationale: str = Field(
+        clinical_rationale: MarkdownStr = Field(
             description="Clinical rationale and guideline arguments summarizing the expert debate to assist the physicians."
         )
 

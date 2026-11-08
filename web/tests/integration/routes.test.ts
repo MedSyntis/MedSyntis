@@ -35,7 +35,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-security-policy"]).toContain("default-src 'self'");
     expect(res.body).toContain('data-testid="sidebar"');
-    expect(res.body).toContain('data-testid="queue-banner"');
+    expect(res.body).not.toContain('data-testid="queue-banner"');
+    expect(res.body).toContain('data-testid="btn_queue_open"');
+    expect(res.body).toContain('data-testid="nav-queue-badges"');
+    expect(res.body).toContain('data-testid="badge-queue-running"');
+    expect(res.body).toContain('data-testid="badge-queue-failed"');
     expect(res.body).toContain('data-theme-pref="auto"');
     expect(res.body).toContain('data-testid="theme-selector"');
     expect(res.body).toContain('data-testid="btn_theme_auto"');
@@ -628,11 +632,13 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(pdfNotModified.statusCode).toBe(304);
 
-    // 3. SSE /events/queue includes adaptive retry directive
+    // 3. SSE /events/queue includes adaptive retry directive and nav badges event
     const sseRes = await app.inject({ method: "GET", url: "/events/queue" });
     expect(sseRes.statusCode).toBe(200);
     expect(sseRes.headers["content-type"]).toContain("text/event-stream");
     expect(sseRes.body).toContain("retry: 3000\nevent: banner\ndata: ");
+    expect(sseRes.body).toContain("event: badges\ndata: ");
+    expect(sseRes.body).toContain("badge-queue-running");
 
     await app.close();
   });
@@ -684,7 +690,9 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
         "best_motor_function=Assis+sans+appui+%28Sitter%29&hfmse_score=44&chop_intend_score=Non+renseign%C3%A9&rulm_score=31&motor_milestones=Station+assise+autonome%0APropulsion+fauteuil&physiotherapy_frequency=3+s%C3%A9ances+%2F+semaine",
     });
     expect(updateMotorRes.statusCode).toBe(200);
-    expect(updateMotorRes.body).toContain('<span class="ds-kv__value ">44</span>');
+    expect(updateMotorRes.body).toContain(
+      '<span class="ds-kv__value  ds-markdown-inline">44</span>',
+    );
     expect(updateMotorRes.body).toContain("Station assise autonome ; Propulsion fauteuil");
     expect(updateMotorRes.body).toContain("Modifié manuellement");
 

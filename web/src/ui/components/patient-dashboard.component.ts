@@ -9,7 +9,13 @@ import type {
   PatientMetricSeriesView,
   PatientRecordSummaryView,
 } from "../../domain/types.js";
-import { esc, iconSvg } from "../views/html.js";
+import {
+  esc,
+  iconSvg,
+  renderSafeInlineMarkdown,
+  renderSafeMarkdown,
+  stripMarkdown,
+} from "../views/html.js";
 
 function formatDateTimeDisplay(iso: string | null, lang: Language): string {
   if (!iso) return lang === "fr" ? "Non généré" : "Not generated";
@@ -119,7 +125,8 @@ export function renderMetricSeriesEChartsSvg(
           color: "#0f172a",
           fontSize: 11,
           fontWeight: "bold",
-          formatter: (params: { data?: { rawDisplay?: string } }) => params?.data?.rawDisplay ?? "",
+          formatter: (params: { data?: { rawDisplay?: string } }) =>
+            stripMarkdown(params?.data?.rawDisplay ?? ""),
         },
         data: primaryData,
       },
@@ -316,7 +323,7 @@ function renderSummaryCard(
           <span class="ds-rationale__label">${iconSvg("ic-compass", "ds-icon--xs")} ${
             lang === "fr" ? "Trajectoire clinique globale" : "Global clinical trajectory"
           }</span>
-          <p class="ds-rationale__text">${esc(content.clinicalTrajectoryOverview)}</p>
+          <div class="ds-rationale__text ds-dashboard-summary__text ds-markdown">${renderSafeMarkdown(content.clinicalTrajectoryOverview)}</div>
         </div>
         <div class="ds-rationale">
           <span class="ds-rationale__label">${iconSvg("ic-stethoscope", "ds-icon--xs")} ${
@@ -324,7 +331,7 @@ function renderSummaryCard(
               ? "Évolution de la maladie & des traitements"
               : "Disease & treatment evolution"
           }</span>
-          <p class="ds-rationale__text">${esc(content.diseaseAndTreatmentEvolution)}</p>
+          <div class="ds-rationale__text ds-dashboard-summary__text ds-markdown">${renderSafeMarkdown(content.diseaseAndTreatmentEvolution)}</div>
         </div>
         <div class="ds-grid">
           ${
@@ -338,7 +345,7 @@ function renderSummaryCard(
                     }</span>
                   </div>
                   <ul class="ds-hovercard__list">
-                    ${content.notableMetricChanges.map((item) => `<li>${esc(item)}</li>`).join("")}
+                    ${content.notableMetricChanges.map((item) => `<li class="ds-dashboard-summary__list-item ds-markdown-inline">${renderSafeInlineMarkdown(item)}</li>`).join("")}
                   </ul>
                 </div>`
               : ""
@@ -352,7 +359,7 @@ function renderSummaryCard(
                     }</span>
                   </div>
                   <ul class="ds-hovercard__list">
-                    ${content.mdtDecisionsRecap.map((item) => `<li>${esc(item)}</li>`).join("")}
+                    ${content.mdtDecisionsRecap.map((item) => `<li class="ds-dashboard-summary__list-item ds-markdown-inline">${renderSafeInlineMarkdown(item)}</li>`).join("")}
                   </ul>
                 </div>`
               : ""
@@ -368,7 +375,7 @@ function renderSummaryCard(
                     }</span>
                   </div>
                   <ul class="ds-hovercard__list">
-                    ${content.unresolvedVigilancePoints.map((item) => `<li>${esc(item)}</li>`).join("")}
+                    ${content.unresolvedVigilancePoints.map((item) => `<li class="ds-dashboard-summary__list-item ds-markdown-inline">${renderSafeInlineMarkdown(item)}</li>`).join("")}
                   </ul>
                 </div>`
               : ""
@@ -432,9 +439,9 @@ function renderPointPills(points: PatientMetricPointView[], unit: string, lang: 
               lang === "fr" ? "Observation qualitative brute" : "Raw qualitative note"
             }">${iconSvg("ic-info", "ds-icon--xs")}</span>`
           : "";
-        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(pt.formId)}">
+        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(pt.formId)}" title="${esc(stripMarkdown(pt.displayValue))}${esc(unitStr)}">
           <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
-          <strong class="ds-raw-pill__val">${esc(pt.displayValue)}${esc(unitStr)}</strong>
+          <strong class="ds-raw-pill__val ds-metric-pill__value ds-markdown-inline">${renderSafeInlineMarkdown(pt.displayValue)}${esc(unitStr)}</strong>
           ${manualBadge}${annotBadge}${deltaBadge}
         </div>`;
       })
@@ -476,7 +483,7 @@ function renderNumericChartCard(
         lastPt
           ? `<div class="ds-card__header-actions">
               <span class="ds-badge ds-badge--specialty ds-badge--sm" title="${lang === "fr" ? "Dernier relevé" : "Latest"} (${esc(lastPt.formDateLabel)})">
-                ${iconSvg("ic-trend-up")} ${esc(lastPt.displayValue)}${series.unit ? ` ${esc(series.unit)}` : ""} · ${esc(lastPt.formDateLabel)}
+                ${iconSvg("ic-trend-up")} ${esc(stripMarkdown(lastPt.displayValue))}${series.unit ? ` ${esc(series.unit)}` : ""} · ${esc(lastPt.formDateLabel)}
               </span>
             </div>`
           : ""
@@ -541,7 +548,7 @@ function renderQualitativeSwimlanes(
                     : "ds-badge--neutral";
                   return `<div class="ds-step-node" role="listitem">
                     <span class="ds-step-node__date">${esc(pt.formDateLabel)}</span>
-                    <span class="ds-badge ${badgeClass} ds-badge--sm">${esc(currentDisplay)}</span>
+                    <span class="ds-badge ${badgeClass} ds-badge--sm ds-Swimlane__text ds-markdown-inline" data-tooltip="${esc(stripMarkdown(currentDisplay))}">${renderSafeInlineMarkdown(currentDisplay)}</span>
                     ${
                       pt.isManual
                         ? `<span class="ds-badge ds-badge--manual ds-badge--sm" title="${
@@ -648,7 +655,7 @@ function renderRawMatrixTable(
                       const displayVal = resolveTranslatedPointDisplay(pt, s.valueType, lang);
                       return `<td data-label="${esc(dateLabel)}">
                         <div class="ds-cluster">
-                          <strong>${esc(displayVal)}</strong>
+                          <strong class="ds-matrix-table__cell-inner ds-markdown-inline" data-tooltip="${esc(stripMarkdown(displayVal))}">${renderSafeInlineMarkdown(displayVal)}</strong>
                           ${
                             pt.isManual
                               ? `<span class="ds-badge ds-badge--manual ds-badge--sm" title="${

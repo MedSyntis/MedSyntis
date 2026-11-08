@@ -1,4 +1,11 @@
+from unittest.mock import patch
 import streamlit as st
+from src.ui.patient_mdt.datas import (
+    _extract_section_header_summary,
+    _strip_markdown_inline,
+    _truncate,
+    render_field,
+)
 from src.ui.patient_mdt.translations import (
     get_logo_svg,
     translate,
@@ -71,3 +78,79 @@ def test_translation_english():
         )
         == "Detailed reflection, reasoning, or synthesis of the collaborative team discussion"
     )
+
+
+def test_strip_markdown_inline_and_expander_summaries():
+    st.session_state["language"] = "Français"
+
+    assert (
+        _strip_markdown_inline("**Adénocarcinome** lieberkühnien")
+        == "Adénocarcinome lieberkühnien"
+    )
+    assert (
+        _strip_markdown_inline("**Stade IIIB** (`pT3N1M0`)") == "Stade IIIB (pT3N1M0)"
+    )
+    assert (
+        _strip_markdown_inline("- **Lésion** hépatique\n- *Adénopathie* cœliaque")
+        == "Lésion hépatique; Adénopathie cœliaque"
+    )
+    assert (
+        _strip_markdown_inline("Référence [TNCD](https://www.snfge.org) `v2024`")
+        == "Référence TNCD v2024"
+    )
+
+    truncated = _truncate(
+        "**Adénocarcinome** canalaire infiltrant du pancréas avec envahissement vasculaire **cT4N1M0** (`RECIST PD`)",
+        max_len=85,
+    )
+    assert "**" not in truncated
+    assert "`" not in truncated
+    assert len(truncated) <= 85
+
+    cancer_summary = _extract_section_header_summary(
+        "CancerDescription",
+        {
+            "type_of_cancer": "**Adénocarcinome** lieberkühnien",
+            "tnm_status": "**Stade IIIB** (`pT3N1M0`)",
+            "recist_response": "*Réponse partielle*",
+        },
+    )
+    assert "**" not in cancer_summary
+    assert "`" not in cancer_summary
+    assert "*" not in cancer_summary
+    assert "Adénocarcinome lieberkühnien" in cancer_summary
+    assert "Stade IIIB (pT3N1M0)" in cancer_summary
+
+    genetic_summary = _extract_section_header_summary(
+        "GeneticDiagnosis",
+        {
+            "smn2_copy_count": 3,
+            "other_genetic_variants": "`c.123A>G` (**hétérozygote**)",
+        },
+    )
+    assert "**" not in genetic_summary
+    assert "`" not in genetic_summary
+    assert "3 copie(s) SMN2" in genetic_summary
+    assert "c.123A>G (hétérozygote)" in genetic_summary
+
+    motor_summary = _extract_section_header_summary(
+        "MotorFunctionStatus",
+        {"sma_type": "**Type 1** (*Werdnig-Hoffmann*)"},
+    )
+    assert motor_summary == " — Type 1 (Werdnig-Hoffmann)"
+
+
+def test_render_field_multiline_markdown_block():
+    st.session_state["language"] = "Français"
+
+    with patch.object(st, "markdown") as mock_md:
+        render_field("reflection", "- Point 1\n- Point 2")
+        mock_md.assert_called_once_with(
+            "**Réflexion / Synthèse du débat :**\n\n- Point 1\n- Point 2"
+        )
+
+    with patch.object(st, "markdown") as mock_md:
+        render_field("reflection", "- Unique élément court")
+        mock_md.assert_called_once_with(
+            "**Réflexion / Synthèse du débat :**\n\n- Unique élément court"
+        )

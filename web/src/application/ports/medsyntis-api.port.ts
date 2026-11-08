@@ -124,7 +124,7 @@ export interface MedsyntisApiPort {
     files: UploadFileInput[],
     batchId: string,
     domain: ClinicalDomain,
-  ): Promise<{ batchId: string; filenames: string[] }>;
+  ): Promise<{ batchId: string; filenames: string[]; duplicates?: string[] }>;
   getBatchStatus(batchId: string, domain: ClinicalDomain): Promise<BatchStatus>;
 
   // Guidelines & Specialty Agents

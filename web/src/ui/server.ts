@@ -44,6 +44,7 @@ import {
   renderIngestPage,
   renderQueueAdminPage,
   renderQueueBannerPartial,
+  renderQueueNavBadges,
   renderSectionDetailsPartial,
   renderStatusPage,
   renderWorklistPage,
@@ -696,6 +697,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       queueStats,
       queueJobs,
       query.patientId ?? null,
+      query.duplicate ?? null,
     );
     return reply.type("text/html; charset=utf-8").send(html);
   });
@@ -728,8 +730,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     }
 
     const res = await ingestUseCase.uploadBatch(files, session.domain);
+    const firstDuplicate = res.duplicates?.[0];
+    const dupParam = firstDuplicate ? `&duplicate=${encodeURIComponent(firstDuplicate)}` : "";
     return reply.redirect(
-      `/ingest?domain=${encodeURIComponent(session.domain)}&batchId=${encodeURIComponent(res.batchId)}`,
+      `/ingest?domain=${encodeURIComponent(session.domain)}&batchId=${encodeURIComponent(res.batchId)}${dupParam}`,
     );
   });
 
@@ -1390,11 +1394,14 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const session = resolveSession(req);
     const stats = await api.getQueueStats(session.domain, true);
     const bannerHtml = renderQueueBannerPartial(stats, session).replace(/\n/g, " ");
+    const badgesHtml = renderQueueNavBadges(stats, session.language).replace(/\n/g, " ");
     const retryMs = stats.running > 0 || stats.pending > 0 ? 3000 : 8000;
     reply.header("Content-Type", "text/event-stream; charset=utf-8");
     reply.header("Cache-Control", "no-cache, no-transform");
     reply.header("Connection", "keep-alive");
-    return reply.send(`retry: ${retryMs}\nevent: banner\ndata: ${bannerHtml}\n\n`);
+    return reply.send(
+      `retry: ${retryMs}\nevent: banner\ndata: ${bannerHtml}\n\nevent: badges\ndata: ${badgesHtml}\n\n`,
+    );
   });
 
   // 10. Maintenance, 404 Not Found & 5xx Server Error Pages

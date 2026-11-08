@@ -80,6 +80,21 @@ def get_queue_jobs_endpoint(
     )
 
 
+@router.get("/jobs/{job_id}", response_model=QueueJobResponse)
+def get_queue_job_endpoint(
+    job_id: str,
+    manager: QueueManagerDep,
+):
+    """Retrieve details of a specific queue job."""
+    job = manager.get_job(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tâche '{job_id}' introuvable.",
+        )
+    return job
+
+
 @router.get("/thinking", response_model=QueueThinkingResponse)
 def get_active_thinking_endpoint(
     request: Request,

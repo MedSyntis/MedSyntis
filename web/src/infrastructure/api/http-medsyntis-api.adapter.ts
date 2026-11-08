@@ -940,10 +940,11 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     files: UploadFileInput[],
     batchId: string,
     domain: ClinicalDomain,
-  ): Promise<{ batchId: string; filenames: string[] }> {
+  ): Promise<{ batchId: string; filenames: string[]; duplicates?: string[] }> {
     this.invalidateDossierCaches();
     try {
       const filenames: string[] = [];
+      const duplicates: string[] = [];
       for (const f of files) {
         const formData = new FormData();
         const blob = new Blob([new Uint8Array(f.content)], {
@@ -954,7 +955,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         if (f.patientId) {
           formData.append("patient_id", f.patientId);
         }
-        await this.requestJson(
+        const uploadRes = await this.requestJson<Record<string, unknown>>(
           `/api/v1/patientmdtform/upload?domain=${encodeURIComponent(domain)}`,
           domain,
           {
@@ -962,9 +963,13 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
             body: formData,
           },
         );
-        filenames.push(f.filename);
+        const resolvedName = String(uploadRes.filename || f.filename);
+        filenames.push(resolvedName);
+        if (uploadRes.is_duplicate) {
+          duplicates.push(resolvedName);
+        }
       }
-      return { batchId, filenames };
+      return { batchId, filenames, duplicates };
     } catch (err) {
       if (this.fallback) return this.fallback.uploadForms(files, batchId, domain);
       throw err;

@@ -381,10 +381,13 @@ def get_current_user_info(
     """
     base_conf = get_base_config()
     expected_secret = base_conf.proxy_secret
-    proxy_ok = expected_secret is not None and hmac.compare_digest(
-        (x_proxy_secret or "").encode(),
-        expected_secret.get_secret_value().encode(),
-    )
+    if expected_secret is not None:
+        proxy_ok = x_proxy_secret is not None and hmac.compare_digest(
+            x_proxy_secret.encode(),
+            expected_secret.get_secret_value().encode(),
+        )
+    else:
+        proxy_ok = base_conf.dev_mode
     username = (x_user or "").strip()
     if not proxy_ok or not username:
         return {

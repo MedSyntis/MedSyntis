@@ -2184,6 +2184,18 @@
           curDrawerBody.innerHTML = nextDrawerBody.innerHTML;
         }
 
+        var nextNavBadges = nextDoc.getElementById("nav-queue-badges");
+        var curNavBadges = document.getElementById("nav-queue-badges");
+        if (nextNavBadges && curNavBadges) {
+          curNavBadges.outerHTML = nextNavBadges.outerHTML;
+        }
+
+        var nextMenuBadges = nextDoc.getElementById("menu-queue-badges");
+        var curMenuBadges = document.getElementById("menu-queue-badges");
+        if (nextMenuBadges && curMenuBadges) {
+          curMenuBadges.outerHTML = nextMenuBadges.outerHTML;
+        }
+
         var curMain = document.getElementById("main");
         var nextMain = nextDoc.getElementById("main");
         if (!curMain || !nextMain) return;
@@ -2242,32 +2254,48 @@
     }
   }, 4000);
 
-  if (typeof window.EventSource === "function" && document.getElementById("queue-banner")) {
+  if (typeof window.EventSource === "function" && document.getElementById("nav-queue-badges")) {
     try {
       var es = new EventSource("/events/queue");
-      es.addEventListener("banner", function (ev) {
-        var current = document.getElementById("queue-banner");
-        if (!current || !ev.data) return;
-        var prevActive = current.getAttribute("data-queue-active");
-        var prevCompleted = current.getAttribute("data-queue-completed");
-        var prevActiveFile = current.getAttribute("data-active-file");
+      es.addEventListener("badges", function (ev) {
+        if (!ev.data) return;
+        var parser = new DOMParser();
+        var tempDoc = parser.parseFromString(ev.data, "text/html");
+        var newBadges = tempDoc.body.firstElementChild;
+        if (!newBadges) return;
 
-        current.outerHTML = ev.data;
+        var curBadges = document.getElementById("nav-queue-badges");
+        if (curBadges) {
+          var prevRunning = curBadges.getAttribute("data-running");
+          var prevPending = curBadges.getAttribute("data-pending");
+          var prevFailed = curBadges.getAttribute("data-failed");
 
-        var updated = document.getElementById("queue-banner");
-        if (!updated) return;
-        var nextActive = updated.getAttribute("data-queue-active");
-        var nextCompleted = updated.getAttribute("data-queue-completed");
-        var nextActiveFile = updated.getAttribute("data-active-file");
+          curBadges.innerHTML = newBadges.innerHTML;
+          curBadges.setAttribute("data-running", newBadges.getAttribute("data-running") || "0");
+          curBadges.setAttribute("data-pending", newBadges.getAttribute("data-pending") || "0");
+          curBadges.setAttribute("data-failed", newBadges.getAttribute("data-failed") || "0");
 
-        var hasPageProcessing = Boolean(document.querySelector('[data-processing-active="true"]'));
-        var queueStateChanged =
-          prevActive !== nextActive ||
-          prevCompleted !== nextCompleted ||
-          prevActiveFile !== nextActiveFile;
+          var menuBadges = document.getElementById("menu-queue-badges");
+          if (menuBadges) {
+            menuBadges.innerHTML = newBadges.innerHTML;
+            menuBadges.setAttribute("data-running", newBadges.getAttribute("data-running") || "0");
+            menuBadges.setAttribute("data-pending", newBadges.getAttribute("data-pending") || "0");
+            menuBadges.setAttribute("data-failed", newBadges.getAttribute("data-failed") || "0");
+          }
 
-        if (hasPageProcessing && (queueStateChanged || nextActive === "true")) {
-          softRefreshCurrentPage();
+          var nextRunning = newBadges.getAttribute("data-running");
+          var nextPending = newBadges.getAttribute("data-pending");
+          var nextFailed = newBadges.getAttribute("data-failed");
+
+          var hasPageProcessing = Boolean(document.querySelector('[data-processing-active="true"]'));
+          var queueStateChanged =
+            prevRunning !== nextRunning ||
+            prevPending !== nextPending ||
+            prevFailed !== nextFailed;
+
+          if (hasPageProcessing && (queueStateChanged || nextRunning !== "0")) {
+            softRefreshCurrentPage();
+          }
         }
       });
     } catch (_err) {}

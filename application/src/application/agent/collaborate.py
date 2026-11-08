@@ -143,7 +143,8 @@ def collaborative_debate(
                 opinion_prompt = (
                     f"Answer in {magent.response_language.capitalize()} language, not mention it in the answer.\n"
                     f"As an expert in {magent.expert_type if hasattr(magent, 'expert_type') else magent.agent_name}, "
-                    f"analyze the patient file and provide your initial arguments regarding the following question:\n{question}"
+                    f"analyze the patient file and provide your initial arguments regarding the following question:\n{question}\n"
+                    "Use Markdown formatting inside your `response` field (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections)."
                 )
                 try:
                     res = magent.ask(opinion_prompt, DebateTurn, callbacks=callbacks)
@@ -172,7 +173,8 @@ def collaborative_debate(
                 f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
                 f"{compiled_opinions}\n\n"
                 f"The overall question is: {question}\n\n"
-                f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help reach a collective consensus."
+                f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help reach a collective consensus. "
+                "Use Markdown formatting inside your `response` field (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections)."
             )
             try:
                 res = magent.ask(debate_prompt, DebateTurn, callbacks=callbacks)
@@ -214,7 +216,8 @@ def collaborative_debate(
         f"Here is the summary of their final opinions:\n\n"
         f"{final_compiled_opinions}\n\n"
         f"The overall question is: {question}\n\n"
-        f"Based only on the opinions of the experts, synthesize the entire discussion, resolve any disagreements to reach a single consensus, and fill out the expected structured response format."
+        f"Based only on the opinions of the experts, synthesize the entire discussion, resolve any disagreements to reach a single consensus, and fill out the expected structured response format. "
+        f"Use Markdown formatting (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections) in free-text fields such as `reflection`, `what_missing`, `proposed_care_type`, and `clinical_rationale` (while keeping `Reference.name` and enum fields as plain strings). "
         f"Do not add any additional information beyond what is provided in the opinions of the experts."
         f"Do not hallucinate any information that is not present in the opinions of the experts."
     )

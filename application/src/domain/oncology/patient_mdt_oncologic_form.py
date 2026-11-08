@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import Field
 
 from src.domain.common.common_ressources import *  # noqa: F403
+from src.domain.common.common_ressources import MarkdownStr
 
 from src.application.agent.agent import MedSyntisAgent
 from src.domain.oncology.agents import Agents
@@ -46,19 +47,19 @@ class PatientMDTOncologicForm(PatientMDTForm):
         Histological characterization, TNM staging, metastatic spread, and RECIST response
         """
 
-        type_of_cancer: str = Field(
+        type_of_cancer: MarkdownStr = Field(
             default="Non renseigné",
             description="Histological type of the tumor (e.g., ductal adenocarcinoma, squamous cell carcinoma, hepatocellular carcinoma, neuroendocrine tumor)",
         )
-        histological_grade: Optional[str] = Field(
+        histological_grade: Optional[MarkdownStr] = Field(
             default=None,
             description="Histological differentiation grade (e.g., G1 well differentiated, G2 moderately differentiated, G3 poorly differentiated, or Ki-67 index %)",
         )
-        tnm_status: Optional[str] = Field(
+        tnm_status: Optional[MarkdownStr] = Field(
             default=None,
             description="Clinical or pathological TNM classification (e.g., cT3N1M0, ypT1N0M0)",
         )
-        figo_stage: Optional[str] = Field(
+        figo_stage: Optional[MarkdownStr] = Field(
             default=None,
             description="Overall stage (AJCC/UICC I-IV or FIGO stage if applicable)",
         )
@@ -66,15 +67,15 @@ class PatientMDTOncologicForm(PatientMDTForm):
             default=None,
             description="True if distant metastases are present (M1), False if localized (M0)",
         )
-        metastatic_sites: list[str] = Field(
+        metastatic_sites: list[MarkdownStr] = Field(
             default_factory=list,
             description="List of organs affected by distant metastases (e.g., liver, lung, peritoneum, bone, distant lymph nodes)",
         )
-        target_lesion_size_mm: Optional[float | int | str] = Field(
+        target_lesion_size_mm: Optional[float | int | MarkdownStr] = Field(
             default=None,
             description="Size of the primary tumor or main target lesion in millimeters (mm)",
         )
-        recist_response: Optional[str] = Field(
+        recist_response: Optional[MarkdownStr] = Field(
             default=None,
             description="Radiological response according to RECIST 1.1: Baseline / Bilan initial, Complete Response (RC), Partial Response (RP), Stable Disease (SD), or Progressive Disease (PD)",
         )
@@ -92,27 +93,27 @@ class PatientMDTOncologicForm(PatientMDTForm):
             default=None,
             description="Is the tumor MSI (True) or MSS (False)",
         )
-        ca19_9: Optional[float | int | str] = Field(
+        ca19_9: Optional[float | int | MarkdownStr] = Field(
             default=None,
             description="Serum CA 19-9 tumor marker level (U/mL)",
         )
-        ace: Optional[float | int | str] = Field(
+        ace: Optional[float | int | MarkdownStr] = Field(
             default=None,
             description="Serum CEA / ACE (Carcinoembryonic Antigen) tumor marker level (ng/mL)",
         )
-        afp: Optional[float | int | str] = Field(
+        afp: Optional[float | int | MarkdownStr] = Field(
             default=None,
             description="Serum Alpha-Fetoprotein (AFP) tumor marker level (ng/mL, crucial for hepatocellular carcinoma)",
         )
-        dpd_uracilemia: Optional[float | int | str] = Field(
+        dpd_uracilemia: Optional[float | int | MarkdownStr] = Field(
             default=None,
             description="Pre-therapeutic plasma uracilemia (ng/mL) or DPD deficiency status (mandatory in France before 5-FU / capecitabine)",
         )
-        ras_braf_status: Optional[str] = Field(
+        ras_braf_status: Optional[MarkdownStr] = Field(
             default=None,
             description="KRAS, NRAS, and BRAF molecular mutation status (e.g., KRAS G12D mutated, RAS/BRAF wild-type)",
         )
-        her2_status: Optional[str] = Field(
+        her2_status: Optional[MarkdownStr] = Field(
             default=None,
             description="HER2 overexpression/amplification and PD-L1 CPS/TPS status if tested",
         )
@@ -176,7 +177,7 @@ class PatientMDTOncologicForm(PatientMDTForm):
             default=None,
             description="Body Mass Index (BMI / IMC) in kg/m²",
         )
-        nutritional_status: Optional[str] = Field(
+        nutritional_status: Optional[MarkdownStr] = Field(
             default=None,
             description="Overall nutritional status (Normal, Moderate malnutrition / Dénutrition modérée, Severe malnutrition / Dénutrition sévère)",
         )
@@ -194,11 +195,11 @@ class PatientMDTOncologicForm(PatientMDTForm):
             default=None,
             description="Total serum bilirubin level in µmol/L (crucial for jaundice, biliary drainage indication, and chemotherapy eligibility)",
         )
-        child_pugh_score: Optional[str] = Field(
+        child_pugh_score: Optional[MarkdownStr] = Field(
             default=None,
             description="Child-Pugh liver function class and score (e.g., A5, A6, B7, B8, C10) if cirrhosis or hepatocellular carcinoma",
         )
-        bclc_stage: Optional[str] = Field(
+        bclc_stage: Optional[MarkdownStr] = Field(
             default=None,
             description="Barcelona Clinic Liver Cancer (BCLC) stage (0, A, B, C, D) for hepatocellular carcinoma",
         )

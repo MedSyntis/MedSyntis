@@ -4,6 +4,7 @@ import re
 from pydantic import Field, field_validator
 
 from src.domain.common.common_ressources import *  # noqa: F403
+from src.domain.common.common_ressources import MarkdownStr
 
 from src.application.agent.agent import MedSyntisAgent
 from src.domain.sma.agents import Agents
@@ -41,7 +42,7 @@ class PatientMDTSmaForm(PatientMDTForm):
             le=10,
             description="Number of SMN2 backup gene copies (crucial for prognosis and treatment eligibility)",
         )
-        other_genetic_variants: Optional[str] = Field(
+        other_genetic_variants: Optional[MarkdownStr] = Field(
             default=None,
             description="Other genetic modifiers or variations found, if any",
         )
@@ -67,18 +68,18 @@ class PatientMDTSmaForm(PatientMDTForm):
                 ]
             },
         )
-        motor_milestones: list[str] = Field(
+        motor_milestones: list[MarkdownStr] = Field(
             description="Achieved motor milestones (e.g. head control, sitting unsupported, standing, independent walking)"
         )
-        hfmse_score: Optional[int | float | str] = Field(
+        hfmse_score: Optional[int | float | MarkdownStr] = Field(
             default=None,
             description="Hammersmith Functional Motor Scale Expanded (HFMSE) raw score (0-66, ratio, bilateral, or clinical note)",
         )
-        chop_intend_score: Optional[int | float | str] = Field(
+        chop_intend_score: Optional[int | float | MarkdownStr] = Field(
             default=None,
             description="CHOP INTEND raw score (usually for Type 1 infants, 0-64, ratio, or clinical note)",
         )
-        rulm_score: Optional[int | float | str] = Field(
+        rulm_score: Optional[int | float | MarkdownStr] = Field(
             default=None,
             description="Revised Upper Limb Module (RULM) raw score (0-37, ratio, bilateral D/G, or clinical note)",
         )
@@ -185,7 +186,7 @@ class PatientMDTSmaForm(PatientMDTForm):
         spine_surgery_history: bool = Field(
             description="Has the patient undergone spinal fusion / arthrodesis?"
         )
-        joint_contractures: list[str] = Field(
+        joint_contractures: list[MarkdownStr] = Field(
             description="Affected joints with contractures (e.g. hips, knees, ankles)"
         )
         wheelchair_user: bool = Field(

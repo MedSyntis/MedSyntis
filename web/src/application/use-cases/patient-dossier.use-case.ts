@@ -40,6 +40,7 @@ import type {
   PriorityLevel,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
+import { stripMarkdown } from "../../ui/views/html.js";
 import type {
   ChatReply,
   MedsyntisApiPort,
@@ -530,7 +531,7 @@ export class PatientDossierUseCase {
     lang: Language,
   ): string {
     if (sectionName === "TumorLocation") {
-      return translateValue(rawObj.tumor_location, lang);
+      return stripMarkdown(translateValue(rawObj.tumor_location, lang));
     }
     if (sectionName === "CancerDescription") {
       const parts = [
@@ -542,13 +543,13 @@ export class PatientDossierUseCase {
           : null,
       ]
         .filter((v) => v !== undefined && v !== null && v !== "")
-        .map((v) => translateValue(v, lang));
+        .map((v) => stripMarkdown(translateValue(v, lang)));
       return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
     }
     if (sectionName === "TumorBiology") {
       const parts = [
         rawObj.msi_state !== undefined && rawObj.msi_state !== null
-          ? translateValue(rawObj.msi_state, lang)
+          ? stripMarkdown(translateValue(rawObj.msi_state, lang))
           : null,
         rawObj.ca19_9 !== undefined && rawObj.ca19_9 !== null
           ? `CA 19-9: ${rawObj.ca19_9} U/mL`
@@ -562,8 +563,10 @@ export class PatientDossierUseCase {
     }
     if (sectionName === "HepaticStatus") {
       const parts = [
-        rawObj.child_pugh_score ? `Child-Pugh ${rawObj.child_pugh_score}` : null,
-        rawObj.bclc_stage ? `BCLC ${rawObj.bclc_stage}` : null,
+        rawObj.child_pugh_score
+          ? `Child-Pugh ${stripMarkdown(String(rawObj.child_pugh_score))}`
+          : null,
+        rawObj.bclc_stage ? `BCLC ${stripMarkdown(String(rawObj.bclc_stage))}` : null,
         rawObj.bilirubin_umol_l !== undefined && rawObj.bilirubin_umol_l !== null
           ? `${rawObj.bilirubin_umol_l} µmol/L`
           : null,
@@ -584,15 +587,17 @@ export class PatientDossierUseCase {
     }
     if (sectionName === "SurgicalStatus") {
       const parts = [
-        rawObj.resectability_status ? translateValue(rawObj.resectability_status, lang) : null,
-        rawObj.resection_margin ? String(rawObj.resection_margin) : null,
+        rawObj.resectability_status
+          ? stripMarkdown(translateValue(rawObj.resectability_status, lang))
+          : null,
+        rawObj.resection_margin ? stripMarkdown(String(rawObj.resection_margin)) : null,
       ].filter((v): v is string => Boolean(v));
       return parts.join(" · ") || translateValue(null, lang);
     }
     if (sectionName === "PatientPerformanceStatus") {
       const ps = rawObj.performance_status;
       if (ps === undefined || ps === null || ps === "") return translateValue(null, lang);
-      return `OMS ${translateValue(ps, lang)}`;
+      return `OMS ${stripMarkdown(translateValue(ps, lang))}`;
     }
     if (sectionName === "RadiologicExams" || sectionName === "RadiologicalExams") {
       if (subCards.length === 0) return lang === "fr" ? "Aucun examen" : "No exam";
@@ -605,21 +610,21 @@ export class PatientDossierUseCase {
       if (has === true) {
         const dt = rawObj.previous_curative_surgery_date;
         return dt && dt !== "Not_given"
-          ? `${translateValue(true, lang)} (${translateValue(dt, lang)})`
+          ? `${translateValue(true, lang)} (${stripMarkdown(translateValue(dt, lang))})`
           : translateValue(true, lang);
       }
-      return translateValue(has ?? false, lang);
+      return stripMarkdown(translateValue(has ?? false, lang));
     }
     if (sectionName === "PlannedCurativeSurgery" || sectionName === "PlannedSurgery") {
-      return translateValue(rawObj.planned_curative_surgery ?? false, lang);
+      return stripMarkdown(translateValue(rawObj.planned_curative_surgery ?? false, lang));
     }
     if (sectionName === "ChemotherapyTreament" || sectionName === "Chemotherapy") {
       if (rawObj.chemotherapy === false) return translateValue(false, lang);
-      if (rawObj.chemotherapy_name) return String(rawObj.chemotherapy_name);
+      if (rawObj.chemotherapy_name) return stripMarkdown(String(rawObj.chemotherapy_name));
       if (subCards.length > 0) {
-        return `${subCards[0]!.title}${subCards.length > 1 ? ` (+${subCards.length - 1})` : ""}`;
+        return `${stripMarkdown(subCards[0]!.title)}${subCards.length > 1 ? ` (+${subCards.length - 1})` : ""}`;
       }
-      return translateValue(rawObj.chemotherapy, lang);
+      return stripMarkdown(translateValue(rawObj.chemotherapy, lang));
     }
     if (sectionName === "MTDCompleted") {
       const missing = Array.isArray(rawObj.what_missing) ? rawObj.what_missing.length : 0;
@@ -632,12 +637,16 @@ export class PatientDossierUseCase {
     }
     if (sectionName === "PatientAdministrative") {
       const fn =
-        rawObj.first_name && rawObj.first_name !== "Not_given" ? String(rawObj.first_name) : "";
+        rawObj.first_name && rawObj.first_name !== "Not_given"
+          ? stripMarkdown(String(rawObj.first_name))
+          : "";
       const ln =
-        rawObj.last_name && rawObj.last_name !== "Not_given" ? String(rawObj.last_name) : "";
+        rawObj.last_name && rawObj.last_name !== "Not_given"
+          ? stripMarkdown(String(rawObj.last_name))
+          : "";
       const rcpDate =
         rawObj.date_rcp && rawObj.date_rcp !== "Not_given"
-          ? translateValue(rawObj.date_rcp, lang)
+          ? stripMarkdown(translateValue(rawObj.date_rcp, lang))
           : "";
       return (
         [`${ln} ${fn}`.trim(), rcpDate].filter(Boolean).join(" · ") || translateValue(null, lang)
@@ -647,7 +656,7 @@ export class PatientDossierUseCase {
     return (
       fields
         .filter((f) => !f.isLongText && !f.hiddenInReadView)
-        .map((f) => f.value)
+        .map((f) => stripMarkdown(f.value))
         .filter((val) => val && val !== "Non renseigné" && val !== "Not documented")
         .slice(0, 2)
         .join(" · ") || translateValue(null, lang)

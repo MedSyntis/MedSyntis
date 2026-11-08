@@ -36,8 +36,26 @@ import {
   normalizePriorityLevel,
   priorityRank,
 } from "../../src/domain/triage.js";
-import type { MdtFormCard, MdtFormDetail } from "../../src/domain/types.js";
+import type { MdtFormCard, MdtFormDetail, QueueStats } from "../../src/domain/types.js";
+import {
+  renderSafeInlineMarkdown as chatRenderSafeInlineMarkdown,
+  renderSafeMarkdown as chatRenderSafeMarkdown,
+  stripMarkdown as chatStripMarkdown,
+  renderChatLogMessagePartial,
+} from "../../src/ui/components/ai-chat.component.js";
 import { renderPatientDashboardPanel } from "../../src/ui/components/patient-dashboard.component.js";
+import {
+  renderQueueNavBadges,
+  renderSectionDetailsPartial,
+  renderSafeInlineMarkdown as tplRenderSafeInlineMarkdown,
+  renderSafeMarkdown as tplRenderSafeMarkdown,
+  stripMarkdown as tplStripMarkdown,
+} from "../../src/ui/templates.js";
+import {
+  renderSafeInlineMarkdown,
+  renderSafeMarkdown,
+  stripMarkdown,
+} from "../../src/ui/views/html.js";
 
 describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
   it("normalizes priority strings and ranks high > medium > low > none", () => {
@@ -1082,5 +1100,229 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(upToDateEnHtml).toContain("Up to date");
     expect(upToDateEnHtml).toContain("Regenerate global summary");
     expect(upToDateEnHtml).toContain("1 session");
+  });
+
+  it("renderQueueNavBadges renders running spinner badge, pending badge, and failed badge", () => {
+    const baseStats: QueueStats = {
+      pending: 0,
+      running: 0,
+      completed: 5,
+      failed: 0,
+      cancelled: 0,
+      total: 5,
+      activeFormFile: null,
+      activeStep: null,
+      activeProgressPct: 0,
+      thinkingPreview: null,
+      gpuLocksCount: 0,
+    };
+
+    // 1. Idle queue (no running, no pending, no failed) -> empty container
+    const idleHtml = renderQueueNavBadges(baseStats, "fr");
+    expect(idleHtml).toContain('id="nav-queue-badges"');
+    expect(idleHtml).not.toContain("badge-queue-running");
+    expect(idleHtml).not.toContain("badge-queue-pending");
+    expect(idleHtml).not.toContain("badge-queue-failed");
+
+    // 2. Running + pending -> running badge with spinner and '1 · 2'
+    const runningPendingHtml = renderQueueNavBadges({ ...baseStats, running: 1, pending: 2 }, "fr");
+    expect(runningPendingHtml).toContain('data-testid="badge-queue-running"');
+    expect(runningPendingHtml).toContain("ds-spinner");
+    expect(runningPendingHtml).toContain("1 · 2");
+    expect(runningPendingHtml).toContain('title="1 analyse(s) en cours · 2 en attente"');
+
+    // 3. Running only -> running badge with spinner and '1'
+    const runningOnlyHtml = renderQueueNavBadges({ ...baseStats, running: 1, pending: 0 }, "en");
+    expect(runningOnlyHtml).toContain('data-testid="badge-queue-running"');
+    expect(runningOnlyHtml).toContain("ds-spinner");
+    expect(runningOnlyHtml).toContain("1");
+    expect(runningOnlyHtml).toContain('title="1 analysis running"');
+
+    // 4. Pending only -> pending badge without spinner
+    const pendingOnlyHtml = renderQueueNavBadges({ ...baseStats, running: 0, pending: 3 }, "fr");
+    expect(pendingOnlyHtml).toContain('data-testid="badge-queue-pending"');
+    expect(pendingOnlyHtml).not.toContain("ds-spinner");
+    expect(pendingOnlyHtml).toContain("3");
+    expect(pendingOnlyHtml).toContain('title="3 analyse(s) en attente"');
+
+    // 5. Failed only -> failed badge with error icon
+    const failedOnlyHtml = renderQueueNavBadges({ ...baseStats, failed: 2 }, "fr");
+    expect(failedOnlyHtml).toContain('data-testid="badge-queue-failed"');
+    expect(failedOnlyHtml).toContain("ic-error");
+    expect(failedOnlyHtml).toContain("2");
+    expect(failedOnlyHtml).toContain('title="2 analyse(s) en échec"');
+
+    // 6. Running + Failed -> both running badge (with spinner) AND failed badge (with error icon)
+    const combinedHtml = renderQueueNavBadges(
+      { ...baseStats, running: 1, pending: 2, failed: 1 },
+      "fr",
+    );
+    expect(combinedHtml).toContain('data-testid="badge-queue-running"');
+    expect(combinedHtml).toContain('data-testid="badge-queue-failed"');
+    expect(combinedHtml).toContain("ds-spinner");
+    expect(combinedHtml).toContain("ic-error");
+  });
+
+  it("renders Safe Markdown, Inline Markdown, and Strip Markdown while blocking XSS and unsafe links", () => {
+    expect(chatRenderSafeMarkdown).toBe(renderSafeMarkdown);
+    expect(chatRenderSafeInlineMarkdown).toBe(renderSafeInlineMarkdown);
+    expect(chatStripMarkdown).toBe(stripMarkdown);
+    expect(tplRenderSafeMarkdown).toBe(renderSafeMarkdown);
+    expect(tplRenderSafeInlineMarkdown).toBe(renderSafeInlineMarkdown);
+    expect(tplStripMarkdown).toBe(stripMarkdown);
+
+    expect(renderSafeMarkdown("")).toBe("");
+    expect(renderSafeMarkdown("   ")).toBe("");
+    expect(renderSafeMarkdown(null)).toBe("");
+    expect(renderSafeInlineMarkdown("")).toBe("");
+    expect(renderSafeInlineMarkdown(undefined)).toBe("");
+    expect(stripMarkdown(null)).toBe("");
+    expect(stripMarkdown(undefined)).toBe("");
+
+    // Block-level GFM rendering
+    const blockMd =
+      "**Adénocarcinome** *cT3N1M0* avec mutation `KRAS`:\n- Ligne 1 : **FOLFIRINOX**\n- Ligne 2 : Gemcitabine";
+    const blockHtml = renderSafeMarkdown(blockMd);
+    expect(blockHtml).toContain("<strong>Adénocarcinome</strong>");
+    expect(blockHtml).toContain("<em>cT3N1M0</em>");
+    expect(blockHtml).toContain("<code>KRAS</code>");
+    expect(blockHtml).toContain("<ul>");
+    expect(blockHtml).toContain("<li>Ligne 1 : <strong>FOLFIRINOX</strong></li>");
+
+    // Inline GFM rendering (no <p> wrapper)
+    const inlineHtml = renderSafeInlineMarkdown(
+      "**Réponse partielle** (`RECIST 1.1`)\nContrôle à *3 mois*",
+    );
+    expect(inlineHtml).not.toContain("<p>");
+    expect(inlineHtml).toContain("<strong>Réponse partielle</strong>");
+    expect(inlineHtml).toContain("<code>RECIST 1.1</code>");
+    expect(inlineHtml).toContain("<br>");
+    expect(inlineHtml).toContain("<em>3 mois</em>");
+
+    // XSS & unsafe protocol sanitization
+    expect(renderSafeMarkdown("<script>alert(1)</script>")).toBe(
+      "&lt;script&gt;alert(1)&lt;/script&gt;",
+    );
+    const xssMd =
+      'Texte avec <script>alert(1)</script> et [Malicious](javascript:alert(1)) [Data](data:text/html,evil) [Safe](https://tncd.org "TNCD Ref")';
+    const sanitizedBlock = renderSafeMarkdown(xssMd);
+    expect(sanitizedBlock).not.toContain("<script>");
+    expect(sanitizedBlock).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(sanitizedBlock).not.toContain("javascript:");
+    expect(sanitizedBlock).not.toContain("data:text/html");
+    expect(sanitizedBlock).toContain("Malicious");
+    expect(sanitizedBlock).toContain(
+      '<a href="https://tncd.org" title="TNCD Ref" target="_blank" rel="noopener noreferrer">Safe</a>',
+    );
+
+    const sanitizedInline = renderSafeInlineMarkdown(
+      "<img src=x onerror=alert(1)> [Click](vbscript:msgbox(1)) [Mail](mailto:rcp@chu.fr)",
+    );
+    expect(sanitizedInline).not.toContain("<img");
+    expect(sanitizedInline).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(sanitizedInline).not.toContain("vbscript:");
+    expect(sanitizedInline).toContain('href="mailto:rcp@chu.fr"');
+
+    // Strip Markdown for tooltips and <summary> previews
+    expect(
+      stripMarkdown(
+        "# Titre\n> Citation\n- **Bold** et *italic* avec `code` et [lien](https://example.com) et ![img](x.png) ~~barré~~",
+      ),
+    ).toBe("Titre Citation Bold et italic avec code et lien et img barré");
+    expect(stripMarkdown('```json\n{"a": 1}\n```')).toBe('{"a": 1}');
+    expect(stripMarkdown("Date: 2026-11-06T00:00:00Z")).toBe("Date: 06/11/2026");
+
+    // Chat log message partial renders reference excerpts with inline markdown
+    const chatHtml = renderChatLogMessagePartial("Question ?", {
+      answer: "Réponse **sourcée**.",
+      references: [{ name: "TNCD.pdf", page: "12", excerpt: "Schéma **FOLFIRINOX** recommandé" }],
+    });
+    expect(chatHtml).toContain("<strong>sourcée</strong>");
+    expect(chatHtml).toContain("Schéma <strong>FOLFIRINOX</strong> recommandé");
+
+    // Section details partial renders Markdown in read mode and keeps raw editValue in edit mode
+    const mockSection = {
+      name: "CancerDescription",
+      meta: getSectionPresentation("CancerDescription", "oncology", "fr"),
+      summaryText: "**Adénocarcinome** *cT3N1M0*",
+      isManual: true,
+      manualMeta: { edited_by: "Dr. Martin", edited_at: "2026-11-06T10:00:00Z" },
+      fields: [
+        {
+          key: "type_of_cancer",
+          label: "Type de cancer",
+          value: "**Adénocarcinome** canalaire",
+          editValue: "**Adénocarcinome** canalaire",
+          rawValue: "**Adénocarcinome** canalaire",
+          isLongText: false,
+          inputType: "text" as const,
+          options: [],
+          nullable: true,
+          isModified: true,
+          originalAiValue: "**Adénocarcinome** initial",
+        },
+        {
+          key: "clinical_notes",
+          label: "Notes cliniques",
+          value: "Lésion **cT3N1M0** :\n- Engainement vasculaire\n- Pas de métastase",
+          editValue: "Lésion **cT3N1M0** :\n- Engainement vasculaire\n- Pas de métastase",
+          rawValue: "Lésion **cT3N1M0** :\n- Engainement vasculaire\n- Pas de métastase",
+          isLongText: true,
+          inputType: "textarea" as const,
+          options: [],
+          nullable: true,
+          isModified: true,
+          originalAiValue: "Note **IA**",
+        },
+      ],
+      subCards: [
+        {
+          title: "TDM **thoraco-abdomino-pelvien**",
+          badge: "RECIST",
+          subtitle: "06/11/2026",
+          body: " Masse **céphalique** de `32 mm`.",
+        },
+      ],
+      references: [
+        {
+          name: "CR_TDM.pdf",
+          page: "2",
+          excerpt: "Lésion de **32 mm** au contact mésentérique",
+        },
+      ],
+      reasoningThinking: "Analyse **étape par étape** :\n1. Lecture TDM\n2. Stadification",
+      userPrompt: null,
+      manualDiffs: [],
+      durationSec: 4,
+      rawData: {},
+    };
+
+    const readSectionHtml = renderSectionDetailsPartial(
+      mockSection,
+      "fictive_jeanne.pdf",
+      "oncology",
+      false,
+      false,
+    );
+    expect(readSectionHtml).toContain(
+      '<span class="ds-section__summary">Adénocarcinome cT3N1M0</span>',
+    );
+    expect(readSectionHtml).toContain('data-tooltip="Valeur IA initiale : Adénocarcinome initial"');
+    expect(readSectionHtml).toContain("<strong>Adénocarcinome</strong> canalaire");
+    expect(readSectionHtml).toContain("<li>Engainement vasculaire</li>");
+    expect(readSectionHtml).toContain("TDM <strong>thoraco-abdomino-pelvien</strong>");
+    expect(readSectionHtml).toContain("<code>32 mm</code>");
+    expect(readSectionHtml).toContain("Lésion de <strong>32 mm</strong> au contact mésentérique");
+    expect(readSectionHtml).toContain("Analyse <strong>étape par étape</strong>");
+
+    const editSectionHtml = renderSectionDetailsPartial(
+      mockSection,
+      "fictive_jeanne.pdf",
+      "oncology",
+      true,
+      false,
+    );
+    expect(editSectionHtml).toContain('value="**Adénocarcinome** canalaire"');
+    expect(editSectionHtml).toContain(">Lésion **cT3N1M0** :");
   });
 });

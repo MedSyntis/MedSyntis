@@ -6,6 +6,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from src.domain.common.common_ressources import MarkdownStr
 from src.domain.patient_mdt_form import get_domain_mdt_form_cls
 
 MetricPolarity = Literal["higher_is_better", "lower_is_better", "neutral"]
@@ -117,21 +118,21 @@ class PatientMetricSeries(BaseModel):
 class PatientRecordSummaryContent(BaseModel):
     """Structured longitudinal clinical synthesis across a patient's entire MDT history."""
 
-    clinical_trajectory_overview: str = Field(
+    clinical_trajectory_overview: MarkdownStr = Field(
         description="Global chronological summary of the patient's clinical trajectory"
     )
-    disease_and_treatment_evolution: str = Field(
+    disease_and_treatment_evolution: MarkdownStr = Field(
         description="Evolution of therapeutic lines, surgical/orthopedic interventions, and clinical response"
     )
-    notable_metric_changes: list[str] = Field(
+    notable_metric_changes: list[MarkdownStr] = Field(
         default_factory=list,
         description="Key raw metric variations observed across MDT forms with dates",
     )
-    unresolved_vigilance_points: list[str] = Field(
+    unresolved_vigilance_points: list[MarkdownStr] = Field(
         default_factory=list,
         description="Active missing items or clinical vigilance points requiring follow-up",
     )
-    mdt_decisions_recap: list[str] = Field(
+    mdt_decisions_recap: list[MarkdownStr] = Field(
         default_factory=list,
         description="Chronological recap of CareOrientationProposal / MDT orientations",
     )
@@ -983,8 +984,8 @@ def synthesize_patient_record_summary_from_forms(
 
     domain_label = "Amyotrophie Spinale (SMA)" if domain == "sma" else "Oncologie"
     overview = (
-        f"Dossier longitudinal ({domain_label}) de {patient_label} consolidant "
-        f"{len(covered_ids)} fiche(s) RCP du {first_date_str} au {last_date_str}."
+        f"Dossier longitudinal (**{domain_label}**) de **{patient_label}** consolidant "
+        f"**{len(covered_ids)}** fiche(s) RCP du **{first_date_str}** au **{last_date_str}**."
     )
 
     notable_changes: list[str] = []
@@ -992,17 +993,19 @@ def synthesize_patient_record_summary_from_forms(
         if len(s.points) >= 2:
             first_pt = s.points[0]
             last_pt = s.points[-1]
-            delta_str = f" (Δ {last_pt.delta_display})" if last_pt.delta_display else ""
+            delta_str = (
+                f" (**Δ {last_pt.delta_display}**)" if last_pt.delta_display else ""
+            )
             unit_str = f" {s.unit}".rstrip() if s.unit else ""
             notable_changes.append(
-                f"{s.label} : {first_pt.display_value}{unit_str} ({first_pt.form_date_label}) "
-                f"→ {last_pt.display_value}{unit_str} ({last_pt.form_date_label}){delta_str}"
+                f"**{s.label}** : {first_pt.display_value}{unit_str} (**{first_pt.form_date_label}**) "
+                f"→ **{last_pt.display_value}{unit_str}** (**{last_pt.form_date_label}**){delta_str}"
             )
         elif len(s.points) == 1:
             pt = s.points[0]
             unit_str = f" {s.unit}".rstrip() if s.unit else ""
             notable_changes.append(
-                f"{s.label} : {pt.display_value}{unit_str} ({pt.form_date_label})"
+                f"**{s.label}** : **{pt.display_value}{unit_str}** (**{pt.form_date_label}**)"
             )
 
     decisions_recap: list[str] = []
@@ -1016,9 +1019,9 @@ def synthesize_patient_record_summary_from_forms(
             prop_type = care.get("proposed_care_type")
             rationale = care.get("clinical_rationale")
             if prop_type:
-                decisions_recap.append(f"[{d_label}] {prop_type}")
+                decisions_recap.append(f"**[{d_label}]** **{prop_type}**")
             if rationale:
-                treatment_notes.append(f"[{d_label}] {rationale}")
+                treatment_notes.append(f"**[{d_label}]** {rationale}")
 
         mtd = doc.get("MTDCompleted")
         if isinstance(mtd, dict):

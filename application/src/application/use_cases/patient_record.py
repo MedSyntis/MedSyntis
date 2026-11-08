@@ -908,12 +908,15 @@ class PatientRecordService:
                     "Tu es un assistant médical hospitalier français spécialisé en synthèse longitudinale "
                     "de dossiers RCP (Réunion de Concertation Pluridisciplinaire). "
                     "À partir de l'historique structuré des fiches RCP du patient, rédige un résumé global "
-                    "factuel, neutre, non-prescriptif et intégralement sourcé sur les valeurs brutes fournies."
+                    "factuel, neutre, non-prescriptif et intégralement sourcé sur les valeurs brutes fournies. "
+                    "Utilise le formatage Markdown (`**gras**` sur les dates clés, les métriques cliniques "
+                    "et les orientations de prise en charge, ainsi que `*italique*`) à l'intérieur des "
+                    "champs texte et listes de chaînes de `PatientRecordSummaryContent`."
                 )
                 user_prompt = (
                     f"Patient : {patient.display_label} (Domaine : {domain})\n"
                     f"Synthèse factuelle de référence : {snapshot['content']}\n"
-                    "Consolide ce résumé longitudinal en français médical précis."
+                    "Consolide ce résumé longitudinal en français médical précis avec mise en valeur Markdown (`**gras**`)."
                 )
                 invoke_cfg = {"callbacks": callbacks} if callbacks else {}
                 llm_res = structured_llm.invoke(
