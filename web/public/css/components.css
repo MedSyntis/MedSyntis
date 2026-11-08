@@ -4213,6 +4213,46 @@ a.ds-timeline__link:hover {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+.ds-markdown > :first-child {
+  margin-top: 0;
+}
+.ds-markdown > :last-child {
+  margin-bottom: 0;
+}
+.ds-markdown h1 {
+  font-size: 1.125rem;
+  font-weight: var(--ds-weight-bold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text);
+  margin: var(--ds-space-3) 0 var(--ds-space-2) 0;
+  letter-spacing: -0.01em;
+}
+.ds-markdown h2 {
+  font-size: 1rem;
+  font-weight: var(--ds-weight-semibold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text);
+  margin: var(--ds-space-3) 0 var(--ds-space-2) 0;
+  letter-spacing: -0.01em;
+}
+.ds-markdown h3 {
+  font-size: 0.9375rem;
+  font-weight: var(--ds-weight-semibold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text);
+  margin: var(--ds-space-2) 0 var(--ds-space-1) 0;
+}
+.ds-markdown h4,
+.ds-markdown h5,
+.ds-markdown h6 {
+  font-size: 0.8125rem;
+  font-weight: var(--ds-weight-semibold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: var(--ds-space-2) 0 var(--ds-space-1) 0;
+}
 .ds-markdown p {
   margin: 0 0 var(--ds-space-2) 0;
 }
@@ -4256,6 +4296,38 @@ a.ds-timeline__link:hover {
   color: var(--ds-color-primary-text);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* Emojis & Pictograms in Markdown: Normalized clinical scale */
+.ds-emoji {
+  display: inline-block;
+  font-style: normal;
+  font-weight: normal;
+  font-size: 0.9em;
+  line-height: 1;
+  vertical-align: -0.06em;
+  margin-right: 0.15em;
+  letter-spacing: normal;
+}
+
+.ds-markdown h1 .ds-emoji,
+.ds-markdown h2 .ds-emoji,
+.ds-markdown h3 .ds-emoji,
+.ds-chat__markdown h1 .ds-emoji,
+.ds-chat__markdown h2 .ds-emoji,
+.ds-chat__markdown h3 .ds-emoji {
+  font-size: 0.82em;
+  vertical-align: -0.08em;
+  margin-right: 0.2em;
+}
+
+.ds-markdown svg,
+.ds-markdown-inline svg,
+.ds-chat__markdown svg {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
 }
 
 /* Guidelines 2-Column Split Layout (Left Document Menu + Right PDF Preview) */

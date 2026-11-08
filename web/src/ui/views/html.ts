@@ -11,12 +11,26 @@ export const INLINE_ICONS_SVG = fs.existsSync(ICONS_SVG_PATH)
 
 const ISO_MIDNIGHT_RE = /(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/g;
 
+const EMOJI_RE =
+  /(\p{Extended_Pictographic}(?:[\uFE0E\uFE0F]|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:[\uFE0E\uFE0F]|\p{Emoji_Modifier})?)*)/gu;
+
 const clinicalMarkdown = new Marked({
   gfm: true,
   breaks: true,
   renderer: {
     html({ text }: Tokens.HTML | Tokens.Tag): string {
       return escapeHtml(text);
+    },
+    text(
+      this: { parser: { parseInline(tokens: Tokens.Generic[]): string } },
+      token: Tokens.Text | Tokens.Escape,
+    ): string {
+      if ("tokens" in token && token.tokens) {
+        return this.parser.parseInline(token.tokens);
+      }
+      return token.text.replace(EMOJI_RE, (match) =>
+        match ? `<span class="ds-emoji">${match}</span>` : "",
+      );
     },
     link(
       this: { parser: { parseInline(tokens: Tokens.Generic[]): string } },

@@ -1199,6 +1199,13 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(inlineHtml).toContain("<br>");
     expect(inlineHtml).toContain("<em>3 mois</em>");
 
+    // Clinical emoji & pictogram normalization
+    const emojiMd = "## ✅ Consensus\n- 🔴 Divergence\n- 🩺 Stéthoscope";
+    const emojiHtml = renderSafeMarkdown(emojiMd);
+    expect(emojiHtml).toContain('<h2><span class="ds-emoji">✅</span> Consensus</h2>');
+    expect(emojiHtml).toContain('<li><span class="ds-emoji">🔴</span> Divergence</li>');
+    expect(emojiHtml).toContain('<li><span class="ds-emoji">🩺</span> Stéthoscope</li>');
+
     // XSS & unsafe protocol sanitization
     expect(renderSafeMarkdown("<script>alert(1)</script>")).toBe(
       "&lt;script&gt;alert(1)&lt;/script&gt;",
