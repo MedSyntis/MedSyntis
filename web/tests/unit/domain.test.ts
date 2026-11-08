@@ -21,15 +21,42 @@ import {
 } from "../../src/domain/catalog.js";
 import { t, translateValue } from "../../src/domain/i18n.js";
 import {
+  buildPatientDashboardFromForms,
+  evaluatePatientSummaryObsolescence,
+  parseRawMetricObservation,
+  SMA_METRIC_SPECS,
+  synthesizePatientSummaryFromForms,
+} from "../../src/domain/patient-dashboard.js";
+import {
   computeLongitudinalDeltas,
   computeWorklistKpis,
   deriveCompletenessInfo,
   deriveOrientationInfo,
+  derivePriorityBadgeInfo,
   filterAndSortCards,
   normalizePriorityLevel,
   priorityRank,
 } from "../../src/domain/triage.js";
-import type { MdtFormCard, MdtFormDetail } from "../../src/domain/types.js";
+import type { MdtFormCard, MdtFormDetail, QueueStats } from "../../src/domain/types.js";
+import {
+  renderSafeInlineMarkdown as chatRenderSafeInlineMarkdown,
+  renderSafeMarkdown as chatRenderSafeMarkdown,
+  stripMarkdown as chatStripMarkdown,
+  renderChatLogMessagePartial,
+} from "../../src/ui/components/ai-chat.component.js";
+import { renderPatientDashboardPanel } from "../../src/ui/components/patient-dashboard.component.js";
+import {
+  renderQueueNavBadges,
+  renderSectionDetailsPartial,
+  renderSafeInlineMarkdown as tplRenderSafeInlineMarkdown,
+  renderSafeMarkdown as tplRenderSafeMarkdown,
+  stripMarkdown as tplStripMarkdown,
+} from "../../src/ui/templates.js";
+import {
+  renderSafeInlineMarkdown,
+  renderSafeMarkdown,
+  stripMarkdown,
+} from "../../src/ui/views/html.js";
 
 describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
   it("normalizes priority strings and ranks high > medium > low > none", () => {
@@ -82,6 +109,13 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(pending.status).toBe("pending");
     expect(pending.icon).toBe("ic-clock");
     expect(pending.label).toBe("À discuter en RCP");
+
+    const prioWithReasons = derivePriorityBadgeInfo("high", "fr", false, {
+      urgency_reason: "**Pancréas** : Progression sous FOLFIRINOX",
+      urgency_reasons: ["**Pancréas** : Progression sous FOLFIRINOX"],
+    });
+    expect(prioWithReasons.reason).toBe("**Pancréas** : Progression sous FOLFIRINOX");
+    expect(prioWithReasons.reasons).toEqual(["**Pancréas** : Progression sous FOLFIRINOX"]);
   });
 
   it("derives completeness status and missing count", () => {
@@ -107,6 +141,18 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(complete.status).toBe("complete");
     expect(complete.icon).toBe("ic-check-circle");
     expect(complete.label).toBe("Dossier complet");
+
+    const completeWithOptional = deriveCompletenessInfo(
+      {
+        is_complete: true,
+        missing_count: 2,
+        missing_items: ["TEP-TDM", "Oncogénétique"],
+      },
+      "fr",
+    );
+    expect(completeWithOptional.status).toBe("complete");
+    expect(completeWithOptional.badgeClass).toBe("ds-badge--complete");
+    expect(completeWithOptional.label).toBe("2 élément(s) facultatif manquant(s)");
 
     const pendingAi = deriveCompletenessInfo(
       {
@@ -541,5 +587,778 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(adminCoerced.extra_field).toBe("extra");
     const strictAdmin = buildStrictBackendSectionPayload("PatientAdministrative", adminCoerced);
     expect(strictAdmin).not.toHaveProperty("extra_field");
+  });
+
+  it("supports raw non-integer RULM/HFMSE observations, multi-year series, and obsolescence detection", () => {
+    const smaSchema = buildDefaultDomainFormSchema("sma");
+    const coercedRatio = coerceSectionUpdatePayload(
+      "MotorFunctionStatus",
+      {
+        best_motor_function: "Sitter",
+        rulm_score: "34/37",
+        hfmse_score: "31.5",
+        chop_intend_score: "Non testable (fatigue)",
+      },
+      {},
+      smaSchema,
+    );
+    expect(coercedRatio.rulm_score).toBe("34/37");
+    expect(coercedRatio.hfmse_score).toBe(31.5);
+    expect(coercedRatio.chop_intend_score).toBe("Non testable (fatigue)");
+
+    const rulmSpec = SMA_METRIC_SPECS[0]!;
+    const obsRatio = parseRawMetricObservation("34/37", rulmSpec);
+    expect(obsRatio.numericValue).toBe(34);
+    expect(obsRatio.displayValue).toBe("34/37");
+
+    const obsBilateral = parseRawMetricObservation("28 (D) / 30 (G)", rulmSpec);
+    expect(obsBilateral.numericValue).toBe(29);
+    expect(obsBilateral.subValues).toEqual({ D: 28, G: 30 });
+
+    const obsAnnot = parseRawMetricObservation("Non testable (douleur épaule)", rulmSpec);
+    expect(obsAnnot.numericValue).toBeNull();
+    expect(obsAnnot.isAnnotativeOnly).toBe(true);
+
+    const smaForms: MdtFormDetail[] = [
+      {
+        file: "sma_2022_03_10.pdf",
+        patientId: "S-0007",
+        domain: "sma",
+        mdtDate: "2022-03-10",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Léo",
+            last_name: "Test",
+            date_rcp: "2022-03-10",
+          },
+          MotorFunctionStatus: {
+            rulm_score: "28 (D) / 30 (G)",
+            hfmse_score: 40,
+            best_motor_function: "Assis sans appui (Sitter)",
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+      {
+        file: "sma_2026_11_05.pdf",
+        patientId: "S-0007",
+        domain: "sma",
+        mdtDate: "2026-11-05",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Léo",
+            last_name: "Test",
+            date_rcp: "2026-11-05",
+          },
+          MotorFunctionStatus: {
+            rulm_score: "34/37",
+            hfmse_score: 46.5,
+            best_motor_function: "Assis sans appui (Sitter)",
+          },
+        },
+        manualEdits: {
+          MotorFunctionStatus: { edited_by: "Dr. Martin", edited_at: "2026-11-05T10:00:00Z" },
+        },
+        executionTimes: {},
+        metrics: {},
+      },
+    ];
+
+    const summary2022 = synthesizePatientSummaryFromForms("Léo Test", smaForms.slice(0, 1), "sma");
+    const evaluatedObsolete = evaluatePatientSummaryObsolescence(summary2022, smaForms);
+    expect(evaluatedObsolete.isObsolete).toBe(true);
+    expect(evaluatedObsolete.newFormsSinceSummary).toEqual(["sma_2026_11_05.pdf"]);
+
+    const dashboard = buildPatientDashboardFromForms(
+      "S-0007",
+      "Léo Test",
+      "sma",
+      smaForms,
+      summary2022,
+    );
+    const rulmSeries = dashboard.metrics.find(
+      (m) => m.metricKey === "MotorFunctionStatus.rulm_score",
+    );
+    expect(rulmSeries).toBeDefined();
+    expect(rulmSeries?.points).toHaveLength(2);
+    expect(rulmSeries?.points[0]?.displayValue).toBe("28 (D) / 30 (G)");
+    expect(rulmSeries?.points[1]?.displayValue).toBe("34/37");
+    expect(rulmSeries?.points[1]?.isManual).toBe(true);
+    expect(rulmSeries?.points[1]?.daysSinceFirstRcp).toBeGreaterThan(1500);
+  });
+
+  it("extracts oncology longitudinal metric series across CancerDescription, TumorBiology, SurgicalStatus, NutritionalStatus, and HepaticStatus", () => {
+    const oncoForms: MdtFormDetail[] = [
+      {
+        file: "onco_2026_01_15.pdf",
+        patientId: "O-101",
+        domain: "oncology",
+        mdtDate: "2026-01-15",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Jean",
+            last_name: "DUPONT",
+            date_rcp: "2026-01-15",
+          },
+          TumorLocation: { tumor_location: "Pancreas" },
+          CancerDescription: {
+            type_of_cancer: "Adénocarcinome canalaire pancréatique",
+            tnm_status: "cT3N1M0",
+            target_lesion_size_mm: 36.0,
+            recist_response: "Baseline",
+          },
+          TumorBiology: {
+            msi_state: false,
+            ca19_9: 1450.0,
+            ace: 14.2,
+            dpd_uracilemia: 9.5,
+          },
+          SurgicalStatus: {
+            resectability_status: "Borderline",
+            surgery_done: false,
+          },
+          NutritionalStatus: {
+            weight_kg: 68.0,
+            weight_loss_percent: 11.5,
+            bmi: 22.1,
+          },
+          HepaticStatus: {
+            bilirubin_umol_l: 85.0,
+            child_pugh_score: "A6",
+          },
+          PatientPerformanceStatus: { performance_status: 1 },
+          ChemotherapyTreament: {
+            chemotherapy: true,
+            chemotherapy_list: [
+              {
+                chemotherapy_name: "FOLFIRINOX",
+                chemotherapy_tolerance: "Good",
+              },
+            ],
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+      {
+        file: "onco_2026_05_15.pdf",
+        patientId: "O-101",
+        domain: "oncology",
+        mdtDate: "2026-05-15",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Jean",
+            last_name: "DUPONT",
+            date_rcp: "2026-05-15",
+          },
+          TumorLocation: { tumor_location: "Pancreas" },
+          CancerDescription: {
+            type_of_cancer: "Adénocarcinome canalaire pancréatique",
+            tnm_status: "ypT2N0M0",
+            target_lesion_size_mm: 21.0,
+            recist_response: "PR",
+          },
+          TumorBiology: {
+            msi_state: false,
+            ca19_9: 185.0,
+            ace: 4.1,
+            dpd_uracilemia: 9.5,
+          },
+          SurgicalStatus: {
+            resectability_status: "Resectable",
+            surgery_done: true,
+            resection_margin: "R0",
+          },
+          NutritionalStatus: {
+            weight_kg: 71.5,
+            weight_loss_percent: 3.0,
+            bmi: 23.2,
+          },
+          HepaticStatus: {
+            bilirubin_umol_l: 14.0,
+            child_pugh_score: "A5",
+          },
+          PatientPerformanceStatus: { performance_status: 0 },
+          ChemotherapyTreament: {
+            chemotherapy: true,
+            chemotherapy_list: [
+              {
+                chemotherapy_name: "FOLFIRINOX",
+                chemotherapy_tolerance: "Good",
+              },
+            ],
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+    ];
+
+    const dashboard = buildPatientDashboardFromForms(
+      "O-101",
+      "Jean DUPONT",
+      "oncology",
+      oncoForms,
+      null,
+    );
+    const byKey = new Map(dashboard.metrics.map((m) => [m.metricKey, m]));
+
+    expect(byKey.get("TumorBiology.ca19_9")?.points.map((p) => p.numericValue)).toEqual([
+      1450.0, 185.0,
+    ]);
+    expect(
+      byKey.get("CancerDescription.target_lesion_size_mm")?.points.map((p) => p.numericValue),
+    ).toEqual([36.0, 21.0]);
+    expect(
+      byKey.get("CancerDescription.recist_response")?.points.map((p) => p.displayValue),
+    ).toEqual(["Baseline", "PR"]);
+    expect(
+      byKey.get("SurgicalStatus.resectability_status")?.points.map((p) => p.displayValue),
+    ).toEqual(["Borderline (limite)", "Résécable"]);
+    expect(byKey.get("SurgicalStatus.resection_margin")?.points.map((p) => p.displayValue)).toEqual(
+      ["R0"],
+    );
+    expect(byKey.get("NutritionalStatus.weight_kg")?.points.map((p) => p.numericValue)).toEqual([
+      68.0, 71.5,
+    ]);
+    expect(byKey.get("HepaticStatus.bilirubin_umol_l")?.points.map((p) => p.numericValue)).toEqual([
+      85.0, 14.0,
+    ]);
+    expect(byKey.get("Chemotherapy.chemotherapy_name")?.points.map((p) => p.displayValue)).toEqual([
+      "FOLFIRINOX",
+      "FOLFIRINOX",
+    ]);
+  });
+
+  it("renders patient dashboard panel and ECharts SSR SVG across FR/EN, summary states, bilateral series, and qualitative swimlanes", () => {
+    // 1. Empty metrics + queued AI job in English
+    const emptyEnHtml = renderPatientDashboardPanel(
+      {
+        patientId: "P-EMPTY",
+        patientName: "Alice Martin",
+        domain: "sma",
+        latestFile: null,
+        rcpCount: 0,
+        metrics: [],
+        summary: {
+          hasSummary: false,
+          isObsolete: false,
+          obsoleteReasons: [],
+          newFormsSinceSummary: [],
+          modifiedFormsSinceSummary: [],
+          removedFormsSinceSummary: [],
+          generatedAt: null,
+          coveredFormIds: [],
+          latestFormIdAtGeneration: null,
+          latestFormDateAtGeneration: null,
+          modelUsed: null,
+          content: null,
+          activeJob: {
+            job_id: "J-99",
+            status: "RUNNING",
+            current_step: null,
+          },
+        },
+      },
+      "en",
+    );
+    expect(emptyEnHtml).toContain("No raw longitudinal metrics found");
+    expect(emptyEnHtml).toContain("Queued in AI Worker");
+    expect(emptyEnHtml).toContain("Task queued in AI PriorityQueue");
+    expect(emptyEnHtml).toContain("Longitudinal synthesis waiting for AI worker");
+    expect(emptyEnHtml).toContain("Generating in AI queue");
+
+    // 2. Full dashboard with obsolete summary (new forms + modified forms), bilateral D/G, manual edits, annotative-only points, multi-year span, and qualitative step changes in FR & EN
+    const richDashboard = {
+      patientId: "P-RICH",
+      patientName: "Lucas Bernard",
+      domain: "sma" as const,
+      latestFile: "f3.pdf",
+      rcpCount: 3,
+      metrics: [
+        {
+          metricKey: "OrthopedicStatus.cobb_angle",
+          section: "OrthopedicStatus",
+          field: "cobb_angle",
+          label: "OrthopedicStatus.cobb_angle",
+          unit: "°",
+          valueType: "numeric_or_mixed" as const,
+          polarity: "lower_is_better" as const,
+          scaleMin: 0,
+          scaleMax: 90,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2024-01-10",
+              formDateLabel: "2024-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: "D: 18°, G: 14°",
+              displayValue: "D: 18°, G: 14°",
+              numericValue: 18,
+              subValues: { D: 18, G: 14 },
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2025-06-15",
+              formDateLabel: "",
+              daysSinceFirstRcp: 522,
+              xRatio: 0.5,
+              rawValue: "D: 22°, G: 19°",
+              displayValue: "22",
+              numericValue: 22,
+              subValues: { D: 22, G: 19 },
+              isManual: true,
+              editedBy: "Dr. Martin",
+              editedAt: "2025-06-16T10:00:00Z",
+              deltaNumeric: 4,
+              deltaDisplay: "+4",
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f3.pdf",
+              formDate: null,
+              formDateLabel: "Date non renseignée",
+              daysSinceFirstRcp: 0,
+              xRatio: 1,
+              rawValue: "Corset Garchois porté",
+              displayValue: "Corset Garchois porté",
+              numericValue: null,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: true,
+            },
+          ],
+        },
+        {
+          metricKey: "MotorFunctionStatus.hfmse_score",
+          section: "MotorFunctionStatus",
+          field: "hfmse_score",
+          label: "Score HFMSE",
+          unit: "/66",
+          valueType: "numeric_or_mixed" as const,
+          polarity: "higher_is_better" as const,
+          scaleMin: null,
+          scaleMax: null,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2026-01-10",
+              formDateLabel: "2026-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: 40,
+              displayValue: "40/66",
+              numericValue: 40,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2026-02-10",
+              formDateLabel: "2026-02-10",
+              daysSinceFirstRcp: 31,
+              xRatio: 1,
+              rawValue: 42,
+              displayValue: "42/66",
+              numericValue: 42,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: 2,
+              deltaDisplay: "+2",
+              isAnnotativeOnly: false,
+            },
+          ],
+        },
+        {
+          metricKey: "MotorFunctionStatus.current_motor_milestone",
+          section: "MotorFunctionStatus",
+          field: "current_motor_milestone",
+          label: "Statut moteur actuel",
+          unit: "",
+          valueType: "categorical" as const,
+          polarity: "neutral" as const,
+          scaleMin: null,
+          scaleMax: null,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2024-01-10",
+              formDateLabel: "2024-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: ["Sitter", "Assisted standing"],
+              displayValue: "Sitter, Assisted standing",
+              numericValue: null,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2025-06-15",
+              formDateLabel: "2025-06-15",
+              daysSinceFirstRcp: 522,
+              xRatio: 1,
+              rawValue: "",
+              displayValue: "Non-sitter",
+              numericValue: null,
+              subValues: null,
+              isManual: true,
+              editedBy: "Dr. Martin",
+              editedAt: "2025-06-16T10:00:00Z",
+              deltaNumeric: null,
+              deltaDisplay: "Assis sans appui → Non-assis",
+              isAnnotativeOnly: false,
+            },
+          ],
+        },
+      ],
+      summary: {
+        hasSummary: true,
+        isObsolete: true,
+        obsoleteReasons: ["1 nouvelle séance RCP"],
+        newFormsSinceSummary: ["f3.pdf"],
+        modifiedFormsSinceSummary: ["f2.pdf"],
+        removedFormsSinceSummary: [],
+        generatedAt: "2026-06-15T14:30:00Z",
+        coveredFormIds: ["f1.pdf", "f2.pdf"],
+        latestFormIdAtGeneration: "f2.pdf",
+        latestFormDateAtGeneration: "2025-06-15",
+        modelUsed: "mistral-nemo",
+        content: {
+          clinicalTrajectoryOverview: "Suivi longitudinal SMA sur 3 séances.",
+          diseaseAndTreatmentEvolution: "Stabilisation sous Risdiplam.",
+          notableMetricChanges: ["HFMSE : 40 → 42 (+2)"],
+          unresolvedVigilancePoints: ["EFR à contrôler"],
+          mdtDecisionsRecap: ["2025-06-15 : Poursuite Risdiplam"],
+          sourcesUsed: ["f1.pdf", "f2.pdf"],
+        },
+        activeJob: null,
+      },
+    };
+
+    const frHtml = renderPatientDashboardPanel(richDashboard, "fr");
+    expect(frHtml).toContain("Résumé global obsolète");
+    expect(frHtml).toContain("1 nouvelle(s) séance(s) RCP");
+    expect(frHtml).toContain("Suivi longitudinal SMA sur 3 séances.");
+    expect(frHtml).toContain("HFMSE : 40 → 42 (+2)");
+    expect(frHtml).toContain("EFR à contrôler");
+    expect(frHtml).toContain("2025-06-15 : Poursuite Risdiplam");
+    expect(frHtml).toContain("<svg");
+    expect(frHtml).toContain("D: 18°, G: 14°");
+
+    // Test EN rendering with up-to-date summary and modified-only obsolete branch
+    const enHtml = renderPatientDashboardPanel(
+      {
+        ...richDashboard,
+        summary: {
+          ...richDashboard.summary,
+          isObsolete: true,
+          newFormsSinceSummary: [],
+          generatedAt: "invalid-date-format",
+        },
+      },
+      "en",
+    );
+    expect(enHtml).toContain("One or more MDT sessions were updated since invalid-date-format.");
+    expect(enHtml).toContain("<svg");
+
+    const upToDateEnHtml = renderPatientDashboardPanel(
+      {
+        ...richDashboard,
+        metrics: [
+          richDashboard.metrics[0]!.points[0]
+            ? { ...richDashboard.metrics[0]!, points: [richDashboard.metrics[0]!.points[0]!] }
+            : richDashboard.metrics[0]!,
+        ],
+        summary: {
+          ...richDashboard.summary,
+          isObsolete: false,
+          generatedAt: "2026-06-15T14:30:00Z",
+        },
+      },
+      "en",
+    );
+    expect(upToDateEnHtml).toContain("Up to date");
+    expect(upToDateEnHtml).toContain("Regenerate global summary");
+    expect(upToDateEnHtml).toContain("1 session");
+  });
+
+  it("renderQueueNavBadges renders running spinner badge, pending badge, and failed badge", () => {
+    const baseStats: QueueStats = {
+      pending: 0,
+      running: 0,
+      completed: 5,
+      failed: 0,
+      cancelled: 0,
+      total: 5,
+      activeFormFile: null,
+      activeStep: null,
+      activeProgressPct: 0,
+      thinkingPreview: null,
+      gpuLocksCount: 0,
+    };
+
+    // 1. Idle queue (no running, no pending, no failed) -> empty container
+    const idleHtml = renderQueueNavBadges(baseStats, "fr");
+    expect(idleHtml).toContain('id="nav-queue-badges"');
+    expect(idleHtml).not.toContain("badge-queue-running");
+    expect(idleHtml).not.toContain("badge-queue-pending");
+    expect(idleHtml).not.toContain("badge-queue-failed");
+
+    // 2. Running + pending -> running badge with spinner and '1 · 2'
+    const runningPendingHtml = renderQueueNavBadges({ ...baseStats, running: 1, pending: 2 }, "fr");
+    expect(runningPendingHtml).toContain('data-testid="badge-queue-running"');
+    expect(runningPendingHtml).toContain("ds-spinner");
+    expect(runningPendingHtml).toContain("1 · 2");
+    expect(runningPendingHtml).toContain('title="1 analyse(s) en cours · 2 en attente"');
+
+    // 3. Running only -> running badge with spinner and '1'
+    const runningOnlyHtml = renderQueueNavBadges({ ...baseStats, running: 1, pending: 0 }, "en");
+    expect(runningOnlyHtml).toContain('data-testid="badge-queue-running"');
+    expect(runningOnlyHtml).toContain("ds-spinner");
+    expect(runningOnlyHtml).toContain("1");
+    expect(runningOnlyHtml).toContain('title="1 analysis running"');
+
+    // 4. Pending only -> pending badge without spinner
+    const pendingOnlyHtml = renderQueueNavBadges({ ...baseStats, running: 0, pending: 3 }, "fr");
+    expect(pendingOnlyHtml).toContain('data-testid="badge-queue-pending"');
+    expect(pendingOnlyHtml).not.toContain("ds-spinner");
+    expect(pendingOnlyHtml).toContain("3");
+    expect(pendingOnlyHtml).toContain('title="3 analyse(s) en attente"');
+
+    // 5. Failed only -> failed badge with error icon
+    const failedOnlyHtml = renderQueueNavBadges({ ...baseStats, failed: 2 }, "fr");
+    expect(failedOnlyHtml).toContain('data-testid="badge-queue-failed"');
+    expect(failedOnlyHtml).toContain("ic-error");
+    expect(failedOnlyHtml).toContain("2");
+    expect(failedOnlyHtml).toContain('title="2 analyse(s) en échec"');
+
+    // 6. Running + Failed -> both running badge (with spinner) AND failed badge (with error icon)
+    const combinedHtml = renderQueueNavBadges(
+      { ...baseStats, running: 1, pending: 2, failed: 1 },
+      "fr",
+    );
+    expect(combinedHtml).toContain('data-testid="badge-queue-running"');
+    expect(combinedHtml).toContain('data-testid="badge-queue-failed"');
+    expect(combinedHtml).toContain("ds-spinner");
+    expect(combinedHtml).toContain("ic-error");
+  });
+
+  it("renders Safe Markdown, Inline Markdown, and Strip Markdown while blocking XSS and unsafe links", () => {
+    expect(chatRenderSafeMarkdown).toBe(renderSafeMarkdown);
+    expect(chatRenderSafeInlineMarkdown).toBe(renderSafeInlineMarkdown);
+    expect(chatStripMarkdown).toBe(stripMarkdown);
+    expect(tplRenderSafeMarkdown).toBe(renderSafeMarkdown);
+    expect(tplRenderSafeInlineMarkdown).toBe(renderSafeInlineMarkdown);
+    expect(tplStripMarkdown).toBe(stripMarkdown);
+
+    expect(renderSafeMarkdown("")).toBe("");
+    expect(renderSafeMarkdown("   ")).toBe("");
+    expect(renderSafeMarkdown(null)).toBe("");
+    expect(renderSafeInlineMarkdown("")).toBe("");
+    expect(renderSafeInlineMarkdown(undefined)).toBe("");
+    expect(stripMarkdown(null)).toBe("");
+    expect(stripMarkdown(undefined)).toBe("");
+
+    // Block-level GFM rendering
+    const blockMd =
+      "**Adénocarcinome** *cT3N1M0* avec mutation `KRAS`:\n- Ligne 1 : **FOLFIRINOX**\n- Ligne 2 : Gemcitabine";
+    const blockHtml = renderSafeMarkdown(blockMd);
+    expect(blockHtml).toContain("<strong>Adénocarcinome</strong>");
+    expect(blockHtml).toContain("<em>cT3N1M0</em>");
+    expect(blockHtml).toContain("<code>KRAS</code>");
+    expect(blockHtml).toContain("<ul>");
+    expect(blockHtml).toContain("<li>Ligne 1 : <strong>FOLFIRINOX</strong></li>");
+
+    // GFM Table rendering
+    const tableMd =
+      "| Axe | Élément | Statut |\n|---|---|---|\n| Génétique | SMN1 exon 7 | Manquant |";
+    const tableHtml = renderSafeMarkdown(tableMd);
+    expect(tableHtml).toContain("<table>");
+    expect(tableHtml).toContain("<th>Axe</th>");
+    expect(tableHtml).toContain("<td>Génétique</td>");
+    expect(tableHtml).toContain("<td>SMN1 exon 7</td>");
+
+    // Inline GFM rendering (no <p> wrapper)
+    const inlineHtml = renderSafeInlineMarkdown(
+      "**Réponse partielle** (`RECIST 1.1`)\nContrôle à *3 mois*",
+    );
+    expect(inlineHtml).not.toContain("<p>");
+    expect(inlineHtml).toContain("<strong>Réponse partielle</strong>");
+    expect(inlineHtml).toContain("<code>RECIST 1.1</code>");
+    expect(inlineHtml).toContain("<br>");
+    expect(inlineHtml).toContain("<em>3 mois</em>");
+
+    // Clinical emoji & pictogram normalization
+    const emojiMd = "## ✅ Consensus\n- 🔴 Divergence\n- 🩺 Stéthoscope";
+    const emojiHtml = renderSafeMarkdown(emojiMd);
+    expect(emojiHtml).toContain('<h2><span class="ds-emoji">✅</span> Consensus</h2>');
+    expect(emojiHtml).toContain('<li><span class="ds-emoji">🔴</span> Divergence</li>');
+    expect(emojiHtml).toContain('<li><span class="ds-emoji">🩺</span> Stéthoscope</li>');
+
+    // XSS & unsafe protocol sanitization
+    expect(renderSafeMarkdown("<script>alert(1)</script>")).toBe(
+      "&lt;script&gt;alert(1)&lt;/script&gt;",
+    );
+    const xssMd =
+      'Texte avec <script>alert(1)</script> et [Malicious](javascript:alert(1)) [Data](data:text/html,evil) [Safe](https://tncd.org "TNCD Ref")';
+    const sanitizedBlock = renderSafeMarkdown(xssMd);
+    expect(sanitizedBlock).not.toContain("<script>");
+    expect(sanitizedBlock).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(sanitizedBlock).not.toContain("javascript:");
+    expect(sanitizedBlock).not.toContain("data:text/html");
+    expect(sanitizedBlock).toContain("Malicious");
+    expect(sanitizedBlock).toContain(
+      '<a href="https://tncd.org" title="TNCD Ref" target="_blank" rel="noopener noreferrer">Safe</a>',
+    );
+
+    const sanitizedInline = renderSafeInlineMarkdown(
+      "<img src=x onerror=alert(1)> [Click](vbscript:msgbox(1)) [Mail](mailto:rcp@chu.fr)",
+    );
+    expect(sanitizedInline).not.toContain("<img");
+    expect(sanitizedInline).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(sanitizedInline).not.toContain("vbscript:");
+    expect(sanitizedInline).toContain('href="mailto:rcp@chu.fr"');
+
+    // Strip Markdown for tooltips and <summary> previews
+    expect(
+      stripMarkdown(
+        "# Titre\n> Citation\n- **Bold** et *italic* avec `code` et [lien](https://example.com) et ![img](x.png) ~~barré~~",
+      ),
+    ).toBe("Titre Citation Bold et italic avec code et lien et img barré");
+    expect(stripMarkdown('```json\n{"a": 1}\n```')).toBe('{"a": 1}');
+    expect(stripMarkdown("Date: 2026-11-06T00:00:00Z")).toBe("Date: 06/11/2026");
+
+    // Chat log message partial renders reference excerpts with inline markdown
+    const chatHtml = renderChatLogMessagePartial("Question ?", {
+      answer: "Réponse **sourcée**.",
+      references: [{ name: "TNCD.pdf", page: "12", excerpt: "Schéma **FOLFIRINOX** recommandé" }],
+    });
+    expect(chatHtml).toContain("<strong>sourcée</strong>");
+    expect(chatHtml).toContain("Schéma <strong>FOLFIRINOX</strong> recommandé");
+
+    // Section details partial renders Markdown in read mode and keeps raw editValue in edit mode
+    const mockSection = {
+      name: "CancerDescription",
+      meta: getSectionPresentation("CancerDescription", "oncology", "fr"),
+      summaryText: "**Adénocarcinome** *cT3N1M0*",
+      isManual: true,
+      manualMeta: { edited_by: "Dr. Martin", edited_at: "2026-11-06T10:00:00Z" },
+      fields: [
+        {
+          key: "type_of_cancer",
+          label: "Type de cancer",
+          value: "**Adénocarcinome** canalaire",
+          editValue: "**Adénocarcinome** canalaire",
+          rawValue: "**Adénocarcinome** canalaire",
+          isLongText: false,
+          inputType: "text" as const,
+          options: [],
+          nullable: true,
+          isModified: true,
+          originalAiValue: "**Adénocarcinome** initial",
+        },
+        {
+          key: "clinical_notes",
+          label: "Notes cliniques",
+          value: "Lésion **cT3N1M0** :\n- Engainement vasculaire\n- Pas de métastase",
+          editValue: "Lésion **cT3N1M0** :\n- Engainement vasculaire\n- Pas de métastase",
+          rawValue: "Lésion **cT3N1M0** :\n- Engainement vasculaire\n- Pas de métastase",
+          isLongText: true,
+          inputType: "textarea" as const,
+          options: [],
+          nullable: true,
+          isModified: true,
+          originalAiValue: "Note **IA**",
+        },
+      ],
+      subCards: [
+        {
+          title: "TDM **thoraco-abdomino-pelvien**",
+          badge: "RECIST",
+          subtitle: "06/11/2026",
+          body: " Masse **céphalique** de `32 mm`.",
+        },
+      ],
+      references: [
+        {
+          name: "CR_TDM.pdf",
+          page: "2",
+          excerpt: "Lésion de **32 mm** au contact mésentérique",
+        },
+      ],
+      reasoningThinking: "Analyse **étape par étape** :\n1. Lecture TDM\n2. Stadification",
+      userPrompt: null,
+      manualDiffs: [],
+      durationSec: 4,
+      rawData: {},
+    };
+
+    const readSectionHtml = renderSectionDetailsPartial(
+      mockSection,
+      "fictive_jeanne.pdf",
+      "oncology",
+      false,
+      false,
+    );
+    expect(readSectionHtml).toContain(
+      '<span class="ds-section__summary">Adénocarcinome cT3N1M0</span>',
+    );
+    expect(readSectionHtml).toContain('data-tooltip="Valeur IA initiale : Adénocarcinome initial"');
+    expect(readSectionHtml).toContain("<strong>Adénocarcinome</strong> canalaire");
+    expect(readSectionHtml).toContain("<li>Engainement vasculaire</li>");
+    expect(readSectionHtml).toContain("TDM <strong>thoraco-abdomino-pelvien</strong>");
+    expect(readSectionHtml).toContain("<code>32 mm</code>");
+    expect(readSectionHtml).toContain("Lésion de <strong>32 mm</strong> au contact mésentérique");
+    expect(readSectionHtml).toContain("Analyse <strong>étape par étape</strong>");
+
+    const editSectionHtml = renderSectionDetailsPartial(
+      mockSection,
+      "fictive_jeanne.pdf",
+      "oncology",
+      true,
+      false,
+    );
+    expect(editSectionHtml).toContain('value="**Adénocarcinome** canalaire"');
+    expect(editSectionHtml).toContain(">Lésion **cT3N1M0** :");
   });
 });

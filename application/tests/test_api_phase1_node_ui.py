@@ -364,6 +364,16 @@ def test_queue_jobs_filename_filter_applied_before_limit_and_jobs_state(
     assert len(jobs) == 1
     assert jobs[0]["filename"] == "target.pdf"
 
+    # Test GET /api/v1/queue/jobs/{job_id}
+    job_id = j_target["job_id"]
+    single_resp = client.get(f"/api/v1/queue/jobs/{job_id}")
+    assert single_resp.status_code == 200
+    assert single_resp.json()["job_id"] == job_id
+    assert single_resp.json()["filename"] == "target.pdf"
+
+    not_found_resp = client.get("/api/v1/queue/jobs/non_existent_job_123")
+    assert not_found_resp.status_code == 404
+
     # Test GET /api/v1/patientmdtform/{filename}/jobs-state
     conf = api_deps.get_base_config().model_copy()
     conf.rcp.path = str(tmp_path)
@@ -767,11 +777,14 @@ def test_upload_with_batch_id_and_batch_and_file_status_endpoints(
 def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
     """Verify GET /api/v1/me and require_admin enforce proxy secret and admin role."""
     conf = api_deps.get_base_config().model_copy()
+    conf.rcp = conf.rcp.model_copy()
+    conf.rcp.display_type = "stdout"
     conf.proxy_secret = SecretStr("top-secret-proxy")
     conf.admin_users = "dr_admin,Dr Admin"
     monkeypatch.setattr(api_deps, "get_base_config", lambda: conf)
 
-    manager = InMemoryQueueManager(auto_start_workers=False)
+    manager = InMemoryQueueManager(base_config=conf, auto_start_workers=False)
+    monkeypatch.setattr(manager.executor, "stabilize_status", lambda **_kw: None)
     api_app.dependency_overrides[get_queue_manager] = lambda: manager
 
     # 1. Spoofed user header WITHOUT valid proxy secret -> ignored on /me
@@ -878,6 +891,39 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
         client.post(
             "/api/v1/queue/clean",
             headers={"X-MedSyntis-Proxy-Secret": "top-secret-proxy"},
+        ).status_code
+        == 200
+    )
+
+    # 8. Dev mode (proxy_secret=None): user headers are accepted as-is without proxy secret
+    conf_dev = api_deps.get_base_config().model_copy()
+    conf_dev.proxy_secret = None
+    conf_dev.admin_users = ""
+    monkeypatch.setattr(api_deps, "get_base_config", lambda: conf_dev)
+    dev_res = client.get(
+        "/api/v1/me",
+        headers={
+            "X-MedSyntis-User": "dr.local",
+            "X-MedSyntis-User-Name": "Dr A. Exemple (Local)",
+        },
+    )
+    assert dev_res.status_code == 200
+    assert dev_res.json()["is_admin"] is True
+    assert (
+        client.post(
+            "/api/v1/queue/clean", headers={"X-MedSyntis-User": "dr.local"}
+        ).status_code
+        == 200
+    )
+    manager._jobs["job1"] = {
+        "job_id": "job1",
+        "status": "PENDING",
+        "domain": "oncology",
+        "filename": "f1.pdf",
+    }
+    assert (
+        client.delete(
+            "/api/v1/queue/jobs/job1", headers={"X-MedSyntis-User": "dr.local"}
         ).status_code
         == 200
     )

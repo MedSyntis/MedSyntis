@@ -1,8 +1,9 @@
-from typing import Optional, ClassVar
+from typing import Any, ClassVar, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from src.domain.common.common_ressources import *  # noqa: F403
+from src.domain.common.common_ressources import MarkdownStr
 
 from src.application.agent.agent import MedSyntisAgent
 from src.domain.sma.agents import Agents
@@ -40,7 +41,7 @@ class PatientMDTSmaForm(PatientMDTForm):
             le=10,
             description="Number of SMN2 backup gene copies (crucial for prognosis and treatment eligibility)",
         )
-        other_genetic_variants: Optional[str] = Field(
+        other_genetic_variants: Optional[MarkdownStr] = Field(
             default=None,
             description="Other genetic modifiers or variations found, if any",
         )
@@ -66,30 +67,75 @@ class PatientMDTSmaForm(PatientMDTForm):
                 ]
             },
         )
-        motor_milestones: list[str] = Field(
+        motor_milestones: list[MarkdownStr] = Field(
             description="Achieved motor milestones (e.g. head control, sitting unsupported, standing, independent walking)"
         )
-        hfmse_score: Optional[int] = Field(
+        hfmse_score: Optional[int | float | str] = Field(
             default=None,
-            ge=0,
-            le=66,
-            description="Hammersmith Functional Motor Scale Expanded (HFMSE) score (0-66)",
+            description="Hammersmith Functional Motor Scale Expanded (HFMSE) raw score (0-66, ratio, bilateral, or clinical note)",
         )
-        chop_intend_score: Optional[int] = Field(
+        chop_intend_score: Optional[int | float | str] = Field(
             default=None,
-            ge=0,
-            le=64,
-            description="CHOP INTEND score (usually for Type 1 infants, 0-64)",
+            description="CHOP INTEND raw score (usually for Type 1 infants, 0-64, ratio, or clinical note)",
         )
-        rulm_score: Optional[int] = Field(
+        rulm_score: Optional[int | float | str] = Field(
             default=None,
-            ge=0,
-            le=37,
-            description="Revised Upper Limb Module (RULM) score (0-37)",
+            description="Revised Upper Limb Module (RULM) raw score (0-37, ratio, bilateral D/G, or clinical note)",
         )
 
+        @staticmethod
+        def _validate_raw_motor_scale(
+            value: Any, min_val: float, max_val: float, label: str
+        ) -> int | float | str | None:
+            """Validate a motor scale value while stripping verbose LLM commentary and preserving raw scores."""
+            if value is None:
+                return None
+            if isinstance(value, bool):
+                raise ValueError(f"{label} cannot be a boolean.")
+            if isinstance(value, (int, float)):
+                if float(value) < min_val or float(value) > max_val:
+                    raise ValueError(
+                        f"{label} score must be between {min_val:g} and {max_val:g}."
+                    )
+                return value
+            if isinstance(value, str):
+                cleaned = value.strip()
+                if not cleaned:
+                    return None
+                first_token = cleaned.split()[0]
+                if "/" in first_token:
+                    return first_token
+                try:
+                    num = float(cleaned)
+                except ValueError:
+                    return cleaned
+                if num < min_val or num > max_val:
+                    raise ValueError(
+                        f"{label} score must be between {min_val:g} and {max_val:g}."
+                    )
+                return int(num) if num.is_integer() and "." not in cleaned else num
+            raise ValueError(f"Unsupported type for {label}.")
+
+        @field_validator("hfmse_score", mode="before")
+        @classmethod
+        def validate_hfmse_score(cls, v: Any) -> int | float | str | None:
+            return cls._validate_raw_motor_scale(v, 0, 66, "HFMSE")
+
+        @field_validator("chop_intend_score", mode="before")
+        @classmethod
+        def validate_chop_intend_score(cls, v: Any) -> int | float | str | None:
+            return cls._validate_raw_motor_scale(v, 0, 64, "CHOP INTEND")
+
+        @field_validator("rulm_score", mode="before")
+        @classmethod
+        def validate_rulm_score(cls, v: Any) -> int | float | str | None:
+            return cls._validate_raw_motor_scale(v, 0, 37, "RULM")
+
         question: ClassVar[str] = (
-            "Determine the SMA clinical type (1, 2, 3, or 4), list the patient's current motor milestones, and extract any standardized motor scale scores found in the clinical records (HFMSE, CHOP INTEND, RULM)."
+            "Determine the SMA clinical type (1, 2, 3, or 4), list the patient's current motor milestones, "
+            "and extract any standardized motor scale scores found in the clinical records (HFMSE, CHOP INTEND, RULM). "
+            "IMPORTANT: For hfmse_score, chop_intend_score, and rulm_score, output ONLY the raw score value itself "
+            "(e.g. 9, '9/66', '18/37', or '28 (D) / 30 (G)'). Do NOT include dates, deltas, comparisons to baseline, or progression history."
         )
 
     class RespiratoryFunction(PatientMDTForm.default_model):
@@ -146,7 +192,7 @@ class PatientMDTSmaForm(PatientMDTForm):
         spine_surgery_history: bool = Field(
             description="Has the patient undergone spinal fusion / arthrodesis?"
         )
-        joint_contractures: list[str] = Field(
+        joint_contractures: list[MarkdownStr] = Field(
             description="Affected joints with contractures (e.g. hips, knees, ankles)"
         )
         wheelchair_user: bool = Field(
@@ -207,7 +253,7 @@ class PatientMDTSmaForm(PatientMDTForm):
             "List all radiological exams found in the documents. Include date, name, type, and a summary of results for each."
         )
 
-    class ExpertAnswer(PatientMDTForm.default_model):
+    class ExpertAnswer(PatientMDTForm.ExpertAnswer):
         agents: ClassVar[list[type[MedSyntisAgent]]] = [
             Agents.Neurologist_expert_agent,
             Agents.Geneticist_expert_agent,
@@ -215,31 +261,6 @@ class PatientMDTSmaForm(PatientMDTForm):
             Agents.Physiotherapy_expert_agent,
             Agents.Orthopedist_expert_agent,
         ]
-
-        expert_relevant: bool = Field(
-            description="Is your expertise relevant for this patient's case?"
-        )
-
-        patient_priority: PatientPriority = Field(  # noqa: F405
-            description="Urgency of the patient's treatment"
-        )
-
-        why_relevant: str = Field(
-            description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
-        )
-
-        sources_relevant: list[Reference] = Field(  # noqa: F405
-            description="Give the sources of your relevant answer"
-        )
-
-        suggestions: list[ExpertSuggestion] = Field(  # noqa: F405
-            description="List of suggestions. Empty if expert is not relevant."
-        )
-
-        question: ClassVar[str] = """
-            As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
-            You can use tools multiple times for each element and have more scientific elements.
-            """
 
     class MTDCompleted(PatientMDTForm.MTDCompleted):
         agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
@@ -258,7 +279,7 @@ class PatientMDTSmaForm(PatientMDTForm):
             Determine if an initiation or adaptation of therapeutic, respiratory, nutritional, orthopedic, or rehabilitative care should be discussed for this SMA patient.
             If yes, specify:
             1. The suggested priority level (`suggested_priority`) for the MDT discussion.
-               CRITICAL SAFETY RULE: In Spinal Muscular Atrophy, motor neuron loss is irreversible ("Time is Motoneuron") and respiratory/bulbar decompensations are life-threatening. If even a single expert in the debate flags the case as urgent or high priority (e.g., infant SMA Type 1 or pre-symptomatic newborn needing immediate disease-modifying therapy, rapid motor regression on HFMSE/CHOP-INTEND/RULM, respiratory insufficiency requiring NIV/Cough Assist, dysphagia with aspiration pneumonia risk, or rapidly progressing scoliosis compromising lung function), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
+               CRITICAL SAFETY RULE: In Spinal Muscular Atrophy, motor neuron loss is irreversible ("Time is Motoneuron") and respiratory/bulbar decompensations are life-threatening. Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate flags the case as urgent or high priority (e.g., infant SMA Type 1 or pre-symptomatic newborn needing immediate disease-modifying therapy, rapid motor regression on HFMSE/CHOP-INTEND/RULM, respiratory insufficiency requiring NIV/Cough Assist, dysphagia with aspiration pneumonia risk, or rapidly progressing scoliosis compromising lung function), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
             2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., SMN-targeted disease-modifying therapy initiation/switch [nusinersen, risdiplam, onasemnogene abeparvovec], NIV/BiPAP or Cough Assist adaptation, nutritional/gastrostomy support, orthopedic spine management/arthrodesis, or specialized rehabilitation).
             Provide a clear `clinical_rationale` detailing the positions of the experts and French PNDS SMA guidelines, especially highlighting any divergence in opinions regarding urgency.
             """

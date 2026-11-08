@@ -18,6 +18,7 @@ import type {
   AgentModuleInfo,
   BatchStatus,
   ClinicalDomain,
+  Language,
   MdtAgendaView,
   PatientListItem,
   QueueJobItem,
@@ -32,6 +33,7 @@ import {
   renderChatLogMessagePartial,
   resolveCitationPdfHref,
 } from "./components/ai-chat.component.js";
+import { renderPatientDashboardPanel } from "./components/patient-dashboard.component.js";
 import {
   deriveRcpTone,
   esc,
@@ -43,8 +45,11 @@ import {
   INLINE_ICONS_SVG,
   iconSvg,
   raw,
+  renderSafeInlineMarkdown,
+  renderSafeMarkdown,
   SafeHtml,
   stripDomainQuery,
+  stripMarkdown,
 } from "./views/html.js";
 import { renderStatusPage, type StatusPageOptions } from "./views/status.view.js";
 
@@ -62,10 +67,13 @@ export {
   renderAiChatDrawer,
   renderAiThinkingModule,
   renderChatLogMessagePartial,
+  renderSafeInlineMarkdown,
+  renderSafeMarkdown,
   renderStatusPage,
   SafeHtml,
   type StatusPageOptions,
   stripDomainQuery,
+  stripMarkdown,
 };
 
 export interface ShellLayoutOptions {
@@ -254,38 +262,47 @@ export function formatDeleteDialogPatientInfo(
   };
 }
 
-export function renderQueueBannerPartial(stats: QueueStats, session: UserSession): string {
-  const lang = session.language;
-  const isQueueActive = stats.running + stats.pending > 0;
-  const queueDataAttrs = `data-queue-active="${isQueueActive ? "true" : "false"}" data-queue-running="${stats.running}" data-queue-pending="${stats.pending}" data-queue-completed="${stats.completed}" data-active-file="${esc(stats.activeFormFile ?? "")}"`;
-  if (stats.failed > 0 && stats.running === 0) {
-    return `<div class="ds-queue-banner ds-queue-banner--error" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
-      <span class="ds-queue-banner__text">
-        ${iconSvg("ic-error")}
-        <span class="ds-queue-banner__msg"><strong>${stats.failed} ${lang === "fr" ? "analyse(s) en échec" : "failed job(s)"}</strong>${stats.activeFormFile ? ` · ${esc(stats.activeFormFile)}` : ""}</span>
-      </span>
-      <button type="button" class="ds-btn ds-btn--sm ds-btn--secondary ds-queue-banner__action" data-open="queue-drawer" aria-haspopup="dialog" data-testid="btn_queue_open">${esc(t("queue.banner.open", lang))}</button>
-    </div>`;
+export function renderQueueBannerPartial(_stats: QueueStats, _session: UserSession): string {
+  // Popin/banner removed: queue status is tracked via worklist badges, topbar drawer menu, and /admin/queue
+  return "";
+}
+
+export function renderQueueNavBadges(
+  stats: QueueStats,
+  lang: "fr" | "en",
+  elementId = "nav-queue-badges",
+): string {
+  const parts: string[] = [];
+
+  if (stats.running > 0) {
+    const title =
+      lang === "fr"
+        ? `${stats.running} analyse(s) en cours${stats.pending > 0 ? ` · ${stats.pending} en attente` : ""}`
+        : `${stats.running} analysis running${stats.pending > 0 ? ` · ${stats.pending} pending` : ""}`;
+    const label = stats.pending > 0 ? `${stats.running} · ${stats.pending}` : `${stats.running}`;
+    parts.push(
+      `<span class="ds-nav__badge ds-nav__badge--running" data-testid="badge-queue-running" title="${esc(title)}" aria-label="${esc(title)}"><span class="ds-spinner ds-spinner--xs" aria-hidden="true"></span><span class="ds-nav__badge-text">${label}</span></span>`,
+    );
+  } else if (stats.pending > 0) {
+    const title =
+      lang === "fr"
+        ? `${stats.pending} analyse(s) en attente`
+        : `${stats.pending} analysis pending`;
+    parts.push(
+      `<span class="ds-nav__badge ds-nav__badge--pending" data-testid="badge-queue-pending" title="${esc(title)}" aria-label="${esc(title)}"><span class="ds-nav__badge-text">${stats.pending}</span></span>`,
+    );
   }
 
-  if (stats.running > 0 || stats.pending > 0) {
-    return `<div class="ds-queue-banner" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
-      <span class="ds-queue-banner__text">
-        <span class="ds-spinner" aria-hidden="true"></span>
-        <span class="ds-queue-banner__msg"><strong>${stats.running} ${esc(t("queue.banner.running", lang))}</strong> · ${stats.pending} ${lang === "fr" ? "en attente" : "pending"}${stats.activeFormFile ? ` · ${esc(stats.activeFormFile)}` : ""}</span>
-      </span>
-      <progress class="ds-progress ds-queue-banner__progress" max="100" value="${Math.round(stats.activeProgressPct || 50)}" aria-label="Avancement de la file"></progress>
-      <button type="button" class="ds-btn ds-btn--sm ds-btn--secondary ds-queue-banner__action" data-open="queue-drawer" aria-haspopup="dialog" data-testid="btn_queue_open">${esc(t("queue.banner.open", lang))}</button>
-    </div>`;
+  if (stats.failed > 0) {
+    const title =
+      lang === "fr" ? `${stats.failed} analyse(s) en échec` : `${stats.failed} failed analysis`;
+    parts.push(
+      `<span class="ds-nav__badge ds-nav__badge--failed" data-testid="badge-queue-failed" title="${esc(title)}" aria-label="${esc(title)}">${iconSvg("ic-error", "ds-icon--xs")}<span class="ds-nav__badge-text">${stats.failed}</span></span>`,
+    );
   }
 
-  return `<div class="ds-queue-banner ds-queue-banner--idle" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
-    <span class="ds-queue-banner__text">
-      ${iconSvg("ic-clock")}
-      <span class="ds-queue-banner__msg">${esc(t("queue.banner.idle", lang))}</span>
-    </span>
-    <button type="button" class="ds-btn ds-btn--sm ds-btn--ghost ds-queue-banner__action" data-open="queue-drawer" aria-haspopup="dialog" data-testid="btn_queue_open">${esc(t("queue.banner.open", lang))}</button>
-  </div>`;
+  const idAttr = elementId ? ` id="${esc(elementId)}"` : "";
+  return `<span class="ds-nav__badges"${idAttr} data-testid="nav-queue-badges" data-running="${stats.running}" data-pending="${stats.pending}" data-failed="${stats.failed}">${parts.join("")}</span>`;
 }
 
 function resolveQueueJobHref(j: QueueJobItem, fallbackDomain: string): string {
@@ -302,7 +319,6 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   const { session, queueStats, queueJobs, activeNav, breadcrumbs, bodyHtml, title } = opts;
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
-  const activeCount = queueStats.running + queueStats.pending;
   const domainBadge =
     session.domain === "sma"
       ? `<span class="ds-badge ds-badge--domain-sma">${iconSvg("ic-dna")} ${lang === "fr" ? "Amyotrophie spinale" : "SMA"}</span>`
@@ -432,7 +448,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
             <span class="ds-nav__bg" aria-hidden="true"></span>
             <span class="ds-nav__indicator">${iconSvg("ic-layers")}</span>
             <span class="ds-nav__label">${esc(t("nav.queue", lang))}</span>
-            ${activeCount > 0 ? `<span class="ds-nav__count">${activeCount}</span>` : ""}
+            ${renderQueueNavBadges(queueStats, lang, "nav-queue-badges")}
           </a>
         </li>
         <li>
@@ -518,10 +534,10 @@ export function renderLayout(opts: ShellLayoutOptions): string {
               ${iconSvg("ic-menu")}
               <span>${lang === "fr" ? "Replier / Déplier le menu latéral" : "Toggle sidebar menu"}</span>
             </button>
-            <button type="button" class="ds-menu__item" role="menuitem" data-open="queue-drawer">
+            <button type="button" class="ds-menu__item" role="menuitem" data-open="queue-drawer" data-testid="btn_queue_open">
               ${iconSvg("ic-layers")}
               <span>${lang === "fr" ? "Ouvrir le tiroir des analyses" : "Open Queue Side Sheet"}</span>
-              ${activeCount > 0 ? `<span class="ds-menu__meta">${activeCount}</span>` : ""}
+              ${renderQueueNavBadges(queueStats, lang, "menu-queue-badges")}
             </button>
             <hr class="ds-menu__divider">
             <div class="ds-menu__header">${lang === "fr" ? "Raccourcis cliniques" : "Clinical Shortcuts"}</div>
@@ -559,8 +575,6 @@ export function renderLayout(opts: ShellLayoutOptions): string {
       }
       ${bodyHtml}
     </main>
-
-    ${renderQueueBannerPartial(queueStats, session)}
   </div>
 
   <!-- ===================== Queue Drawer (M3 Side Sheet) ===================== -->
@@ -575,7 +589,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     <div class="ds-drawer__body" id="queue-drawer-body">
       ${
         queueStats.thinkingPreview
-          ? `<div class="ds-alert ds-alert--guidance" role="note"><span class="ds-alert__icon">${iconSvg("ic-sparkle")}</span><div class="ds-alert__content"><span class="ds-alert__title">Raisonnement IA en direct</span><span>${esc(queueStats.thinkingPreview)}</span></div></div>`
+          ? `<div class="ds-alert ds-alert--guidance" role="note"><span class="ds-alert__icon">${iconSvg("ic-sparkle")}</span><div class="ds-alert__content"><span class="ds-alert__title">Raisonnement IA en direct</span><span class="ds-markdown-inline">${renderSafeInlineMarkdown(queueStats.thinkingPreview)}</span></div></div>`
           : ""
       }
       ${drawerJobsHtml}
@@ -613,6 +627,45 @@ export function renderLayout(opts: ShellLayoutOptions): string {
 </body>
 </html>`;
   return session.hostBoundDomain ? stripDomainQuery(html) : html;
+}
+
+function renderPriorityBadgeHtml(
+  prio: {
+    level: string;
+    icon: string;
+    badgeClass: string;
+    label: string;
+    reason?: string | null;
+    reasons?: string[];
+  },
+  options?: {
+    reason?: string | null;
+    reasons?: string[];
+    testId?: string;
+    lang?: Language;
+  },
+): string {
+  const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
+  const badgeHtml = `<span class="ds-badge ${prio.badgeClass} ds-badge--sm"${testIdAttr}>${iconSvg(prio.icon)} ${esc(prio.label)}</span>`;
+  const rawReasons =
+    options?.reasons && options.reasons.length > 0 ? options.reasons : (prio.reasons ?? []);
+  const rawReason = options?.reason ?? prio.reason ?? null;
+  const reasons = rawReasons.length > 0 ? rawReasons : rawReason ? [rawReason] : [];
+  if (reasons.length === 0) {
+    return badgeHtml;
+  }
+  const titleLabel = options?.lang === "en" ? "Priority rationale" : "Justification de la priorité";
+  const bodyHtml =
+    reasons.length > 1
+      ? `<ul class="ds-hovercard__list">${reasons.map((r) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(r)}</li>`).join("")}</ul>`
+      : `<div class="ds-markdown">${renderSafeMarkdown(reasons[0] ?? "")}</div>`;
+  return `<div class="ds-hovercard" tabindex="0">
+    ${badgeHtml}
+    <div class="ds-hovercard__panel" role="tooltip">
+      <span class="ds-hovercard__title">${iconSvg(prio.icon)} ${esc(titleLabel)}</span>
+      ${bodyHtml}
+    </div>
+  </div>`;
 }
 
 export function renderWorklistPage(
@@ -695,7 +748,7 @@ export function renderWorklistPage(
                     <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
-                      <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+                      <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}</ul>
                     </div>
                   </div>`
                 : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`;
@@ -708,8 +761,8 @@ export function renderWorklistPage(
                     </span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-compass")} Orientation pré-RCP</span>
-                      ${c.proposedCareType ? `<p style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${esc(c.proposedCareType)}</p>` : ""}
-                      ${c.summaryText ? `<p>${esc(c.summaryText)}</p>` : ""}
+                      ${c.proposedCareType ? `<p class="ds-markdown-inline" style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${renderSafeInlineMarkdown(c.proposedCareType)}</p>` : ""}
+                      ${c.summaryText ? `<div class="ds-markdown">${renderSafeMarkdown(c.summaryText)}</div>` : ""}
                     </div>
                   </div>`
                 : `<span class="ds-badge ${orient.badgeClass} ds-badge--sm" data-testid="badge-orientation-${esc(orient.status)}">
@@ -732,9 +785,12 @@ export function renderWorklistPage(
 
             return `<tr class="${rowCls}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
               <td data-label="Priorité" data-sort-value="${prioSortVal}">
-                <span class="ds-badge ${prio.badgeClass} ds-badge--sm" data-testid="badge-priority-${esc(c.priorityLevel)}">
-                  ${iconSvg(prio.icon)} ${esc(prio.label)}
-                </span>
+                ${renderPriorityBadgeHtml(prio, {
+                  reason: c.priorityReason,
+                  reasons: c.priorityReasons,
+                  testId: `badge-priority-${c.priorityLevel}`,
+                  lang,
+                })}
               </td>
               <td data-label="Patient" class="ds-table__primary-cell" data-sort-value="${esc(c.patientName)}">
                 <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a><br>
@@ -758,6 +814,10 @@ export function renderWorklistPage(
                       <a class="ds-menu__item" role="menuitem" href="${dossierHref}">
                         ${iconSvg("ic-folder")}
                         <span>Ouvrir le dossier longitudinal</span>
+                      </a>
+                      <a class="ds-menu__item" role="menuitem" href="${dossierHref}&view=dashboard#panel-patient-dashboard">
+                        ${iconSvg("ic-trend-up")}
+                        <span>Tableau de bord patient</span>
                       </a>
                       <a class="ds-menu__item" role="menuitem" href="${dossierHref}&tab=opinions#panel-opinions">
                         ${iconSvg("ic-compass")}
@@ -856,14 +916,18 @@ export function renderWorklistPage(
                 <div class="ds-card__body">
                   <div class="ds-cluster">
                     ${procBadgeHtml}
-                    <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+                    ${renderPriorityBadgeHtml(prio, {
+                      reason: c.priorityReason,
+                      reasons: c.priorityReasons,
+                      lang,
+                    })}
                     ${
                       !effectiveComplete && c.missingItems.length > 0
                         ? `<div class="ds-hovercard" tabindex="0">
                             <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
                             <div class="ds-hovercard__panel" role="tooltip">
                               <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
-                              <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+                              <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}</ul>
                             </div>
                           </div>`
                         : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`
@@ -874,14 +938,14 @@ export function renderWorklistPage(
                             <span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>
                             <div class="ds-hovercard__panel" role="tooltip">
                               <span class="ds-hovercard__title">${iconSvg("ic-compass")} Orientation pré-RCP</span>
-                              ${c.proposedCareType ? `<p style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${esc(c.proposedCareType)}</p>` : ""}
-                              ${c.summaryText ? `<p>${esc(c.summaryText)}</p>` : ""}
+                              ${c.proposedCareType ? `<p class="ds-markdown-inline" style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${renderSafeInlineMarkdown(c.proposedCareType)}</p>` : ""}
+                              ${c.summaryText ? `<div class="ds-markdown">${renderSafeMarkdown(c.summaryText)}</div>` : ""}
                             </div>
                           </div>`
                         : `<span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>`
                     }
                   </div>
-                  ${c.summaryText ? `<p class="ds-small">${esc(c.summaryText)}</p>` : ""}
+                  ${c.summaryText ? `<p class="ds-small ds-markdown-inline">${renderSafeInlineMarkdown(c.summaryText)}</p>` : ""}
                 </div>
                 <div class="ds-card__footer">
                   <span class="ds-small ds-muted">RCP : ${esc(c.mdtDate ?? "—")}</span>
@@ -1349,17 +1413,39 @@ export function renderSectionDetailsPartial(
             .map(
               (sc) => `<div class="ds-subcard">
                 <div class="ds-subcard__header">
-                  <span class="ds-subcard__title">${esc(sc.title)}</span>
+                  <span class="ds-subcard__title ds-markdown-inline">${renderSafeInlineMarkdown(sc.title)}</span>
                   <div class="ds-cluster" style="gap:var(--ds-space-1)">
                     ${sc.badge ? `<span class="ds-badge ds-badge--info ds-badge--sm">${iconSvg("ic-info")} ${esc(sc.badge)}</span>` : ""}
                     ${sc.subtitle ? `<span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-calendar", "ds-icon--xs")} ${esc(sc.subtitle)}</span>` : ""}
                   </div>
                 </div>
-                <p class="ds-subcard__body">${esc(sc.body)}</p>
+                <div class="ds-subcard__body ds-markdown">${renderSafeMarkdown(sc.body)}</div>
               </div>`,
             )
             .join("")}
         </div>`;
+
+  const renderShortFieldValue = (f: (typeof shortFields)[number]): string => {
+    const tone =
+      f.badgeTone ??
+      (sec.name === "MTDCompleted" && f.key === "is_mtd_complete"
+        ? f.value.toLowerCase() === "oui" || f.value.toLowerCase() === "yes"
+          ? "green"
+          : f.value.toLowerCase() === "partiel" || f.value.toLowerCase() === "partial"
+            ? "orange"
+            : "red"
+        : null);
+    if (tone === "green") {
+      return `<span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="badge-mtd-complete-yes">${iconSvg("ic-check-circle", "ds-icon--xs")} ${esc(f.value)}</span>`;
+    }
+    if (tone === "orange") {
+      return `<span class="ds-badge ds-badge--incomplete ds-badge--sm" data-testid="badge-mtd-complete-partial">${iconSvg("ic-warning", "ds-icon--xs")} ${esc(f.value)}</span>`;
+    }
+    if (tone === "red") {
+      return `<span class="ds-badge ds-badge--urgency-high ds-badge--sm" data-testid="badge-mtd-complete-no">${iconSvg("ic-error", "ds-icon--xs")} ${esc(f.value)}</span>`;
+    }
+    return renderSafeInlineMarkdown(f.value);
+  };
 
   const shortFieldsHtml =
     shortFields.length === 0
@@ -1369,11 +1455,11 @@ export function renderSectionDetailsPartial(
             .map(
               (f) => `<div class="ds-kv${f.isModified ? " ds-kv--manual" : ""}"${
                 f.isModified
-                  ? ` data-tooltip="Valeur IA initiale : ${esc(f.originalAiValue ?? "Non renseigné")}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
+                  ? ` data-tooltip="Valeur IA initiale : ${esc(stripMarkdown(f.originalAiValue ?? "Non renseigné"))}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
                   : ""
               }>
                 <span class="ds-kv__label">${f.isModified ? `${iconSvg("ic-edit-note", "ds-icon--xs")} ` : ""}${esc(f.label)}</span>
-                <span class="ds-kv__value ${f.value === "Non renseigné" || f.value === "Not documented" ? "is-missing" : ""}">${esc(f.value)}</span>
+                <span class="ds-kv__value ${f.value === "Non renseigné" || f.value === "Not documented" ? "is-missing" : ""} ds-markdown-inline">${renderShortFieldValue(f)}</span>
               </div>`,
             )
             .join("")}
@@ -1386,21 +1472,27 @@ export function renderSectionDetailsPartial(
           .map(
             (f) => `<div class="ds-rationale${f.isModified ? " ds-rationale--manual" : ""}"${
               f.isModified
-                ? ` data-tooltip="Valeur IA initiale : ${esc(f.originalAiValue ?? "Non renseigné")}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
+                ? ` data-tooltip="Valeur IA initiale : ${esc(stripMarkdown(f.originalAiValue ?? "Non renseigné"))}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
                 : ""
             }>
               <span class="ds-rationale__label">${f.isModified ? `${iconSvg("ic-edit-note", "ds-icon--xs")} ` : ""}${esc(f.label)}</span>
-              <p class="ds-rationale__text">${esc(f.value)}</p>
+              <div class="ds-rationale__text${f.isModified ? " ds-rationale__text--edited" : ""} ds-markdown">${renderSafeMarkdown(f.value)}</div>
             </div>`,
           )
           .join("");
 
   const canDismissPerItem = (missingItemsState?.allItems.length ?? 0) > 1;
+  const isOptionalMissingList = Boolean(
+    missingItemsState?.isOptional || sec.sectionTone === "green",
+  );
+  const missingListTitle = isOptionalMissingList
+    ? "Éléments facultatifs manquants"
+    : "Éléments manquants détectés";
   const missingItemsInteractiveHtml =
     sec.name === "MTDCompleted" && missingItemsState && missingItemsState.allItems.length > 0
       ? `<div class="ds-missing-panel" data-testid="missing-items-panel">
           <div class="ds-cluster" style="justify-content:space-between;margin-bottom:var(--ds-space-2)">
-            <span class="ds-label">${iconSvg("ic-warning", "ds-icon--xs")} Éléments manquants détectés (${missingItemsState.visibleItems.length} affiché${missingItemsState.visibleItems.length > 1 ? "s" : ""}${missingItemsState.hiddenItems.length > 0 ? ` · ${missingItemsState.hiddenItems.length} masqué${missingItemsState.hiddenItems.length > 1 ? "s" : ""}` : ""})</span>
+            <span class="ds-label">${iconSvg("ic-warning", "ds-icon--xs")} ${missingListTitle} (${missingItemsState.visibleItems.length} affiché${missingItemsState.visibleItems.length > 1 ? "s" : ""}${missingItemsState.hiddenItems.length > 0 ? ` · ${missingItemsState.hiddenItems.length} masqué${missingItemsState.hiddenItems.length > 1 ? "s" : ""}` : ""})</span>
             <form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex">
               <input type="hidden" name="hidden" value="${missingItemsState.hideAll ? "false" : "true"}">
               <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" data-testid="btn_toggle_missing_list">
@@ -1417,10 +1509,13 @@ export function renderSectionDetailsPartial(
                         item: string,
                         idx: number,
                       ) => `<li class="ds-missing-list__item" data-testid="missing-item-${idx}">
-                        <span class="ds-missing-list__text">${iconSvg("ic-warning", "ds-icon--xs")} ${esc(item)}</span>
+                        <div class="ds-missing-list__content">
+                          <span class="ds-missing-list__icon" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--xs")}</span>
+                          <div class="ds-missing-list__text ds-markdown">${renderSafeMarkdown(item)}</div>
+                        </div>
                         ${
                           canDismissPerItem
-                            ? `<form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex">
+                            ? `<form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex;flex-shrink:0">
                                 <input type="hidden" name="toggle_item" value="${esc(item)}">
                                 <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" title="Masquer cet élément" data-testid="btn_dismiss_missing_${idx}">
                                   Masquer
@@ -1442,8 +1537,10 @@ export function renderSectionDetailsPartial(
                     ${missingItemsState.hiddenItems
                       .map(
                         (item: string) => `<li class="ds-missing-list__item is-dismissed">
-                          <span class="ds-missing-list__text" style="text-decoration:line-through;opacity:0.7">${esc(item)}</span>
-                          <form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex">
+                          <div class="ds-missing-list__content">
+                            <div class="ds-missing-list__text ds-markdown" style="text-decoration:line-through;opacity:0.7">${renderSafeMarkdown(item)}</div>
+                          </div>
+                          <form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex;flex-shrink:0">
                             <input type="hidden" name="toggle_item" value="${esc(item)}">
                             <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm">Restaurer</button>
                           </form>
@@ -1478,7 +1575,7 @@ export function renderSectionDetailsPartial(
                 domain as ClinicalDomain,
                 filename,
               );
-              return `<li class="ds-ref"><a class="ds-ref__source ds-ref__link" href="${refHref}" target="_blank" rel="noopener" title="Ouvrir ${esc(r.name)} à la page ${esc(pageNum)}">${iconSvg("ic-book", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</a>${r.excerpt ? `<span class="ds-ref__quote">« ${esc(r.excerpt)} »</span>` : ""}</li>`;
+              return `<li class="ds-ref"><a class="ds-ref__source ds-ref__link" href="${refHref}" target="_blank" rel="noopener" title="Ouvrir ${esc(r.name)} à la page ${esc(pageNum)}">${iconSvg("ic-book", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</a>${r.excerpt ? `<span class="ds-ref__quote ds-markdown-inline">« ${renderSafeInlineMarkdown(r.excerpt)} »</span>` : ""}</li>`;
             })
             .join("")}
         </ul>`;
@@ -1491,7 +1588,7 @@ export function renderSectionDetailsPartial(
         </summary>
         <div class="ds-popover__panel" role="dialog" aria-label="Réflexion IA — ${esc(sec.meta.title)}">
           <div class="ds-popover__title">${iconSvg("ic-sparkle", "ds-icon--xs")} Réflexion IA — ${esc(sec.meta.title)}</div>
-          <div>${esc(sec.reasoningThinking)}</div>
+          <div class="ds-thinking-popover__body ds-markdown">${renderSafeMarkdown(sec.reasoningThinking)}</div>
         </div>
       </details>`
     : "";
@@ -1525,13 +1622,25 @@ export function renderSectionDetailsPartial(
       : "";
 
   // Collapsed by default (no `open` attribute) as requested by the user
-  const secToneClass =
+  const resolvedMtdTone =
     sec.name === "MTDCompleted"
-      ? sec.summaryText.toLowerCase().includes("incomplet") ||
-        sec.summaryText.toLowerCase().includes("manquant")
+      ? (sec.sectionTone ??
+        (sec.summaryText.toLowerCase().includes("partiel")
+          ? "orange"
+          : sec.summaryText.toLowerCase().includes("incomplet") ||
+              (sec.summaryText.toLowerCase().includes("manquant") &&
+                !sec.summaryText.toLowerCase().includes("facultatif"))
+            ? "red"
+            : "green"))
+      : null;
+  const secToneClass =
+    resolvedMtdTone === "green"
+      ? "ds-section--green"
+      : resolvedMtdTone === "orange"
         ? "ds-section--orange"
-        : "ds-section--green"
-      : "";
+        : resolvedMtdTone === "red"
+          ? "ds-section--red"
+          : "";
   return `<details class="ds-section ${sec.isManual ? "ds-section--manual" : ""} ${secToneClass}${isProcessingSection ? " is-processing" : ""}" id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}"${isProcessingSection ? ' data-processing-active="true"' : ""}>
     <summary>
       <span class="ds-section__title">${iconSvg(sec.meta.icon)} ${esc(sec.meta.title)}</span>
@@ -1545,7 +1654,7 @@ export function renderSectionDetailsPartial(
           ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-testid="badge-manual-edit">${iconSvg("ic-edit-note")} Modifié manuellement</span>`
           : ""
       }
-      <span class="ds-section__summary">${esc(sec.summaryText)}</span>
+      <span class="ds-section__summary">${esc(stripMarkdown(sec.summaryText))}</span>
     </summary>
     <div class="ds-section__body">
       ${emptyHtml}
@@ -1615,6 +1724,7 @@ export function renderDossierPage(
   chatHistory: Array<{ question: string; reply: ChatReply }> = [],
   editingSection?: string,
   agendaNav?: AgendaDossierNavContext,
+  activeTab: "clinical" | "opinions" | "patient-dashboard" = "clinical",
 ): string {
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
@@ -1646,11 +1756,18 @@ export function renderDossierPage(
           : step.priorityLevel === "medium"
             ? "orange"
             : "green";
+      const stepDurationHtml =
+        step.durationSec !== null && step.durationSec > 0
+          ? `<span class="ds-timeline__duration" title="${lang === "fr" ? "Temps global de génération IA de cette fiche RCP" : "Global AI generation time for this MDT record"}">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(step.durationSec)}</span>`
+          : "";
       return `<li class="ds-timeline__item">
         <a class="ds-timeline__link ds-timeline__link--${stepTone}" href="${baseTargetUrl}?file=${encodeURIComponent(step.file)}&domain=${domainParam}${agendaNav ? "&from=agenda" : ""}" ${step.isCurrent ? 'aria-current="step"' : ""}>
           <span class="ds-timeline__marker ${markerCls}" aria-hidden="true">${iconSvg(markerIcon, "ds-icon--xs")}</span>
           <span class="ds-timeline__content">
-            <span class="ds-timeline__date">${esc(step.mdtDate)} ${step.isLatest ? iconSvg("ic-star", "ds-icon--xs") : ""}</span>
+            <span class="ds-timeline__date">
+              <span class="ds-timeline__date-main">${esc(step.mdtDate)} ${step.isLatest ? iconSvg("ic-star", "ds-icon--xs") : ""}</span>
+              ${stepDurationHtml}
+            </span>
             <span class="ds-timeline__meta">${esc(step.priorityLabel)} · ${esc(step.orientationLabel)}</span>
           </span>
         </a>
@@ -1770,20 +1887,20 @@ export function renderDossierPage(
         <summary>
           <span class="ds-section__title">${iconSvg("ic-compass")} Proposition d'orientation pré-RCP</span>
           <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm">${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}</span>
-          <span class="ds-section__summary">${esc(dossier.careProposal.proposedCareType ?? dossier.orientationBadge.label)}</span>
+          <span class="ds-section__summary">${esc(stripMarkdown(dossier.careProposal.proposedCareType ?? dossier.orientationBadge.label))}</span>
         </summary>
         <div class="ds-section__body">
           ${
             dossier.careProposal.proposedCareType
               ? `<div class="ds-rationale ds-rationale--orientation">
                   <span class="ds-rationale__label">Modalité de prise en charge proposée</span>
-                  <div class="ds-rationale__text">${esc(dossier.careProposal.proposedCareType)}</div>
+                  <div class="ds-rationale__text ds-markdown-inline">${renderSafeInlineMarkdown(dossier.careProposal.proposedCareType)}</div>
                 </div>`
               : ""
           }
           <div class="ds-rationale ds-rationale--orientation">
             <span class="ds-rationale__label">${iconSvg("ic-compass", "ds-icon--xs")} Argumentaire clinique pré-RCP</span>
-            <div class="ds-rationale__text">${esc(dossier.careProposal.clinicalRationale)}</div>
+            <div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(dossier.careProposal.clinicalRationale)}</div>
           </div>
           <p class="ds-disclaimer">${esc(t("disclaimer.ml", lang))}</p>
           <div class="ds-section__actions">
@@ -1800,7 +1917,7 @@ export function renderDossierPage(
                       <summary class="ds-popover__trigger">${iconSvg("ic-sparkle", "ds-icon--xs")} Réflexion IA</summary>
                       <div class="ds-popover__panel" role="dialog" aria-label="Réflexion IA — Orientation pré-RCP">
                         <div class="ds-popover__title">${iconSvg("ic-sparkle", "ds-icon--xs")} Réflexion IA — Orientation pré-RCP</div>
-                        <div>${esc(dossier.careProposal.reasoningThinking)}</div>
+                        <div class="ds-thinking-popover__body ds-markdown">${renderSafeMarkdown(dossier.careProposal.reasoningThinking)}</div>
                       </div>
                     </details>`
                   : ""
@@ -1822,6 +1939,9 @@ export function renderDossierPage(
       : dossier.opinions
           .map((op) => {
             const prio = derivePriorityBadgeInfo(op.priorityLevel, lang, true);
+            const firstSuggestionPreview = stripMarkdown(
+              op.suggestions[0]?.suggestion ?? op.whyRelevant ?? "",
+            );
             const suggestionsHtml = op.suggestions
               .map(
                 (
@@ -1836,13 +1956,13 @@ export function renderDossierPage(
                             <span class="ds-badge ds-badge--info ds-badge--sm">${iconSvg("ic-info", "ds-icon--xs")} Justification clinique</span>
                             <div class="ds-hovercard__panel" role="tooltip">
                               <span class="ds-hovercard__title">${iconSvg("ic-info", "ds-icon--xs")} Justification clinique — Proposition ${sIdx + 1}</span>
-                              <p>${esc(s.why)}</p>
+                              <div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(s.why)}</div>
                             </div>
                           </div>`
                         : ""
                     }
                   </div>
-                  <p class="ds-opinion-proposal__text">${esc(s.suggestion)}</p>
+                  <div class="ds-opinion-proposal__text ds-suggestion-row__text ds-markdown">${renderSafeMarkdown(s.suggestion)}</div>
                   ${
                     s.references.length > 0
                       ? `<ul class="ds-refs" aria-label="Références">
@@ -1857,7 +1977,7 @@ export function renderDossierPage(
                                 session.domain,
                                 dossier.currentForm.file,
                               );
-                              return `<li class="ds-ref"><a class="ds-ref__source ds-ref__link" href="${refHref}" target="_blank" rel="noopener" title="Ouvrir ${esc(r.name)} à la page ${esc(pageNum)}">${iconSvg("ic-book", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</a>${r.excerpt ? `<span class="ds-ref__quote">« ${esc(r.excerpt)} »</span>` : ""}</li>`;
+                              return `<li class="ds-ref"><a class="ds-ref__source ds-ref__link" href="${refHref}" target="_blank" rel="noopener" title="Ouvrir ${esc(r.name)} à la page ${esc(pageNum)}">${iconSvg("ic-book", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</a>${r.excerpt ? `<span class="ds-ref__quote ds-markdown-inline">« ${renderSafeInlineMarkdown(r.excerpt)} »</span>` : ""}</li>`;
                             })
                             .join("")}
                         </ul>`
@@ -1872,7 +1992,7 @@ export function renderDossierPage(
                   <summary class="ds-popover__trigger">${iconSvg("ic-sparkle", "ds-icon--xs")} Réflexion IA</summary>
                   <div class="ds-popover__panel" role="dialog" aria-label="Réflexion IA — ${esc(op.agentLabel)}">
                     <div class="ds-popover__title">${iconSvg("ic-sparkle", "ds-icon--xs")} Réflexion IA — ${esc(op.agentLabel)}</div>
-                    <div>${esc(op.reasoningThinking)}</div>
+                    <div class="ds-thinking-popover__body ds-markdown">${renderSafeMarkdown(op.reasoningThinking)}</div>
                   </div>
                 </details>`
               : "";
@@ -1883,14 +2003,14 @@ export function renderDossierPage(
                 <span class="ds-section__title">${iconSvg(op.agentIcon)} Avis — ${esc(op.agentLabel)}</span>
                 <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
                 <span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-layers")} ${op.suggestions.length} proposition(s)</span>
-                <span class="ds-section__summary">${esc(op.suggestions[0]?.suggestion ?? op.whyRelevant)}</span>
+                <span class="ds-section__summary">${esc(firstSuggestionPreview)}</span>
               </summary>
               <div class="ds-opinion__body">
                 ${
                   op.whyRelevant
                     ? `<div class="ds-rationale">
                         <span class="ds-rationale__label">Pertinence clinique</span>
-                        <p class="ds-rationale__text">${esc(op.whyRelevant)}</p>
+                        <div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(op.whyRelevant)}</div>
                       </div>`
                     : ""
                 }
@@ -2058,18 +2178,26 @@ export function renderDossierPage(
       </div>`
     : "";
 
+  const confirmRerunMsg =
+    lang === "fr"
+      ? "Relancer l'analyse IA de cette fiche ? Les rubriques modifiées manuellement seront conservées."
+      : "Rerun AI analysis for this session? Saved manual edits will be preserved.";
+
+  const isDashboardView = activeTab === "patient-dashboard";
+  const rcpTab = activeTab === "opinions" ? "opinions" : "clinical";
+
   const bodyHtml = `
     ${agendaNavHtml}
-    <!-- Unified RCP Hero Card: Compact 2-Line Header + Always-Visible Synoptic Markers + Collapsible RCP Timeline -->
-    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}${proc.isProcessing ? " is-processing" : ""}" data-testid="synoptic-card"${proc.isProcessing ? ` data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}"` : ""}>
-      <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata) -->
+    <!-- Unified Patient Hero Card: Compact 2-Line Header + Patient-Level View Switcher + Session Markers & Timeline -->
+    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}${proc.isProcessing ? " is-processing" : ""}" data-testid="synoptic-card" data-patient-view="${isDashboardView ? "dashboard" : "rcp"}"${proc.isProcessing ? ` data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}"` : ""}>
+      <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata + Patient-Level View Tabs) -->
       <div class="ds-synoptic__row ds-patient-header" data-testid="patient-rcp-header">
         <div class="ds-patient-header__top">
           <h1 class="ds-patient-header__name">${esc(dossier.patientName)}</h1>
 
           <div class="ds-patient-header__badges">
             ${dossierProcBadgeHtml}
-            <span class="ds-badge ${dossier.priorityBadge.badgeClass} ds-badge--sm">${iconSvg(dossier.priorityBadge.icon)} ${esc(dossier.priorityBadge.label)}</span>
+            ${renderPriorityBadgeHtml(dossier.priorityBadge, { lang })}
             <div class="ds-hovercard" tabindex="0">
               <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm">
                 ${iconSvg(dossier.completenessBadge.icon)} ${esc(dossier.completenessBadge.label)}
@@ -2079,7 +2207,7 @@ export function renderDossierPage(
                   ? `<div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-warning")} Pièces manquantes</span>
                       <ul class="ds-hovercard__list">
-                        ${dossier.completenessBadge.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}
+                        ${dossier.completenessBadge.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}
                       </ul>
                     </div>`
                   : ""
@@ -2093,8 +2221,8 @@ export function renderDossierPage(
                     </span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-compass")} Orientation pré-RCP</span>
-                      ${dossier.careProposal.proposedCareType ? `<p style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${esc(dossier.careProposal.proposedCareType)}</p>` : ""}
-                      ${dossier.careProposal.clinicalRationale ? `<p>${esc(dossier.careProposal.clinicalRationale)}</p>` : ""}
+                      ${dossier.careProposal.proposedCareType ? `<p class="ds-markdown-inline" style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${renderSafeInlineMarkdown(dossier.careProposal.proposedCareType)}</p>` : ""}
+                      ${dossier.careProposal.clinicalRationale ? `<div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(dossier.careProposal.clinicalRationale)}</div>` : ""}
                     </div>
                   </div>`
                 : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm" data-testid="badge-orientation-adapt">
@@ -2102,14 +2230,14 @@ export function renderDossierPage(
                   </span>`
             }
             ${
-              dossier.specialties[0]
+              dossier.specialties.length === 1 && dossier.specialties[0]
                 ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
                 : ""
             }
             ${
               dossier.specialties.length > 1
                 ? `<div class="ds-hovercard" tabindex="0">
-                    <span class="ds-badge ds-badge--specialty ds-badge--sm">+${dossier.specialties.length - 1} ${lang === "fr" ? "spécialité(s)" : "specialties"}</span>
+                    <span class="ds-badge ds-badge--specialty ds-badge--sm">${iconSvg("ic-stethoscope")} ${dossier.specialties.length} ${lang === "fr" ? "spécialités" : "specialties"}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-stethoscope")} ${lang === "fr" ? "Spécialités mobilisées" : "Involved specialties"} (${dossier.specialties.length})</span>
                       <ul class="ds-hovercard__list">
@@ -2125,12 +2253,6 @@ export function renderDossierPage(
             <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm ds-patient-header__quick-action" data-open="link-patient-modal" data-testid="btn_link_patient">
               ${iconSvg("ic-link")} Rattacher
             </button>
-            <form class="ds-patient-header__quick-action" method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" style="display:inline-flex">
-              <input type="hidden" name="preserve_manual_edits" value="true">
-              <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-tooltip="Relance l'analyse complète en conservant les modifications manuelles" data-testid="btn_reprocess_form">
-                ${iconSvg("ic-refresh")} Relancer l'IA
-              </button>
-            </form>
             <details class="ds-menu" data-testid="menu-dossier-actions">
               <summary class="ds-menu__trigger" aria-label="Actions contextuelles du dossier patient" title="Actions du dossier">
                 ${iconSvg("ic-more-vert")}
@@ -2141,11 +2263,11 @@ export function renderDossierPage(
                   ${iconSvg("ic-link")}
                   <span>Rattacher à un autre patient…</span>
                 </button>
-                <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" style="margin:0">
+                <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
                   <input type="hidden" name="preserve_manual_edits" value="true">
                   <button type="submit" class="ds-menu__item" role="menuitem">
                     ${iconSvg("ic-refresh")}
-                    <span>Relancer l'analyse IA</span>
+                    <span>${lang === "fr" ? "Relancer cette fiche IA" : "Rerun this AI session"} (${esc(dossier.currentForm.file)})</span>
                   </button>
                 </form>
                 <hr class="ds-menu__divider">
@@ -2175,26 +2297,37 @@ export function renderDossierPage(
           </div>
         </div>
 
-        <ul class="ds-patient-header__meta">
-          ${displayDob ? `<li>Né(e) le ${esc(displayDob)}</li>` : ""}
-          ${dossier.gender ? `<li>${esc(dossier.gender)}</li>` : ""}
-          ${showShortPatientCode ? `<li class="ds-mono">Dossier ${esc(dossier.patientId)}</li>` : ""}
-          <li>${dossier.rcpCount} ${dossier.rcpCount > 1 ? "séances RCP" : "séance RCP"}</li>
-          <li><span class="ds-section__duration" title="Temps cumulé d'analyse IA">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span></li>
-        </ul>
+        <div class="ds-patient-header__bottom">
+          <ul class="ds-patient-header__meta">
+            ${displayDob ? `<li>Né(e) le ${esc(displayDob)}</li>` : ""}
+            ${dossier.gender ? `<li>${esc(dossier.gender)}</li>` : ""}
+            ${showShortPatientCode ? `<li class="ds-mono">Dossier ${esc(dossier.patientId)}</li>` : ""}
+            <li>${dossier.rcpCount} ${dossier.rcpCount > 1 ? "séances RCP" : "séance RCP"}</li>
+          </ul>
+
+          <!-- Patient-Level View Switcher (Séances RCP vs Tableau de bord longitudinal du patient) -->
+          <div class="ds-tabs ds-tabs--patient-level" role="tablist" aria-label="${lang === "fr" ? "Échelle de consultation du patient" : "Patient view level"}" data-testid="patient-view-tabs">
+            <button type="button" class="ds-tab" role="tab" id="tab-patient-rcp" aria-selected="${!isDashboardView ? "true" : "false"}" aria-controls="patient-workspace-rcp"${!isDashboardView ? "" : ' tabindex="-1"'} data-testid="tab-patient-rcp">
+              ${iconSvg("ic-calendar")} ${lang === "fr" ? `Séances RCP (${dossier.rcpCount})` : `MDT Sessions (${dossier.rcpCount})`}
+            </button>
+            <button type="button" class="ds-tab" role="tab" id="tab-patient-dashboard" aria-selected="${isDashboardView ? "true" : "false"}" aria-controls="panel-patient-dashboard"${isDashboardView ? "" : ' tabindex="-1"'} data-testid="tab-patient-dashboard">
+              ${iconSvg("ic-trend-up")} ${lang === "fr" ? "Tableau de bord patient" : "Patient Dashboard"}
+            </button>
+          </div>
+        </div>
       </div>
 
       ${dossierProcBannerHtml}
 
-      <!-- Row 1: Synoptic Clinical Markers (Always Visible) -->
-      <div class="ds-synoptic__row">
+      <!-- Row 1: Synoptic Clinical Markers for Selected RCP Session -->
+      <div class="ds-synoptic__row ds-synoptic__row--rcp-only">
         <dl class="ds-markers">
           ${markersHtml}
         </dl>
       </div>
 
-      <!-- Row 2: Compact Collapsible Longitudinal RCP Timeline Strip -->
-      <div class="ds-synoptic__row ds-synoptic__row--timeline">
+      <!-- Row 2: Compact Collapsible Longitudinal RCP Session Selector Strip -->
+      <div class="ds-synoptic__row ds-synoptic__row--timeline ds-synoptic__row--rcp-only">
         <details class="ds-timeline-drawer" open data-testid="timeline-drawer">
           <summary class="ds-timeline-drawer__summary">
             <span class="ds-timeline-drawer__label">
@@ -2203,7 +2336,7 @@ export function renderDossierPage(
               <span class="ds-badge ds-badge--neutral ds-badge--sm">${dossier.rcpCount} ${dossier.rcpCount > 1 ? "séances" : "séance"}</span>
             </span>
             <span class="ds-timeline-drawer__toggle">
-              <span class="ds-small ds-muted">Séance affichée : ${esc(dossier.currentForm.mdtDate ?? dossier.currentForm.file)}</span>
+              <span class="ds-small ds-muted">Séance affichée : ${esc(dossier.timeline.find((s) => s.isCurrent)?.mdtDate ?? dossier.currentForm.mdtDate ?? dossier.currentForm.file)}${dossier.cumulativeDurationSec > 0 ? ` <span class="ds-timeline__summary-duration" title="Temps global de génération IA de cette fiche RCP">· ${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span>` : ""}</span>
               <svg class="ds-icon ds-icon--md ds-timeline-drawer__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
             </span>
           </summary>
@@ -2216,123 +2349,189 @@ export function renderDossierPage(
       </div>
     </div>
 
-    <!-- Split View: Source PDF (Left) + Clinical Tabs (Right) -->
-    <div class="ds-split ds-split--40-60" id="dossier-split-view" data-testid="split-view">
-      <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf" data-pdf-pane>
-        <div class="ds-pdf-mobile-bar">
-          <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le fichier source" data-label-hide="Masquer le fichier source" data-testid="btn_mobile_pdf_toggle">
-            ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le fichier source</span>
-          </button>
-        </div>
-        <div class="ds-cluster ds-pdf-desktop-bar" style="justify-content:space-between">
-          <span class="ds-label">${iconSvg("ic-file-pdf")} Document source : <code class="ds-mono">${esc(dossier.currentForm.file)}</code></span>
-          <div class="ds-cluster" style="gap:var(--ds-space-1)">
-            <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-action="toggle-pdf-expand" data-testid="btn_pdf_expand">
-              ${iconSvg("ic-eye")} Élargir PDF
+    <!-- Patient View 1 (Default): RCP Session Workspace (Source PDF + RCP Session Clinical & Opinions Tabs) -->
+    <div id="patient-workspace-rcp" data-testid="patient-workspace-rcp" role="tabpanel" aria-labelledby="tab-patient-rcp"${isDashboardView ? " hidden" : ""}>
+      <div class="ds-split ds-split--40-60" id="dossier-split-view" data-testid="split-view">
+        <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf" data-pdf-pane>
+          <div class="ds-pdf-mobile-bar">
+            <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le fichier source" data-label-hide="Masquer le fichier source" data-testid="btn_mobile_pdf_toggle">
+              ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le fichier source</span>
             </button>
-            <details class="ds-menu" data-testid="menu-pdf-actions">
-              <summary class="ds-menu__trigger" aria-label="Options du lecteur PDF" title="Options du lecteur PDF">
-                ${iconSvg("ic-more-vert")}
-              </summary>
-              <div class="ds-menu__panel" role="menu">
-                <div class="ds-menu__header">Lecteur PDF</div>
-                <button type="button" class="ds-menu__item" role="menuitem" data-action="toggle-pdf-expand">
-                  ${iconSvg("ic-expand")}
-                  <span>Élargir / Réduire le volet PDF</span>
+          </div>
+          <div class="ds-cluster ds-pdf-desktop-bar" style="justify-content:space-between">
+            <span class="ds-label">${iconSvg("ic-file-pdf")} Document source : <code class="ds-mono">${esc(dossier.currentForm.file)}</code></span>
+            <div class="ds-cluster" style="gap:var(--ds-space-1)">
+              <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0;display:inline-flex">
+                <input type="hidden" name="preserve_manual_edits" value="true">
+                <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-tooltip="Relancer l'extraction IA pour ce document source (les modifications manuelles sont conservées)" data-testid="btn_reprocess_form_pdf">
+                  ${iconSvg("ic-refresh")} Relancer
                 </button>
-                <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH" target="_blank" rel="noopener">
-                  ${iconSvg("ic-file-pdf")}
-                  <span>Ouvrir dans un nouvel onglet</span>
-                </a>
-                <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" download="${esc(dossier.currentForm.file)}">
-                  ${iconSvg("ic-download")}
-                  <span>Télécharger le PDF source</span>
-                </a>
-                <hr class="ds-menu__divider">
-                <a class="ds-menu__item" role="menuitem" href="${upcomingHref}">
-                  ${iconSvg("ic-upload")}
-                  <span>Importer une nouvelle pièce PDF</span>
-                </a>
-              </div>
-            </details>
+              </form>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-action="toggle-pdf-expand" data-testid="btn_pdf_expand">
+                ${iconSvg("ic-eye")} Élargir PDF
+              </button>
+              <details class="ds-menu" data-testid="menu-pdf-actions">
+                <summary class="ds-menu__trigger" aria-label="Options du lecteur PDF" title="Options du lecteur PDF">
+                  ${iconSvg("ic-more-vert")}
+                </summary>
+                <div class="ds-menu__panel" role="menu">
+                  <div class="ds-menu__header">Lecteur PDF</div>
+                  <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
+                    <input type="hidden" name="preserve_manual_edits" value="true">
+                    <button type="submit" class="ds-menu__item" role="menuitem">
+                      ${iconSvg("ic-refresh")}
+                      <span>Relancer l'analyse de ce document</span>
+                    </button>
+                  </form>
+                  <button type="button" class="ds-menu__item" role="menuitem" data-action="toggle-pdf-expand">
+                    ${iconSvg("ic-expand")}
+                    <span>Élargir / Réduire le volet PDF</span>
+                  </button>
+                  <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH" target="_blank" rel="noopener">
+                    ${iconSvg("ic-file-pdf")}
+                    <span>Ouvrir dans un nouvel onglet</span>
+                  </a>
+                  <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" download="${esc(dossier.currentForm.file)}">
+                    ${iconSvg("ic-download")}
+                    <span>Télécharger le PDF source</span>
+                  </a>
+                  <hr class="ds-menu__divider">
+                  <a class="ds-menu__item" role="menuitem" href="${upcomingHref}">
+                    ${iconSvg("ic-upload")}
+                    <span>Importer une nouvelle pièce PDF</span>
+                  </a>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div class="ds-pdf-viewer-wrap">
+            <iframe class="ds-pdf-frame" src="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Document source PDF ${esc(dossier.currentForm.file)}"></iframe>
+            <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" data-pdf-filename="${esc(dossier.currentForm.file)}"></div>
           </div>
         </div>
-        <div class="ds-pdf-viewer-wrap">
-          <iframe class="ds-pdf-frame" src="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Document source PDF ${esc(dossier.currentForm.file)}"></iframe>
-          <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" data-pdf-filename="${esc(dossier.currentForm.file)}"></div>
-        </div>
-      </div>
 
-      <div class="ds-split__pane ds-split__pane--clinical">
-        <div class="ds-tabs" role="tablist" aria-label="Vues du dossier patient">
-          <button type="button" class="ds-tab" role="tab" id="tab-clinical" aria-selected="true" aria-controls="panel-clinical" data-testid="tab-clinical">
-            ${iconSvg("ic-stethoscope")} Dossier clinique (${clinicalSections.length})
-          </button>
-          <button type="button" class="ds-tab" role="tab" id="tab-opinions" aria-selected="false" aria-controls="panel-opinions" tabindex="-1" data-testid="tab-opinions">
-            ${iconSvg("ic-scale")} Avis &amp; orientation pré-RCP (${dossier.opinions.length})
-          </button>
+        <div class="ds-split__pane ds-split__pane--clinical">
+          <div class="ds-tabs" role="tablist" aria-label="Vues de la séance RCP">
+            <button type="button" class="ds-tab" role="tab" id="tab-clinical" aria-selected="${rcpTab === "clinical" ? "true" : "false"}" aria-controls="panel-clinical"${rcpTab === "clinical" ? "" : ' tabindex="-1"'} data-testid="tab-clinical">
+              ${iconSvg("ic-stethoscope")} Dossier clinique (${clinicalSections.length})
+            </button>
+            <button type="button" class="ds-tab" role="tab" id="tab-opinions" aria-selected="${rcpTab === "opinions" ? "true" : "false"}" aria-controls="panel-opinions"${rcpTab === "opinions" ? "" : ' tabindex="-1"'} data-testid="tab-opinions">
+              ${iconSvg("ic-scale")} Avis &amp; orientation pré-RCP (${dossier.opinions.length})
+            </button>
+            ${
+              session.expertMode
+                ? `<button type="button" class="ds-tab" role="tab" id="tab-expert" aria-selected="false" aria-controls="panel-expert" tabindex="-1" data-testid="tab-expert">${iconSvg("ic-file-pdf")} Texte Markdown &amp; Chunks</button>`
+                : ""
+            }
+          </div>
+
+          <!-- RCP Tab 1: Editable Clinical Sections (Collapsed by default, grouped by Clinical Pole) -->
+          <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-clinical" aria-labelledby="tab-clinical" tabindex="0"${rcpTab === "clinical" ? "" : " hidden"}>
+            <div class="ds-cluster" style="justify-content:space-between">
+              <span class="ds-small ds-muted">${clinicalSections.length} rubriques structurées · Cliquez sur une catégorie pour la déplier</span>
+              <div class="ds-cluster" style="gap:var(--ds-space-1)">
+                <form class="ds-reprocess-btn--desktop" method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0;display:inline-flex">
+                  <input type="hidden" name="preserve_manual_edits" value="true">
+                  <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-tooltip="Relancer l'extraction IA de cette fiche (les modifications manuelles sont conservées)" data-testid="btn_reprocess_form">
+                    ${iconSvg("ic-refresh")} Relancer cette fiche
+                  </button>
+                </form>
+                <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-clinical" data-testid="btn_toggle_all_sections">
+                  ${iconSvg("ic-layers")} Tout déplier / Tout replier
+                </button>
+                <details class="ds-menu ds-reprocess-menu--mobile" data-testid="menu-clinical-mobile-actions">
+                  <summary class="ds-menu__trigger" aria-label="Actions de la séance RCP" title="Actions de la séance">
+                    ${iconSvg("ic-more-vert")}
+                  </summary>
+                  <div class="ds-menu__panel" role="menu">
+                    <div class="ds-menu__header">Séance RCP (${esc(dossier.currentForm.mdtDate ?? dossier.currentForm.file)})</div>
+                    <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
+                      <input type="hidden" name="preserve_manual_edits" value="true">
+                      <button type="submit" class="ds-menu__item" role="menuitem" data-testid="btn_reprocess_form_mobile">
+                        ${iconSvg("ic-refresh")}
+                        <span>Relancer cette fiche IA</span>
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              </div>
+            </div>
+            ${sectionsHtml}
+          </div>
+
+          <!-- RCP Tab 2: Pre-MDT Orientation, Completeness Check & Specialty Opinions (Collapsed by default) -->
+          <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-opinions" aria-labelledby="tab-opinions" tabindex="0"${rcpTab === "opinions" ? "" : " hidden"}>
+            <div class="ds-cluster" style="justify-content:space-between">
+              <span class="ds-small ds-muted">Synthèse pré-RCP &amp; ${dossier.opinions.length} avis spécialisé(s)</span>
+              <div class="ds-cluster" style="gap:var(--ds-space-1)">
+                <form class="ds-reprocess-btn--desktop" method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0;display:inline-flex">
+                  <input type="hidden" name="preserve_manual_edits" value="true">
+                  <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-tooltip="Relancer l'extraction IA de cette fiche (les modifications manuelles sont conservées)" data-testid="btn_reprocess_opinions">
+                    ${iconSvg("ic-refresh")} Relancer cette fiche
+                  </button>
+                </form>
+                <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-opinions" data-testid="btn_toggle_all_opinions">
+                  ${iconSvg("ic-layers")} Tout déplier / Tout replier
+                </button>
+                <details class="ds-menu ds-reprocess-menu--mobile" data-testid="menu-opinions-mobile-actions">
+                  <summary class="ds-menu__trigger" aria-label="Actions de la séance RCP" title="Actions de la séance">
+                    ${iconSvg("ic-more-vert")}
+                  </summary>
+                  <div class="ds-menu__panel" role="menu">
+                    <div class="ds-menu__header">Séance RCP (${esc(dossier.currentForm.mdtDate ?? dossier.currentForm.file)})</div>
+                    <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" data-confirm="${confirmRerunMsg}" style="margin:0">
+                      <input type="hidden" name="preserve_manual_edits" value="true">
+                      <button type="submit" class="ds-menu__item" role="menuitem">
+                        ${iconSvg("ic-refresh")}
+                        <span>Relancer cette fiche IA</span>
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              </div>
+            </div>
+            ${careOrientationHtml}
+            ${opinionSectionsHtml}
+            ${opinionsHtml}
+          </div>
+
           ${
             session.expertMode
-              ? `<button type="button" class="ds-tab" role="tab" id="tab-expert" aria-selected="false" aria-controls="panel-expert" tabindex="-1" data-testid="tab-expert">${iconSvg("ic-file-pdf")} Texte Markdown &amp; Chunks</button>`
+              ? `<div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-expert" aria-labelledby="tab-expert" tabindex="0" hidden>
+                  <div class="ds-card">
+                    <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-file-pdf")} Texte Markdown extrait</h3></div>
+                    <div class="ds-card__body"><pre style="white-space:pre-wrap;margin:0">${esc(dossier.currentForm.markdownText ?? "Aucun texte markdown disponible.")}</pre></div>
+                  </div>
+                  ${
+                    dossier.currentForm.chunks && dossier.currentForm.chunks.length > 0
+                      ? `<div class="ds-card">
+                          <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-layers")} Segments vectoriels indexés (${dossier.currentForm.chunks.length} chunks)</h3></div>
+                          <div class="ds-card__body ds-stack--sm">
+                            ${dossier.currentForm.chunks
+                              .map(
+                                (ch) => `<div class="ds-subcard">
+                                  <div class="ds-subcard__header">
+                                    <span class="ds-subcard__title">Chunk #${ch.index}</span>
+                                    ${ch.metadata?.page ? `<span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-file-pdf")} p. ${esc(ch.metadata.page)}</span>` : ""}
+                                  </div>
+                                  <p class="ds-subcard__body">${esc(ch.content)}</p>
+                                </div>`,
+                              )
+                              .join("")}
+                          </div>
+                        </div>`
+                      : ""
+                  }
+                </div>`
               : ""
           }
         </div>
-
-        <!-- Tab 1: Editable Clinical Sections (Collapsed by default, grouped by Clinical Pole) -->
-        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-clinical" aria-labelledby="tab-clinical" tabindex="0">
-          <div class="ds-cluster" style="justify-content:space-between">
-            <span class="ds-small ds-muted">${clinicalSections.length} rubriques structurées · Cliquez sur une catégorie pour la déplier</span>
-            <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-clinical" data-testid="btn_toggle_all_sections">
-              ${iconSvg("ic-layers")} Tout déplier / Tout replier
-            </button>
-          </div>
-          ${sectionsHtml}
-        </div>
-
-        <!-- Tab 2: Pre-MDT Orientation, Completeness Check & Specialty Opinions (Collapsed by default) -->
-        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-opinions" aria-labelledby="tab-opinions" tabindex="0" hidden>
-          <div class="ds-cluster" style="justify-content:space-between">
-            <span class="ds-small ds-muted">Synthèse pré-RCP &amp; ${dossier.opinions.length} avis spécialisé(s)</span>
-            <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-opinions" data-testid="btn_toggle_all_opinions">
-              ${iconSvg("ic-layers")} Tout déplier / Tout replier
-            </button>
-          </div>
-          ${careOrientationHtml}
-          ${opinionSectionsHtml}
-          ${opinionsHtml}
-        </div>
-
-        ${
-          session.expertMode
-            ? `<div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-expert" aria-labelledby="tab-expert" tabindex="0" hidden>
-                <div class="ds-card">
-                  <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-file-pdf")} Texte Markdown extrait</h3></div>
-                  <div class="ds-card__body"><pre style="white-space:pre-wrap;margin:0">${esc(dossier.currentForm.markdownText ?? "Aucun texte markdown disponible.")}</pre></div>
-                </div>
-                ${
-                  dossier.currentForm.chunks && dossier.currentForm.chunks.length > 0
-                    ? `<div class="ds-card">
-                        <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-layers")} Segments vectoriels indexés (${dossier.currentForm.chunks.length} chunks)</h3></div>
-                        <div class="ds-card__body ds-stack--sm">
-                          ${dossier.currentForm.chunks
-                            .map(
-                              (ch) => `<div class="ds-subcard">
-                                <div class="ds-subcard__header">
-                                  <span class="ds-subcard__title">Chunk #${ch.index}</span>
-                                  ${ch.metadata?.page ? `<span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-file-pdf")} p. ${esc(ch.metadata.page)}</span>` : ""}
-                                </div>
-                                <p class="ds-subcard__body">${esc(ch.content)}</p>
-                              </div>`,
-                            )
-                            .join("")}
-                        </div>
-                      </div>`
-                    : ""
-                }
-              </div>`
-            : ""
-        }
       </div>
+    </div>
+
+    <!-- Patient View 2 (Patient-Level Full Width): Longitudinal Patient Dashboard (Raw Multi-Year Metrics & On-Demand Global Summary) -->
+    <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-patient-dashboard" aria-labelledby="tab-patient-dashboard" tabindex="0"${isDashboardView ? "" : " hidden"}>
+      ${renderPatientDashboardPanel(dossier.dashboard, lang)}
     </div>
 
     ${dossierChatDrawerHtml}
@@ -2413,9 +2612,29 @@ export function renderIngestPage(
   queueStats: QueueStats,
   queueJobs: QueueJobItem[],
   preselectedPatientId?: string | null,
+  duplicateFilename?: string | null,
 ): string {
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
+
+  const duplicateHtml = !duplicateFilename
+    ? ""
+    : `<div class="ds-card ds-card--tinted" data-testid="duplicate-warning" style="border-left: 4px solid var(--ds-color-warning);">
+        <div class="ds-card__body ds-stack--xs">
+          <div class="ds-row ds-row--between">
+            <div class="ds-row ds-row--sm">
+              ${iconSvg("ic-warning")}
+              <strong>Document déjà importé</strong>
+            </div>
+            <a class="ds-btn ds-btn--tonal ds-btn--sm" href="/forms/${encodeURIComponent(duplicateFilename)}?domain=${domainParam}">
+              ${iconSvg("ic-file-pdf")} Ouvrir le dossier existant
+            </a>
+          </div>
+          <p class="ds-small ds-muted">
+            Le fichier <code>${esc(duplicateFilename)}</code> a déjà été importé et analysé lors d'une séance précédente. Ses résultats sont directement consultables.
+          </p>
+        </div>
+      </div>`;
 
   const batchHtml = !batch
     ? ""
@@ -2452,6 +2671,7 @@ export function renderIngestPage(
       </div>
     </div>
 
+    ${duplicateHtml}
     ${batchHtml}
 
     <div class="ds-grid">
@@ -3165,7 +3385,7 @@ export function renderAgendaPage(
                       <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
                       <div class="ds-hovercard__panel" role="tooltip">
                         <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
-                        <ul class="ds-hovercard__list">${item.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+                        <ul class="ds-hovercard__list">${item.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}</ul>
                       </div>
                     </div>`
                   : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`;
@@ -3197,7 +3417,11 @@ export function renderAgendaPage(
                       ${item.dateBirth ? `<span class="ds-small ds-muted">Né(e) le ${esc(item.dateBirth)}</span>` : ""}
                     </div>
                     <div class="ds-cluster">
-                      <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+                      ${renderPriorityBadgeHtml(prio, {
+                        reason: item.priorityReason,
+                        reasons: item.priorityReasons,
+                        lang,
+                      })}
                       ${completenessBadge}
                       <span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>
                     </div>
@@ -3205,7 +3429,7 @@ export function renderAgendaPage(
 
                   ${
                     item.proposedCareType
-                      ? `<p class="ds-small ds-agenda-item__proposal"><strong>Orientation pré-RCP :</strong> ${esc(item.proposedCareType)}</p>`
+                      ? `<p class="ds-small ds-agenda-item__proposal ds-markdown-inline"><strong>Orientation pré-RCP :</strong> ${renderSafeInlineMarkdown(item.proposedCareType)}</p>`
                       : ""
                   }
 

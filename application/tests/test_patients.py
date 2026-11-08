@@ -254,7 +254,18 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             self.assertFalse(is_dup2)
             self.assertNotEqual(fname1, fname2)
 
-            # 3. Re-import of the same content bytes_a -> detected as duplicate
+            # 3. Re-import of the same content bytes_a when on disk but not yet COMPLETED -> not a duplicate (must be reprocessed)
+            fname3_unindexed, is_dup3_unindexed = extraction_service.resolve_upload(
+                bytes_a, "fiche_rcp.pdf"
+            )
+            self.assertFalse(is_dup3_unindexed)
+            self.assertEqual(fname3_unindexed, fname1)
+
+            # 4. Once indexed in mdt_form_repo with COMPLETED status -> detected as duplicate
+            extraction_service.mdt_form_repo.upsert_fields(
+                fname1,
+                {"file": fname1, "processing_status": "COMPLETED"},
+            )
             fname3, is_dup3 = extraction_service.resolve_upload(
                 bytes_a, "fiche_rcp.pdf"
             )

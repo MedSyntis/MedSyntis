@@ -12,7 +12,7 @@ export class IngestUseCase {
     files: UploadFileInput[],
     domain: ClinicalDomain,
     explicitBatchId?: string,
-  ): Promise<{ batchId: string; filenames: string[] }> {
+  ): Promise<{ batchId: string; filenames: string[]; duplicates?: string[] }> {
     const batchId =
       explicitBatchId || `batch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     return this.api.uploadForms(files, batchId, domain);

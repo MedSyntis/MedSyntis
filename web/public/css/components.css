@@ -405,6 +405,52 @@ textarea,
   text-align: center;
   line-height: 1.25;
 }
+.ds-nav__badges {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  z-index: 1;
+}
+.ds-nav__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 1.25rem;
+  height: 1.125rem;
+  padding: 0 0.375rem;
+  border-radius: var(--ds-radius-pill);
+  border: 0;
+  font-size: 0.6875rem;
+  font-weight: var(--ds-weight-bold);
+  line-height: 1;
+  white-space: nowrap;
+}
+.ds-nav__badge-text {
+  display: inline-block;
+  line-height: 1;
+}
+.ds-nav__badge--running {
+  background: var(--ds-color-primary);
+  color: var(--ds-color-on-primary);
+  border: 0;
+}
+.ds-nav__badge--pending {
+  background: var(--ds-color-primary-soft);
+  color: var(--ds-color-primary-text);
+  border: 0;
+}
+.ds-nav__badge--failed {
+  background: var(--ds-color-danger);
+  color: var(--ds-color-on-danger);
+  border: 0;
+}
+.ds-spinner--xs {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-width: 1.5px;
+}
 .ds-sidebar__footer {
   margin-top: auto;
   font-size: var(--ds-text-xs);
@@ -645,6 +691,33 @@ textarea,
   padding: 0 0.25rem;
   font-size: 0.625rem;
   line-height: 1.1rem;
+}
+.ds-shell--sidebar-collapsed .ds-nav__badges,
+.ds-shell[data-sidebar="collapsed"] .ds-nav__badges,
+:root[data-sidebar="collapsed"] .ds-nav__badges {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  margin-left: 0;
+  display: inline-flex;
+  gap: 2px;
+  z-index: 2;
+}
+.ds-shell--sidebar-collapsed .ds-nav__badge,
+.ds-shell[data-sidebar="collapsed"] .ds-nav__badge,
+:root[data-sidebar="collapsed"] .ds-nav__badge {
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.2rem;
+  font-size: 0.625rem;
+  line-height: 1rem;
+}
+.ds-shell--sidebar-collapsed .ds-nav__badge .ds-spinner--xs,
+.ds-shell[data-sidebar="collapsed"] .ds-nav__badge .ds-spinner--xs,
+:root[data-sidebar="collapsed"] .ds-nav__badge .ds-spinner--xs {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-width: 1px;
 }
 
 /* M3 Navigation Rail Flyout Label on Hover (when Rail is collapsed) */
@@ -947,54 +1020,10 @@ textarea,
   }
 }
 
-/* 2. Queue status floating bottom pill + M3 Side Sheet drawer ============= */
+/* 2. Queue status floating bottom pill (removed) ============= */
 .ds-queue-banner {
-  position: fixed;
-  left: calc(var(--ds-sidebar-width) + var(--ds-space-6));
-  right: auto;
-  bottom: var(--ds-space-5);
-  z-index: var(--ds-z-banner);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ds-space-3);
-  min-height: 2.75rem;
-  max-width: min(34rem, calc(100vw - var(--ds-sidebar-width) - 14rem));
-  padding: var(--ds-space-2) var(--ds-space-4);
-  font-size: var(--ds-text-sm);
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-surface-container-high);
-  color: var(--ds-color-text);
-  border: 1px solid var(--ds-color-border-strong);
-  box-shadow: var(--ds-shadow-lg);
-}
-@media (max-width: 64rem) {
-  .ds-queue-banner {
-    left: var(--ds-space-4);
-    right: var(--ds-space-4);
-    max-width: calc(100vw - 2rem);
-  }
-  .ds-main:has(> .ds-queue-banner:not(.ds-queue-banner--idle)) .ds-fab-menu {
-    bottom: 5.25rem;
-  }
-}
-.ds-workspace .ds-queue-banner {
-  position: static;
-  display: flex;
-  max-width: 100%;
-}
-.ds-queue-banner__text { flex: 1 1 auto; display: flex; align-items: center; gap: var(--ds-space-2); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ds-queue-banner__msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ds-queue-banner__text strong { font-weight: var(--ds-weight-semibold); }
-.ds-queue-banner .ds-queue-banner__progress { width: 6.5rem; flex: none; }
-.ds-queue-banner__action { margin-left: auto; flex: none; }
-.ds-queue-banner--idle { background: var(--ds-surface-container); color: var(--ds-color-text-muted); }
-body > .ds-queue-banner--idle,
-.ds-main > .ds-queue-banner--idle {
   display: none !important;
 }
-.ds-queue-banner--success { background: var(--ds-color-success-bg); color: var(--ds-color-success-fg); border-color: transparent; }
-.ds-queue-banner--error { background: var(--ds-color-danger-bg); color: var(--ds-color-danger-fg); border-color: transparent; }
-.ds-queue-banner--offline { background: var(--ds-color-warning-bg); color: var(--ds-color-warning-fg); border-color: transparent; }
 
 /* M3 Modal Side Sheet (28px extra-large leading corners) */
 .ds-drawer {
@@ -2536,22 +2565,60 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-missing-list__item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--ds-space-3);
-  padding: 0.45rem 0.75rem;
+  padding: 0.55rem 0.85rem;
   border-radius: var(--ds-radius-sm);
   background: var(--ds-color-surface);
   border: 0;
   font-size: var(--ds-text-sm);
   transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
-.ds-missing-list__text {
+.ds-missing-list__content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ds-missing-list__icon {
   display: inline-flex;
   align-items: center;
-  gap: var(--ds-space-2);
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--ds-color-warning);
+}
+.ds-missing-list__text {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--ds-color-text);
+  font-weight: var(--ds-weight-normal);
+  line-height: var(--ds-line-relaxed);
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.ds-missing-list__text p {
+  margin: 0;
+}
+.ds-missing-list__text p + p {
+  margin-top: var(--ds-space-1);
+}
+.ds-missing-list__text p:first-child {
   font-weight: var(--ds-weight-medium);
+}
+.ds-missing-list__text ul,
+.ds-missing-list__text ol {
+  margin: var(--ds-space-1) 0 0 0;
+  padding-left: 1.25rem;
+}
+.ds-missing-list__text li {
+  margin: 0.15rem 0;
+  line-height: var(--ds-line-relaxed);
+}
+.ds-missing-list__text li::marker {
+  color: var(--ds-color-text-subtle);
 }
 /* Manual section & M3 Tonal surface section headers (Vert / Orange / Rouge — zero border) */
 .ds-section--manual > summary { background: color-mix(in srgb, var(--ds-manual-bg) 45%, var(--ds-color-surface)); }
@@ -2725,9 +2792,11 @@ input[type="search"].ds-input::-webkit-search-decoration {
 /* 12. M3 Session Timeline Cards & Compact Collapsible Timeline Drawer ===== */
 .ds-synoptic__row--timeline {
   padding-top: var(--ds-space-2) !important;
+  min-width: 0;
 }
 .ds-timeline-drawer {
   width: 100%;
+  min-width: 0;
 }
 .ds-timeline-drawer__summary {
   list-style: none;
@@ -2768,17 +2837,22 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-timeline-drawer__body {
   padding-top: var(--ds-space-2);
+  min-width: 0;
 }
 
 .ds-timeline {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: var(--ds-space-2);
   margin: 0;
-  padding: 0;
+  padding: 0 0 var(--ds-space-1) 0;
   list-style: none;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 .ds-timeline__link--upcoming {
   border-style: dashed;
@@ -2792,15 +2866,15 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-timeline__item {
   position: relative;
-  flex: 0 1 14rem;
+  flex: 0 0 14rem;
   display: flex;
 }
 .ds-timeline__item + .ds-timeline__item::before {
   content: "";
   position: absolute;
   top: 50%;
-  left: calc(-1 * var(--ds-space-3));
-  width: var(--ds-space-3);
+  left: calc(-1 * var(--ds-space-2));
+  width: var(--ds-space-2);
   height: 2px;
   background: var(--ds-color-border);
   transform: translateY(-50%);
@@ -2843,9 +2917,34 @@ a.ds-timeline__link:hover {
 .ds-timeline__marker--high   { background: var(--ds-urgency-high-bg);   color: var(--ds-urgency-high-fg); }
 .ds-timeline__marker--medium { background: var(--ds-urgency-medium-bg); color: var(--ds-urgency-medium-fg); }
 .ds-timeline__marker--low    { background: var(--ds-urgency-low-bg);    color: var(--ds-urgency-low-fg); }
-.ds-timeline__content { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0; }
-.ds-timeline__date { display: block; font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-sm); }
-.ds-timeline__meta { display: block; font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); }
+.ds-timeline__content { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0; flex: 1; }
+.ds-timeline__date { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-sm); white-space: nowrap; }
+.ds-timeline__date-main { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; white-space: nowrap; }
+.ds-timeline__duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.6875rem;
+  font-weight: var(--ds-weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  opacity: 0.72;
+  white-space: nowrap;
+  flex: none;
+}
+.ds-timeline__duration .ds-icon,
+.ds-timeline__summary-duration .ds-icon {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+.ds-timeline__summary-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.82;
+}
+.ds-timeline__meta { display: block; font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ds-timeline__link[aria-current="step"] {
   background: var(--ds-color-primary-soft);
   border: 0;
@@ -4141,7 +4240,167 @@ a.ds-timeline__link:hover {
 .ds-rationale--orientation .ds-rationale__text {
   white-space: pre-line;
   line-height: 1.65;
-  max-width: 85ch;
+}
+.ds-rationale--orientation .ds-rationale__text.ds-markdown {
+  white-space: normal;
+}
+
+/* Safe Clinical Markdown Typography (Block & Inline) */
+.ds-markdown,
+.ds-thinking-popover__body.ds-markdown {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ds-markdown > :first-child {
+  margin-top: 0;
+}
+.ds-markdown > :last-child {
+  margin-bottom: 0;
+}
+.ds-markdown h1 {
+  font-size: 1.125rem;
+  font-weight: var(--ds-weight-bold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text);
+  margin: var(--ds-space-3) 0 var(--ds-space-2) 0;
+  letter-spacing: -0.01em;
+}
+.ds-markdown h2 {
+  font-size: 1rem;
+  font-weight: var(--ds-weight-semibold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text);
+  margin: var(--ds-space-3) 0 var(--ds-space-2) 0;
+  letter-spacing: -0.01em;
+}
+.ds-markdown h3 {
+  font-size: 0.9375rem;
+  font-weight: var(--ds-weight-semibold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text);
+  margin: var(--ds-space-2) 0 var(--ds-space-1) 0;
+}
+.ds-markdown h4,
+.ds-markdown h5,
+.ds-markdown h6 {
+  font-size: 0.8125rem;
+  font-weight: var(--ds-weight-semibold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: var(--ds-space-2) 0 var(--ds-space-1) 0;
+}
+.ds-markdown p {
+  margin: 0 0 var(--ds-space-2) 0;
+}
+.ds-markdown p:last-child {
+  margin-bottom: 0;
+}
+.ds-markdown ul,
+.ds-markdown ol {
+  margin: var(--ds-space-1) 0 var(--ds-space-2) 0;
+  padding-left: 1.25rem;
+}
+.ds-markdown ul:last-child,
+.ds-markdown ol:last-child {
+  margin-bottom: 0;
+}
+.ds-markdown li {
+  margin-bottom: 0.2rem;
+}
+.ds-markdown li:last-child {
+  margin-bottom: 0;
+}
+.ds-markdown strong,
+.ds-markdown-inline strong {
+  font-weight: 600;
+  color: var(--ds-text-primary, var(--ds-color-text));
+}
+.ds-markdown em,
+.ds-markdown-inline em {
+  font-style: italic;
+}
+.ds-markdown code,
+.ds-markdown-inline code {
+  font-family: var(--ds-font-mono);
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: var(--ds-radius-xs, 4px);
+  background: var(--ds-surface-variant, rgba(148, 163, 184, 0.15));
+}
+.ds-markdown a,
+.ds-markdown-inline a {
+  color: var(--ds-color-primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Markdown Tables (Clinical GFM tables with responsive scroll) */
+.ds-markdown table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: var(--ds-space-2) 0;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-line-normal);
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ds-markdown thead,
+.ds-markdown tbody {
+  display: table;
+  width: 100%;
+  table-layout: auto;
+}
+.ds-markdown th,
+.ds-markdown td {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--ds-color-border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: normal;
+  min-width: 5.5rem;
+}
+.ds-markdown th {
+  background: var(--ds-surface-container);
+  color: var(--ds-color-text);
+  font-weight: var(--ds-weight-semibold);
+}
+
+/* Emojis & Pictograms in Markdown: Normalized clinical scale */
+.ds-emoji {
+  display: inline-block;
+  font-style: normal;
+  font-weight: normal;
+  font-size: 0.9em;
+  line-height: 1;
+  vertical-align: -0.06em;
+  margin-right: 0.15em;
+  letter-spacing: normal;
+}
+
+.ds-markdown h1 .ds-emoji,
+.ds-markdown h2 .ds-emoji,
+.ds-markdown h3 .ds-emoji,
+.ds-chat__markdown h1 .ds-emoji,
+.ds-chat__markdown h2 .ds-emoji,
+.ds-chat__markdown h3 .ds-emoji {
+  font-size: 0.82em;
+  vertical-align: -0.08em;
+  margin-right: 0.2em;
+}
+
+.ds-markdown svg,
+.ds-markdown-inline svg,
+.ds-chat__markdown svg {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
 }
 
 /* Guidelines 2-Column Split Layout (Left Document Menu + Right PDF Preview) */
@@ -4323,6 +4582,22 @@ a.ds-timeline__link:hover {
     border: 1px solid var(--ds-color-border);
     border-radius: var(--ds-radius-lg);
     background: var(--ds-surface-container);
+  }
+}
+
+/* Reprocess Action: Prominent on desktop, discreet contextual menu on mobile to prevent accidental touch trigger */
+.ds-reprocess-btn--desktop {
+  display: inline-flex;
+}
+.ds-reprocess-menu--mobile {
+  display: none !important;
+}
+@media (max-width: 48rem) {
+  .ds-reprocess-btn--desktop {
+    display: none !important;
+  }
+  .ds-reprocess-menu--mobile {
+    display: inline-flex !important;
   }
 }
 
@@ -4895,10 +5170,11 @@ a.ds-timeline__link:hover {
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
     padding-bottom: var(--ds-space-1);
+    padding-inline: max(var(--ds-space-2), calc(50% - 6.75rem));
   }
   .ds-timeline__item {
     flex: 0 0 13.5rem;
-    scroll-snap-align: start;
+    scroll-snap-align: center;
   }
 
   /* Clinical Sections, Opinions, KV Grid & Subcards on Mobile */
@@ -5798,6 +6074,173 @@ a.ds-timeline__link:hover {
   .ds-agenda-dossier-nav__patient-name {
     display: inline;
   }
+}
+
+/* 25. Patient Longitudinal Dashboard (Raw Multi-Year Metrics & AI Summary) == */
+.ds-patient-header__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-1);
+}
+.ds-tabs--patient-level {
+  position: relative;
+  isolation: isolate;
+  border-bottom: 0;
+  background: color-mix(in srgb, currentColor 11%, transparent);
+  border-radius: var(--ds-radius-pill);
+  padding: 0.2rem;
+  gap: 0.15rem;
+  overflow: hidden;
+}
+.ds-tabs--patient-level .ds-tabs__indicator {
+  top: 0.2rem;
+  bottom: 0.2rem;
+  left: 0;
+  height: auto;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-color-surface);
+  box-shadow: var(--ds-shadow-xs);
+  z-index: 0;
+}
+.ds-tabs--patient-level .ds-tab {
+  position: relative;
+  z-index: 1;
+  min-height: 2.1rem;
+  padding: 0.25rem 0.85rem;
+  border-radius: var(--ds-radius-pill);
+  font-size: var(--ds-text-xs);
+  color: inherit;
+  opacity: 0.82;
+  transition:
+    color var(--ds-duration-short3) var(--ds-ease-standard),
+    opacity var(--ds-duration-short3) var(--ds-ease-standard),
+    background-color var(--ds-duration-short3) var(--ds-ease-standard);
+}
+.ds-tabs--patient-level .ds-tab::after {
+  display: none !important;
+}
+.ds-tabs--patient-level .ds-tab:hover {
+  opacity: 1;
+  color: inherit;
+}
+.ds-tabs--patient-level .ds-tab[aria-selected="true"] {
+  opacity: 1;
+  color: var(--ds-color-text);
+  font-weight: var(--ds-weight-bold);
+}
+.ds-tabs--patient-level:not(:has(.ds-tabs__indicator)) .ds-tab[aria-selected="true"] {
+  background: var(--ds-color-surface);
+  box-shadow: var(--ds-shadow-xs);
+}
+.ds-synoptic[data-patient-view="dashboard"] .ds-synoptic__row--rcp-only {
+  display: none;
+}
+
+.ds-patient-dashboard {
+  width: 100%;
+}
+
+/* Apache ECharts Raw Longitudinal Metric Cards (Full-Width 2-Column Desktop Grid) */
+.ds-metric-charts-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ds-space-4);
+}
+@media (min-width: 64rem) {
+  .ds-metric-charts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.ds-metric-chart-card__canvas {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-container-lowest);
+  border: 1px solid var(--ds-color-border);
+  padding: var(--ds-space-2);
+}
+.ds-metric-chart-card__canvas svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+.ds-metric-points-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+}
+.ds-raw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-surface-nested);
+  border: 1px solid var(--ds-border-nested);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-color-text);
+}
+.ds-raw-pill--annotative {
+  background: var(--ds-color-warning-bg);
+  color: var(--ds-color-warning-fg);
+}
+.ds-raw-pill__date {
+  color: var(--ds-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ds-raw-pill__val {
+  font-weight: var(--ds-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.ds-raw-pill__delta {
+  font-size: 0.72rem;
+  color: var(--ds-color-primary-text);
+  font-weight: var(--ds-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Qualitative Clinical Status & Milestone Swimlanes */
+.ds-swimlane-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ds-space-3);
+}
+@media (max-width: 48rem) {
+  .ds-swimlane-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ds-swimlane-row__label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.ds-swimlane-row__steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+.ds-step-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--ds-text-xs);
+}
+.ds-step-node__date {
+  color: var(--ds-color-text-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.ds-step-node__arrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ds-color-text-muted);
 }
 
 @media print {

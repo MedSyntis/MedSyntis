@@ -65,13 +65,26 @@ export function derivePriorityBadgeInfo(
   level: PriorityLevel,
   lang: Language = "fr",
   short = false,
+  reasonInput?: {
+    urgency_reason?: string | null;
+    urgency_reasons?: string[];
+  },
 ): {
   level: PriorityLevel;
   icon: string;
   badgeClass: string;
   label: string;
+  reason: string | null;
+  reasons: string[];
 } {
   const key = short ? `priority.${level}.short` : `priority.${level}`;
+  const rawReasons = Array.isArray(reasonInput?.urgency_reasons)
+    ? reasonInput.urgency_reasons.map((r) => String(r).trim()).filter(Boolean)
+    : [];
+  const rawSingle = reasonInput?.urgency_reason ? String(reasonInput.urgency_reason).trim() : null;
+  const reasons = rawReasons.length > 0 ? rawReasons : rawSingle ? [rawSingle] : [];
+  const reason = rawSingle || (reasons.length > 0 ? reasons.join("\n\n") : null);
+
   switch (level) {
     case "high":
       return {
@@ -79,6 +92,8 @@ export function derivePriorityBadgeInfo(
         icon: "ic-priority-high",
         badgeClass: "ds-badge--urgency-high",
         label: t(key, lang),
+        reason,
+        reasons,
       };
     case "medium":
       return {
@@ -86,6 +101,8 @@ export function derivePriorityBadgeInfo(
         icon: "ic-priority-medium",
         badgeClass: "ds-badge--urgency-medium",
         label: t(key, lang),
+        reason,
+        reasons,
       };
     case "low":
       return {
@@ -93,6 +110,8 @@ export function derivePriorityBadgeInfo(
         icon: "ic-priority-low",
         badgeClass: "ds-badge--urgency-low",
         label: t(key, lang),
+        reason,
+        reasons,
       };
     default:
       return {
@@ -100,6 +119,8 @@ export function derivePriorityBadgeInfo(
         icon: "ic-priority-none",
         badgeClass: "ds-badge--urgency-none",
         label: t(key, lang),
+        reason,
+        reasons,
       };
   }
 }
@@ -171,8 +192,20 @@ export function deriveCompletenessInfo(
     .trim()
     .toUpperCase();
   const isAiCompleted = statusUpper === "COMPLETED";
-  const isComplete = isAiCompleted && input.is_complete === true && missingCount === 0;
-  if (isComplete) {
+  if (isAiCompleted && input.is_complete === true) {
+    if (missingCount > 0) {
+      return {
+        status: "complete",
+        icon: "ic-check-circle",
+        badgeClass: "ds-badge--complete",
+        label:
+          lang === "fr"
+            ? `${missingCount} élément(s) facultatif manquant(s)`
+            : `${missingCount} optional missing item(s)`,
+        missingCount,
+        missingItems,
+      };
+    }
     return {
       status: "complete",
       icon: "ic-check-circle",
@@ -376,8 +409,14 @@ export function computeLongitudinalDeltas(
       continue;
     }
 
-    const curNum = Number(String(curRaw).replace(/[^0-9.-]/g, ""));
-    const prevNum = Number(String(prevRaw).replace(/[^0-9.-]/g, ""));
+    const curMatch = String(curRaw)
+      .replace(/,/g, ".")
+      .match(/[-+]?\d+(?:\.\d+)?/);
+    const prevMatch = String(prevRaw)
+      .replace(/,/g, ".")
+      .match(/[-+]?\d+(?:\.\d+)?/);
+    const curNum = curMatch ? Number(curMatch[0]) : Number.NaN;
+    const prevNum = prevMatch ? Number(prevMatch[0]) : Number.NaN;
     if (!Number.isNaN(curNum) && !Number.isNaN(prevNum)) {
       const diff = curNum - prevNum;
       if (diff === 0) {

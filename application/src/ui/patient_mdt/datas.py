@@ -4,6 +4,8 @@ from typing import Any
 from types import NoneType
 from datetime import date, datetime
 from enum import Enum
+from bs4 import BeautifulSoup
+from markdown_it import MarkdownIt
 import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
 import threading
@@ -155,7 +157,7 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
 app_conf = AppConfig()
 
 db_client = None
-if app_conf.rcp.display_type == "mongodb":
+if get_script_run_ctx() is not None and app_conf.rcp.display_type == "mongodb":
     db_client = Mongodb(app_conf)
 
 PAGES_DIR_SRC = "src/ui"
@@ -269,12 +271,28 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "title": "Localisation de la tumeur primitive",
         "default_expanded": False,
     },
+    "CancerDescription": {
+        "order": 42,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🔬",
+        "title": "Caractérisation tumorale, TNM & Réponse RECIST",
+        "default_expanded": False,
+    },
     "TumorBiology": {
         "order": 50,
         "tab": "clinical",
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🧬",
-        "title": "Biologie tumorale (Statut MSI / MSS)",
+        "title": "Biologie tumorale, Marqueurs & DPD",
+        "default_expanded": False,
+    },
+    "HepaticStatus": {
+        "order": 55,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🧪",
+        "title": "Bilan hépatique, Child-Pugh & BCLC",
         "default_expanded": False,
     },
     "GeneticDiagnosis": {
@@ -291,6 +309,14 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🏃",
         "title": "Statut de performance OMS",
+        "default_expanded": False,
+    },
+    "NutritionalStatus": {
+        "order": 62,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "⚖️",
+        "title": "Statut nutritionnel & évolution pondérale",
         "default_expanded": False,
     },
     "MotorFunctionStatus": {
@@ -332,6 +358,14 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
         "icon": "🔬",
         "title": "Examens radiologiques",
+        "default_expanded": False,
+    },
+    "SurgicalStatus": {
+        "order": 95,
+        "tab": "clinical",
+        "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
+        "icon": "🔪",
+        "title": "Statut de résécabilité & Marges chirurgicales",
         "default_expanded": False,
     },
     "PreviousCurativeSurgery": {
@@ -517,9 +551,19 @@ def _render_expert_suggestion(sugg: Any, index: int):
         else "Références scientifiques (PNDS / Référentiels)"
     )
     with st.container(border=True):
-        st.markdown(f"💡 **Proposition #{index} :** {d.suggestion}")
+        if isinstance(d.suggestion, str) and (
+            "\n" in d.suggestion or d.suggestion.strip().startswith("- ")
+        ):
+            st.markdown(f"💡 **Proposition #{index} :**\n\n{d.suggestion}")
+        else:
+            st.markdown(f"💡 **Proposition #{index} :** {d.suggestion}")
         if d.why:
-            st.markdown(f"**Justification clinique :** {d.why}")
+            if isinstance(d.why, str) and (
+                "\n" in d.why or d.why.strip().startswith("- ")
+            ):
+                st.markdown(f"**Justification clinique :**\n\n{d.why}")
+            else:
+                st.markdown(f"**Justification clinique :** {d.why}")
         if d.references:
             _render_references_list(d.references, title_label=ref_title)
 
@@ -574,16 +618,25 @@ def render_mtd_completed_model(pydantic_model: BaseModel):
         render_fields(pydantic_model)
         return
 
-    if mtd_comp.is_mtd_complete and not mtd_comp.what_missing:
-        st.markdown(":green-badge[✅ Dossier complet et conforme aux prérequis RCP]")
-    else:
-        missing_count = len(mtd_comp.what_missing or [])
-        st.markdown(
-            f":orange-badge[⚠️ Dossier à compléter ({missing_count} élément(s) requis)]"
-        )
+    metrics = PatientMDTForm.extract_card_metrics(
+        {
+            "MTDCompleted": pydantic_model.model_dump(),
+            "processing_status": "COMPLETED",
+        }
+    )
+    tone = metrics.get("completeness_tone", "green")
+    label = metrics.get("completeness_label", "Oui")
+    summary = metrics.get("completeness_summary", "Dossier complet")
+    icon = "✅" if tone == "green" else ("⚠️" if tone == "orange" else "❌")
+    st.markdown(f"**Dossier complet ?** :{tone}-badge[{icon} {label} — {summary}]")
 
     if mtd_comp.what_missing:
-        st.markdown("**⚠️ Éléments manquants requis avant ou pour la décision :**")
+        heading = (
+            "**ℹ️ Éléments facultatifs manquants :**"
+            if metrics.get("completeness_status") == "yes"
+            else "**⚠️ Éléments manquants requis avant ou pour la décision :**"
+        )
+        st.markdown(heading)
         for item in mtd_comp.what_missing:
             st.markdown(f"- {item}")
 
@@ -595,6 +648,32 @@ def render_mtd_completed_model(pydantic_model: BaseModel):
             f"📖 Références des prérequis ({len(mtd_comp.references)})", expanded=False
         ):
             _render_references_list(mtd_comp.references)
+
+
+_MD_STRIPPER = MarkdownIt("commonmark")
+
+
+def _strip_markdown_inline(text: Any) -> str:
+    """Parse Markdown via markdown-it-py and BeautifulSoup to extract clean single-line plain text."""
+    raw = "" if text is None else str(text).strip()
+    if not raw:
+        return ""
+    soup = BeautifulSoup(_MD_STRIPPER.render(raw), "html.parser")
+    blocks = [
+        el.get_text().strip()
+        for el in soup.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre"])
+        if not el.find_parent(["li", "p"])
+    ]
+    plain = "; ".join(b for b in blocks if b) if blocks else soup.get_text()
+    return " ".join(plain.split())
+
+
+def _truncate(text: Any, max_len: int = 85) -> str:
+    """Strip inline Markdown syntax and truncate text cleanly for expander header summaries."""
+    clean = _strip_markdown_inline(str(text or ""))
+    if len(clean) <= max_len:
+        return clean
+    return clean[: max_len - 1].rstrip() + "…"
 
 
 def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
@@ -615,20 +694,21 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
         req = model_data.get("care_adaptation_suggested")
         ctype = model_data.get("proposed_care_type")
         if req is True:
+            clean_ctype = _strip_markdown_inline(str(translate(ctype))) if ctype else ""
             short_ctype = (
-                f" ({translate(ctype)})" if ctype and len(str(ctype)) <= 28 else ""
+                f" ({clean_ctype})" if clean_ctype and len(clean_ctype) <= 28 else ""
             )
             return f" — 🧭 Adaptation suggérée{short_ctype}"
         if req is False:
             return " — Surveillance / Suivi habituel"
     elif model_name == "MTDCompleted":
-        mc = model_data.get("mtd_complete")
-        if isinstance(mc, dict):
-            missing = mc.get("what_missing") or []
-            if missing:
-                return f" — ⚠️ {len(missing)} élément(s) à compléter"
-            if mc.get("is_mtd_complete") is True:
-                return " — ✅ Conforme"
+        metrics = PatientMDTForm.extract_card_metrics(
+            {"MTDCompleted": model_data, "processing_status": "COMPLETED"}
+        )
+        tone = metrics.get("completeness_tone", "green")
+        summary = metrics.get("completeness_summary", "Dossier complet")
+        icon = "✅" if tone == "green" else ("⚠️" if tone == "orange" else "❌")
+        return f" — {icon} {summary}"
     elif model_name == "ExpertAnswer":
         rel_count = sum(
             1
@@ -639,17 +719,62 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
     elif model_name == "TumorLocation":
         loc = model_data.get("tumor_location")
         if loc:
-            return f" — {translate(loc)}"
+            return f" — {_truncate(translate(loc))}"
+    elif model_name == "CancerDescription":
+        ctype = model_data.get("type_of_cancer")
+        tnm = model_data.get("tnm_status")
+        recist = model_data.get("recist_response")
+        clean_ctype = (
+            _strip_markdown_inline(str(ctype))
+            if ctype
+            and _strip_markdown_inline(str(ctype)).lower()
+            not in ("non renseigné", "non mentionné", "unknown", "n/a")
+            else ""
+        )
+        clean_tnm = _strip_markdown_inline(str(tnm)) if tnm else ""
+        clean_recist = _strip_markdown_inline(str(recist)) if recist else ""
+        parts = []
+        if clean_ctype:
+            parts.append(clean_ctype)
+        if clean_tnm and clean_recist:
+            parts.append(f"{clean_tnm} ({clean_recist})")
+        elif clean_tnm:
+            parts.append(clean_tnm)
+        elif clean_recist:
+            parts.append(clean_recist)
+        if parts:
+            return f" — {_truncate(' · '.join(parts))}"
     elif model_name == "TumorBiology":
         msi = model_data.get("msi_state")
+        ca = model_data.get("ca19_9")
+        parts = []
         if msi is True:
-            return " — MSI (Instable)"
-        if msi is False:
-            return " — MSS (Stable)"
+            parts.append("MSI (Instable)")
+        elif msi is False:
+            parts.append("MSS (Stable)")
+        if ca:
+            parts.append(f"CA 19-9: {_strip_markdown_inline(str(ca))}")
+        if parts:
+            return f" — {_truncate(' · '.join(parts))}"
+    elif model_name == "SurgicalStatus":
+        res = model_data.get("resectability_status")
+        if res:
+            return f" — {_truncate(translate(res))}"
+    elif model_name == "NutritionalStatus":
+        w = model_data.get("weight_kg")
+        if w is not None and w != "":
+            return f" — {_strip_markdown_inline(str(w))} kg"
+    elif model_name == "HepaticStatus":
+        bili = model_data.get("bilirubin_umol_l")
+        cp = model_data.get("child_pugh_score")
+        if cp:
+            return f" — Child-Pugh {_truncate(cp)}"
+        if bili is not None and bili != "":
+            return f" — Bilirubine {_strip_markdown_inline(str(bili))} µmol/L"
     elif model_name == "PatientPerformanceStatus":
         ps = model_data.get("performance_status")
         if ps is not None:
-            return f" — OMS {ps}"
+            return f" — OMS {_strip_markdown_inline(str(ps))}"
     elif model_name == "RadiologicExams":
         if "exams_list" in model_data or "radiological_exams" in model_data:
             exams = (
@@ -681,12 +806,27 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
             return " — Non"
     elif model_name == "GeneticDiagnosis":
         copies = model_data.get("smn2_copy_count")
+        variants = model_data.get("other_genetic_variants")
+        parts = []
         if copies is not None:
-            return f" — {copies} copie(s) SMN2"
+            parts.append(f"{_strip_markdown_inline(str(copies))} copie(s) SMN2")
+        if variants:
+            clean_var = _strip_markdown_inline(str(variants))
+            if clean_var and clean_var.lower() not in (
+                "none",
+                "aucun",
+                "aucune",
+                "non renseigné",
+                "non mentionné",
+                "n/a",
+            ):
+                parts.append(clean_var)
+        if parts:
+            return f" — {_truncate(' · '.join(parts))}"
     elif model_name == "MotorFunctionStatus":
         stype = model_data.get("sma_type")
         if stype:
-            return f" — {stype}"
+            return f" — {_truncate(stype)}"
     return ""
 
 
@@ -779,7 +919,12 @@ def render_field(label, value, field_name: str | None = None):
         st.markdown(f"**{translated_label} :** {translate(value)}")
     elif not isinstance(value, NoneType):
         translated_value = translate(value)
-        if len(str(translated_value)) > 60:
+        translated_str = str(translated_value)
+        if (
+            len(translated_str) > 60
+            or "\n" in translated_str
+            or translated_str.strip().startswith("- ")
+        ):
             st.markdown(f"**{translated_label} :**\n\n{translated_value}")
         else:
             st.markdown(f"**{translated_label} :** {translated_value}")
@@ -1371,7 +1516,7 @@ def render_unified_patient_banner(
                 )
                 rerun_target_label = f" sur {default_file}" if is_power else ""
                 if st.button(
-                    "Relancer l'IA",
+                    "Relancer cette fiche",
                     icon=":material/refresh:",
                     type="secondary",
                     help=(
@@ -2070,6 +2215,7 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
     """Render a structured synoptic clinical highlight banner at the top of the clinical data panel."""
     metrics = PatientMDTForm.extract_card_metrics(data)
     urgency = metrics.get("urgency", "Indéfini")
+    urg_reason = str(metrics.get("urgency_reason") or "").strip() or None
     missing = metrics.get("missing", [])
     int_req = metrics.get(
         "care_adaptation_suggested", metrics.get("intervention_required")
@@ -2109,7 +2255,7 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
     )
 
     def _clean_marker_val(val: Any) -> str:
-        s = str(translate(val)).strip()
+        s = _strip_markdown_inline(str(translate(val))).strip()
         low = s.lower()
         if (
             "not documented" in low
@@ -2182,6 +2328,8 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
 
     with st.container(border=True):
         help_parts: list[str] = []
+        if urg_reason:
+            help_parts.append(f"**Justification de la priorité :**\n{urg_reason}")
         if int_type and len(str(int_type)) > 24:
             help_parts.append(f"**Orientation pré-RCP :** {int_type}")
         if missing:
@@ -2397,9 +2545,20 @@ def _render_inline_section_editor(
                 if isinstance(raw.get("mtd_complete"), dict)
                 else {}
             )
-            is_comp_val = st.toggle(
-                "Dossier complet et conforme aux prérequis RCP",
-                value=bool(mc_raw.get("is_mtd_complete", True)),
+            raw_comp = mc_raw.get("is_mtd_complete", True)
+            comp_options: list[bool | str] = [True, "partial", False]
+            default_idx = (
+                1
+                if str(raw_comp).strip().lower() in ("partial", "partiel")
+                else (0 if bool(raw_comp) else 2)
+            )
+            is_comp_val = st.selectbox(
+                "Dossier complet ?",
+                options=comp_options,
+                index=default_idx,
+                format_func=lambda v: (
+                    "Oui" if v is True else ("Partiel" if v == "partial" else "Non")
+                ),
             )
             existing_missing = mc_raw.get("what_missing") or []
             missing_df = DataFrame(
@@ -2447,9 +2606,7 @@ def _render_inline_section_editor(
                         section_name=model_name,
                         section_data={
                             "mtd_complete": {
-                                "is_mtd_complete": (
-                                    False if cleaned_missing else is_comp_val
-                                ),
+                                "is_mtd_complete": is_comp_val,
                                 "reflection": refl_val.strip() or None,
                                 "what_missing": cleaned_missing,
                                 "references": mc_raw.get("references") or [],
@@ -3362,7 +3519,7 @@ def form():
         PatientMDTForm.select_latest_analyzed(patient_rcps) if patient_rcps else None
     )
     latest_file = (
-        latest_doc["file"] if latest_doc and "file" in latest_doc else filename
+        str(latest_doc["file"]) if latest_doc and latest_doc.get("file") else filename
     )
 
     selected_file, has_pdf, file_path, active_state = render_unified_patient_banner(
@@ -3383,55 +3540,56 @@ def form():
     )
 
 
-power = st.sidebar.toggle("Mode expert (Power mode)", key="power")
+if get_script_run_ctx() is not None:
+    power = st.sidebar.toggle("Mode expert (Power mode)", key="power")
 
-if st.session_state.get("power"):
-    st.sidebar.caption(
-        f"**Modèle :** `{app_conf.llm.models}`  \n"
-        f"**Embeddings :** `{app_conf.llm.embeddings}`  \n"
-        f"**Parser :** `{app_conf.rcp.doc_type}`"
-    )
-    st.sidebar.caption(":material/bolt: Cache documents")
-    c_btn1, c_btn2 = st.sidebar.columns(2)
-    if c_btn1.button(
-        "Ce doc",
-        icon=":material/delete:",
-        help="Supprimer le cache du document courant",
-        width="stretch",
-        key="btn_del_sidebar_doc_cache",
-    ):
-        cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
-        filename = st.query_params.get("file")
-        if filename:
-            cache_repo.delete_cache(file_name=filename)
-            st.toast(f"Cache vidé pour {filename}", icon="🗑️")
-        st.rerun()
-    if c_btn2.button(
-        "Tout vider",
-        icon=":material/delete_forever:",
-        help="Vider tout le cache des documents (administrateurs)",
-        width="stretch",
-        disabled=not st.session_state.get("is_admin", False),
-        key="btn_danger_sidebar_all_cache",
-    ):
-        cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
-        cache_repo.delete_cache(clear_all=True)
-        st.toast("Tout le cache document a été vidé", icon="🧹")
-        st.rerun()
+    if st.session_state.get("power"):
+        st.sidebar.caption(
+            f"**Modèle :** `{app_conf.llm.models}`  \n"
+            f"**Embeddings :** `{app_conf.llm.embeddings}`  \n"
+            f"**Parser :** `{app_conf.rcp.doc_type}`"
+        )
+        st.sidebar.caption(":material/bolt: Cache documents")
+        c_btn1, c_btn2 = st.sidebar.columns(2)
+        if c_btn1.button(
+            "Ce doc",
+            icon=":material/delete:",
+            help="Supprimer le cache du document courant",
+            width="stretch",
+            key="btn_del_sidebar_doc_cache",
+        ):
+            cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
+            filename = st.query_params.get("file")
+            if filename:
+                cache_repo.delete_cache(file_name=filename)
+                st.toast(f"Cache vidé pour {filename}", icon="🗑️")
+            st.rerun()
+        if c_btn2.button(
+            "Tout vider",
+            icon=":material/delete_forever:",
+            help="Vider tout le cache des documents (administrateurs)",
+            width="stretch",
+            disabled=not st.session_state.get("is_admin", False),
+            key="btn_danger_sidebar_all_cache",
+        ):
+            cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
+            cache_repo.delete_cache(clear_all=True)
+            st.toast("Tout le cache document a été vidé", icon="🧹")
+            st.rerun()
 
-# `?file=` is user-controlled: reject anything that is not a plain file name
-# (path traversal such as `../../etc/passwd`) before any filesystem access.
-_raw_file_param = st.query_params.get("file")
-if _raw_file_param is not None and not is_safe_filename(_raw_file_param):
-    logger.warning("Rejected unsafe 'file' query parameter")
-    del st.query_params["file"]
-    st.error("Nom de fichier invalide.")
-    st.stop()
+    # `?file=` is user-controlled: reject anything that is not a plain file name
+    # (path traversal such as `../../etc/passwd`) before any filesystem access.
+    _raw_file_param = st.query_params.get("file")
+    if _raw_file_param is not None and not is_safe_filename(_raw_file_param):
+        logger.warning("Rejected unsafe 'file' query parameter")
+        del st.query_params["file"]
+        st.error("Nom de fichier invalide.")
+        st.stop()
 
-if "patient_id" in st.query_params or "file" in st.query_params:
-    form()
-else:
-    st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
+    if "patient_id" in st.query_params or "file" in st.query_params:
+        form()
+    else:
+        st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
 
-if db_client is not None:
-    db_client.close()
+    if db_client is not None:
+        db_client.close()

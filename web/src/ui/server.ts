@@ -19,6 +19,7 @@ import { QueueAdminUseCase } from "../application/use-cases/queue-admin.use-case
 import { WorklistUseCase } from "../application/use-cases/worklist.use-case.js";
 import type { WebAppConfig } from "../config.js";
 import type { ClinicalDomain, Language, ThemeMode, UserSession } from "../domain/types.js";
+import { bffRequestContext } from "../infrastructure/api/http-medsyntis-api.adapter.js";
 import {
   AgendaEnrollBodySchema,
   AgendaMoveBodySchema,
@@ -43,6 +44,7 @@ import {
   renderIngestPage,
   renderQueueAdminPage,
   renderQueueBannerPartial,
+  renderQueueNavBadges,
   renderSectionDetailsPartial,
   renderStatusPage,
   renderWorklistPage,
@@ -285,6 +287,14 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (req.url === "/health" || req.url.startsWith("/public/")) {
       return;
     }
+    const rawForwarded = String(req.headers["x-forwarded-for"] || "")
+      .split(",")[0]
+      ?.trim();
+    const rawRealIp = String(req.headers["x-real-ip"] || "").trim();
+    const clientIp = rawForwarded || rawRealIp || req.ip || "127.0.0.1";
+    const requestId = String(req.headers["x-request-id"] || "").trim() || crypto.randomUUID();
+    bffRequestContext.enterWith({ clientIp, requestId });
+
     if (config.authMode === "oauth_proxy") {
       const providedSecret =
         (req.headers["x-medsyntis-proxy-secret"] as string | undefined) ||
@@ -396,6 +406,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const userName = String(headerEmailOrName || "Dr A. Exemple (Local)")
       .trim()
       .slice(0, 128);
+
+    const store = bffRequestContext.getStore();
+    if (store) {
+      store.userId = userId;
+      store.userName = userName;
+    }
 
     const adminList = config.adminUsers ?? [];
     const isAdmin =
@@ -681,6 +697,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       queueStats,
       queueJobs,
       query.patientId ?? null,
+      query.duplicate ?? null,
     );
     return reply.type("text/html; charset=utf-8").send(html);
   });
@@ -713,8 +730,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     }
 
     const res = await ingestUseCase.uploadBatch(files, session.domain);
+    const firstDuplicate = res.duplicates?.[0];
+    const dupParam = firstDuplicate ? `&duplicate=${encodeURIComponent(firstDuplicate)}` : "";
     return reply.redirect(
-      `/ingest?domain=${encodeURIComponent(session.domain)}&batchId=${encodeURIComponent(res.batchId)}`,
+      `/ingest?domain=${encodeURIComponent(session.domain)}&batchId=${encodeURIComponent(res.batchId)}${dupParam}`,
     );
   });
 
@@ -817,6 +836,15 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       patientId,
       query.file,
     );
+    const activeTab =
+      query.view === "dashboard" ||
+      query.view === "patient-dashboard" ||
+      query.tab === "patient-dashboard" ||
+      query.tab === "dashboard"
+        ? "patient-dashboard"
+        : query.tab === "opinions"
+          ? "opinions"
+          : "clinical";
     const html = renderDossierPage(
       dossier,
       session,
@@ -825,8 +853,21 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       [],
       query.editSection,
       agendaNav,
+      activeTab,
     );
     return reply.type("text/html; charset=utf-8").send(html);
+  });
+
+  app.post("/patients/:patientId/summary", async (req, reply) => {
+    const session = resolveSession(req);
+    const { patientId } = req.params as { patientId: string };
+    const body = (req.body ?? {}) as Record<string, string | boolean | undefined>;
+    const force = body.force !== "false" && body.force !== false;
+
+    await dossierUseCase.triggerPatientSummary(patientId, session.domain, force);
+    return reply.redirect(
+      `/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(session.domain)}&view=dashboard#patient-summary-card`,
+    );
   });
 
   app.get("/forms/:filename", async (req, reply) => {
@@ -859,6 +900,15 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       filename,
       filename,
     );
+    const activeTab =
+      query.view === "dashboard" ||
+      query.view === "patient-dashboard" ||
+      query.tab === "patient-dashboard" ||
+      query.tab === "dashboard"
+        ? "patient-dashboard"
+        : query.tab === "opinions"
+          ? "opinions"
+          : "clinical";
     const html = renderDossierPage(
       dossier,
       session,
@@ -867,6 +917,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       [],
       query.editSection,
       agendaNav,
+      activeTab,
     );
     return reply.type("text/html; charset=utf-8").send(html);
   });
@@ -1343,11 +1394,14 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const session = resolveSession(req);
     const stats = await api.getQueueStats(session.domain, true);
     const bannerHtml = renderQueueBannerPartial(stats, session).replace(/\n/g, " ");
+    const badgesHtml = renderQueueNavBadges(stats, session.language).replace(/\n/g, " ");
     const retryMs = stats.running > 0 || stats.pending > 0 ? 3000 : 8000;
     reply.header("Content-Type", "text/event-stream; charset=utf-8");
     reply.header("Cache-Control", "no-cache, no-transform");
     reply.header("Connection", "keep-alive");
-    return reply.send(`retry: ${retryMs}\nevent: banner\ndata: ${bannerHtml}\n\n`);
+    return reply.send(
+      `retry: ${retryMs}\nevent: banner\ndata: ${bannerHtml}\n\nevent: badges\ndata: ${badgesHtml}\n\n`,
+    );
   });
 
   // 10. Maintenance, 404 Not Found & 5xx Server Error Pages

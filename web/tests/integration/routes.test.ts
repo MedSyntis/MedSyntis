@@ -35,7 +35,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-security-policy"]).toContain("default-src 'self'");
     expect(res.body).toContain('data-testid="sidebar"');
-    expect(res.body).toContain('data-testid="queue-banner"');
+    expect(res.body).not.toContain('data-testid="queue-banner"');
+    expect(res.body).toContain('data-testid="btn_queue_open"');
+    expect(res.body).toContain('data-testid="nav-queue-badges"');
+    expect(res.body).toContain('data-testid="badge-queue-running"');
+    expect(res.body).toContain('data-testid="badge-queue-failed"');
     expect(res.body).toContain('data-theme-pref="auto"');
     expect(res.body).toContain('data-testid="theme-selector"');
     expect(res.body).toContain('data-testid="btn_theme_auto"');
@@ -122,6 +126,9 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('data-testid="synoptic-card"');
+    expect(res.body).toContain("2 spécialités");
+    expect(res.body).toContain("Spécialités mobilisées (2)");
+    expect(res.body).not.toContain("+1 spécialité(s)");
     expect(res.body).toContain('data-testid="session-timeline"');
     expect(res.body).toContain('data-testid="split-view"');
     expect(res.body).toContain("jeanne_fictive_2026_11_06.pdf");
@@ -140,6 +147,9 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     // Missing items interactive list visible inside MTDCompleted
     expect(res.body).toContain('data-testid="missing-items-panel"');
     expect(res.body).toContain('data-testid="missing-items-list"');
+    expect(res.body).toContain('class="ds-missing-list__content"');
+    expect(res.body).toContain('class="ds-missing-list__icon"');
+    expect(res.body).toContain('class="ds-missing-list__text ds-markdown"');
     // PatientMDTFormCheck hidden outside expert mode
     expect(res.body).not.toContain('data-testid="section-PatientMDTFormCheck"');
     // Zero raw JSON blocks for MTDCompleted or RadiologicalExams
@@ -628,11 +638,13 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(pdfNotModified.statusCode).toBe(304);
 
-    // 3. SSE /events/queue includes adaptive retry directive
+    // 3. SSE /events/queue includes adaptive retry directive and nav badges event
     const sseRes = await app.inject({ method: "GET", url: "/events/queue" });
     expect(sseRes.statusCode).toBe(200);
     expect(sseRes.headers["content-type"]).toContain("text/event-stream");
     expect(sseRes.body).toContain("retry: 3000\nevent: banner\ndata: ");
+    expect(sseRes.body).toContain("event: badges\ndata: ");
+    expect(sseRes.body).toContain("badge-queue-running");
 
     await app.close();
   });
@@ -684,7 +696,9 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
         "best_motor_function=Assis+sans+appui+%28Sitter%29&hfmse_score=44&chop_intend_score=Non+renseign%C3%A9&rulm_score=31&motor_milestones=Station+assise+autonome%0APropulsion+fauteuil&physiotherapy_frequency=3+s%C3%A9ances+%2F+semaine",
     });
     expect(updateMotorRes.statusCode).toBe(200);
-    expect(updateMotorRes.body).toContain('<span class="ds-kv__value ">44</span>');
+    expect(updateMotorRes.body).toContain(
+      '<span class="ds-kv__value  ds-markdown-inline">44</span>',
+    );
     expect(updateMotorRes.body).toContain("Station assise autonome ; Propulsion fauteuil");
     expect(updateMotorRes.body).toContain("Modifié manuellement");
 
@@ -1056,6 +1070,97 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/patients/A-1037?domain=oncology",
     });
     expect(delPatientApi.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it("renders Patient Dashboard at patient level (outside single-RCP split view) with M3 ds-* components, ECharts SVG curves, and clinical labels without technical class names", async () => {
+    const { app } = await createTestApp();
+
+    // 1. Default patient selection opens #tab-patient-rcp (Séances RCP) first, NOT the dashboard
+    const dossierRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology",
+    });
+    expect(dossierRes.statusCode).toBe(200);
+    expect(dossierRes.body).toContain(
+      'id="tab-patient-rcp" aria-selected="true" aria-controls="patient-workspace-rcp"',
+    );
+    expect(dossierRes.body).toContain(
+      'id="tab-patient-dashboard" aria-selected="false" aria-controls="panel-patient-dashboard"',
+    );
+    expect(dossierRes.body).toContain(
+      'id="tab-clinical" aria-selected="true" aria-controls="panel-clinical"',
+    );
+    expect(dossierRes.body).toContain('data-patient-view="rcp"');
+
+    // Fiche-level reprocess controls: desktop direct button + mobile discreet menu + confirmation protection
+    expect(dossierRes.body).toContain('data-testid="btn_reprocess_form"');
+    expect(dossierRes.body).toContain('data-testid="menu-clinical-mobile-actions"');
+    expect(dossierRes.body).toContain('data-testid="btn_reprocess_form_mobile"');
+    expect(dossierRes.body).toContain("data-confirm=");
+    expect(dossierRes.body).toContain('class="ds-reprocess-btn--desktop"');
+    expect(dossierRes.body).toContain('class="ds-menu ds-reprocess-menu--mobile"');
+
+    // Tab button itself must NOT contain any obsolete warning badge
+    const tabBtnMatch = dossierRes.body.match(
+      /<button[^>]*id="tab-patient-dashboard"[^>]*>([\s\S]*?)<\/button>/,
+    );
+    expect(tabBtnMatch).not.toBeNull();
+    expect(tabBtnMatch?.[1]).toContain("Tableau de bord patient");
+    expect(tabBtnMatch?.[1]).not.toContain("Obsolète");
+    expect(tabBtnMatch?.[1]).not.toContain("⚠️");
+
+    // Inside #panel-patient-dashboard: M3 ds-* summary card + ECharts SVG curves + zero technical Section.field strings
+    expect(dossierRes.body).toContain('id="panel-patient-dashboard"');
+    expect(dossierRes.body).toContain('id="patient-summary-card"');
+    expect(dossierRes.body).toContain(
+      'class="ds-alert ds-alert--warning" role="status" data-testid="alert_summary_obsolete"',
+    );
+    expect(dossierRes.body).toContain('data-testid="patient_dashboard_charts_grid"');
+    expect(dossierRes.body).toContain('data-testid="patient_dashboard_raw_table"');
+    expect(dossierRes.body).toContain("<svg ");
+    expect(dossierRes.body).not.toContain(">CancerDescription.tnm_status<");
+    expect(dossierRes.body).not.toContain(">Chemotherapy.chemotherapy_name<");
+
+    // 2. Trigger on-demand summary regeneration via POST /patients/A-1042/summary
+    const triggerRes = await app.inject({
+      method: "POST",
+      url: "/patients/A-1042/summary?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "force=true",
+    });
+    expect(triggerRes.statusCode).toBe(302);
+    expect(triggerRes.headers.location).toBe(
+      "/patients/A-1042?domain=oncology&view=dashboard#patient-summary-card",
+    );
+
+    // 3. Following the redirect with ?view=dashboard opens the full-width patient dashboard view with an up-to-date summary
+    const updatedRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology&view=dashboard",
+    });
+    expect(updatedRes.statusCode).toBe(200);
+    expect(updatedRes.body).toContain('data-patient-view="dashboard"');
+    expect(updatedRes.body).toContain(
+      'id="tab-patient-dashboard" aria-selected="true" aria-controls="panel-patient-dashboard"',
+    );
+    expect(updatedRes.body).toContain('data-testid="badge_summary_up_to_date"');
+    expect(updatedRes.body).not.toContain('data-testid="alert_summary_obsolete"');
+
+    // 4. SMA patient S-0007 renders RULM / HFMSE raw curves in ECharts SVG and translated clinical milestones without technical class names
+    const smaRes = await app.inject({
+      method: "GET",
+      url: "/patients/S-0007?domain=sma&view=dashboard",
+    });
+    expect(smaRes.statusCode).toBe(200);
+    expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.rulm_score"');
+    expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.hfmse_score"');
+    expect(smaRes.body).toContain("Station assise sans appui");
+    expect(smaRes.body).toContain("Position assise autonome stable");
+    expect(smaRes.body).toContain("Voie orale");
+    expect(smaRes.body).not.toContain(">MotorFunctionStatus.motor_milestones<");
+    expect(smaRes.body).not.toContain(">RespiratoryFunction.ventilation_type<");
 
     await app.close();
   });

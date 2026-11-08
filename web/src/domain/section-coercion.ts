@@ -367,10 +367,15 @@ export function coerceSectionUpdatePayload(
       rawBody.is_mtd_complete !== undefined
         ? rawBody.is_mtd_complete
         : (existingSectionData.is_mtd_complete ?? existingNested.is_mtd_complete);
-    const isComplete =
-      rawComplete !== undefined
-        ? coerceBooleanValue(rawComplete, whatMissing.length === 0)
-        : whatMissing.length === 0;
+    const rawCompStr = String(rawComplete ?? "")
+      .trim()
+      .toLowerCase();
+    const isComplete: boolean | "partial" =
+      rawCompStr === "partial" || rawCompStr === "partiel"
+        ? "partial"
+        : rawComplete !== undefined
+          ? coerceBooleanValue(rawComplete, whatMissing.length === 0)
+          : whatMissing.length === 0;
     const rawReflection =
       rawBody.reflection !== undefined
         ? rawBody.reflection
@@ -509,6 +514,28 @@ export function coerceSectionUpdatePayload(
       }
       case "integer":
       case "integer_select": {
+        const isRawMotorScale =
+          canonical === "MotorFunctionStatus" &&
+          (fieldSchema.key === "rulm_score" ||
+            fieldSchema.key === "hfmse_score" ||
+            fieldSchema.key === "chop_intend_score");
+        if (
+          isRawMotorScale &&
+          typeof rawVal === "string" &&
+          !isPlaceholderValue(rawVal) &&
+          !/^[-+]?\d+$/.test(rawVal.trim())
+        ) {
+          const trimmed = rawVal.trim();
+          if (/^[-+]?\d+[.,]\d+$/.test(trimmed)) {
+            const floatVal = Number(trimmed.replace(",", "."));
+            const min = fieldSchema.min ?? 0;
+            const max = fieldSchema.max ?? 100;
+            out[fieldSchema.key] = Math.min(max, Math.max(min, floatVal));
+          } else {
+            out[fieldSchema.key] = trimmed;
+          }
+          break;
+        }
         const num = coerceNumberValue(rawVal, true, fieldSchema.min, fieldSchema.max);
         out[fieldSchema.key] =
           num !== null ? num : fieldSchema.nullable ? null : Number(fieldSchema.defaultValue ?? 0);

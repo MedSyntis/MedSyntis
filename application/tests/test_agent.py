@@ -502,3 +502,170 @@ class TestMedSyntisAgent(unittest.TestCase):
             msgs = call.args[0]["messages"]
             self.assertEqual(len(msgs), 1)
             self.assertEqual(msgs[0]["role"], "user")
+
+    def test_markdown_str_json_schema_and_preserved_descriptions(self):
+        from src.application.agent.agent import ChatResponse, DebateTurn
+        from src.domain.common.common_ressources import MTDComplete, Reference
+        from src.domain.common.patient_mdt_common_form import PatientMDTForm
+        from src.domain.oncology.patient_mdt_oncologic_form import (
+            PatientMDTOncologicForm,
+        )
+        from src.domain.patient_dashboard import PatientRecordSummaryContent
+        from src.domain.sma.patient_mdt_sma_form import PatientMDTSmaForm
+
+        def _has_markdown_schema(prop_schema: dict) -> bool:
+            if (
+                prop_schema.get("format") == "markdown"
+                and prop_schema.get("markdown") is True
+            ):
+                return True
+            if "items" in prop_schema and _has_markdown_schema(prop_schema["items"]):
+                return True
+            for opt in prop_schema.get("anyOf", []):
+                if isinstance(opt, dict) and _has_markdown_schema(opt):
+                    return True
+            return False
+
+        # 1. CancerDescription MarkdownStr fields
+        cancer_schema = PatientMDTOncologicForm.CancerDescription.model_json_schema()
+        for field_name in (
+            "type_of_cancer",
+            "histological_grade",
+            "tnm_status",
+            "figo_stage",
+            "metastatic_sites",
+            "recist_response",
+        ):
+            self.assertTrue(
+                _has_markdown_schema(cancer_schema["properties"][field_name]),
+                f"Expected MarkdownStr schema on CancerDescription.{field_name}",
+            )
+        self.assertEqual(
+            cancer_schema["properties"]["tnm_status"]["description"],
+            "Clinical or pathological TNM classification (e.g., cT3N1M0, ypT1N0M0)",
+        )
+
+        # 2. ExpertAnswer, MTDComplete, CareOrientationProposal, ChatResponse, DebateTurn
+        expert_schema = PatientMDTForm.ExpertAnswer.model_json_schema()
+        self.assertTrue(
+            _has_markdown_schema(expert_schema["properties"]["why_relevant"])
+        )
+        self.assertEqual(
+            expert_schema["properties"]["why_relevant"]["description"],
+            "Explain why your expertise is relevant (or not) for this patient and justify the priority given.",
+        )
+
+        mtd_complete_schema = MTDComplete.model_json_schema()
+        self.assertTrue(
+            _has_markdown_schema(mtd_complete_schema["properties"]["reflection"])
+        )
+        self.assertFalse(
+            _has_markdown_schema(mtd_complete_schema["properties"]["what_missing"])
+        )
+        self.assertEqual(
+            mtd_complete_schema["properties"]["reflection"]["description"],
+            "Detailed reflection, reasoning, or synthesis of the collaborative team discussion",
+        )
+
+        care_schema = PatientMDTForm.CareOrientationProposal.model_json_schema()
+        self.assertTrue(
+            _has_markdown_schema(care_schema["properties"]["proposed_care_type"])
+        )
+        self.assertTrue(
+            _has_markdown_schema(care_schema["properties"]["clinical_rationale"])
+        )
+        self.assertEqual(
+            care_schema["properties"]["clinical_rationale"]["description"],
+            "Clinical rationale and guideline arguments summarizing the expert debate to assist the physicians.",
+        )
+
+        # 3. PatientRecordSummaryContent
+        summary_schema = PatientRecordSummaryContent.model_json_schema()
+        for field_name in (
+            "clinical_trajectory_overview",
+            "disease_and_treatment_evolution",
+            "notable_metric_changes",
+            "mdt_decisions_recap",
+            "unresolved_vigilance_points",
+        ):
+            self.assertTrue(
+                _has_markdown_schema(summary_schema["properties"][field_name]),
+                f"Expected MarkdownStr schema on PatientRecordSummaryContent.{field_name}",
+            )
+        self.assertFalse(
+            _has_markdown_schema(summary_schema["properties"]["sources_used"])
+        )
+
+        # 4. SMA MotorFunctionStatus & GeneticDiagnosis
+        sma_motor_schema = PatientMDTSmaForm.MotorFunctionStatus.model_json_schema()
+        self.assertTrue(
+            _has_markdown_schema(sma_motor_schema["properties"]["motor_milestones"]),
+            "Expected MarkdownStr schema on MotorFunctionStatus.motor_milestones",
+        )
+        for score_field in (
+            "sma_type",
+            "hfmse_score",
+            "chop_intend_score",
+            "rulm_score",
+        ):
+            self.assertFalse(
+                _has_markdown_schema(sma_motor_schema["properties"][score_field]),
+                f"MotorFunctionStatus.{score_field} must remain a plain score/option without MarkdownStr",
+            )
+
+        # 5. ChatResponse & DebateTurn
+        self.assertTrue(
+            _has_markdown_schema(
+                ChatResponse.model_json_schema()["properties"]["response"]
+            )
+        )
+        self.assertTrue(
+            _has_markdown_schema(
+                DebateTurn.model_json_schema()["properties"]["response"]
+            )
+        )
+
+        # 6. Plain string fields MUST NOT have format="markdown"
+        admin_schema = PatientMDTForm.PatientAdministrative.model_json_schema()
+        for plain_field in ("first_name", "last_name", "born_name"):
+            self.assertFalse(
+                _has_markdown_schema(admin_schema["properties"][plain_field]),
+                f"PatientAdministrative.{plain_field} must remain plain str",
+            )
+        self.assertEqual(
+            admin_schema["properties"]["first_name"]["description"],
+            "First name of the patient",
+        )
+
+        ref_schema = Reference.model_json_schema()
+        self.assertFalse(_has_markdown_schema(ref_schema["properties"]["name"]))
+        self.assertTrue(_has_markdown_schema(ref_schema["properties"]["excerpt"]))
+        self.assertEqual(
+            ref_schema["properties"]["name"]["description"],
+            "Name of the reference",
+        )
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    def test_system_prompt_contains_step2_markdown_guidance(
+        self, mock_create_agent, mock_get_llm_client
+    ):
+        from src.domain.common.agents import Agents as CommonAgents
+
+        MedSyntisAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+        passed_system_prompt = mock_create_agent.call_args.kwargs.get(
+            "system_prompt", ""
+        )
+        self.assertIn(
+            "## STEP 2 — Output your final answer (JSON only)", passed_system_prompt
+        )
+        self.assertIn('"format": "markdown"', passed_system_prompt)
+        self.assertIn("**bold**", passed_system_prompt)
+        self.assertIn("Reference.name", passed_system_prompt)
+        self.assertIn("Markdown", CommonAgents.Ressource_agent.system_prompt)
+        self.assertIn("Markdown", CommonAgents.Coordinator_agent.system_prompt)
+        self.assertIn("Markdown", CommonAgents.Expert_model.get_system_prompt())

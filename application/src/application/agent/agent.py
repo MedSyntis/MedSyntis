@@ -7,6 +7,7 @@ from pydantic import ValidationError, BaseModel, Field
 from langchain.agents import create_agent
 
 from src.application.config import AppConfig
+from src.domain.common.common_ressources import MarkdownStr
 from src.infrastructure.llm.factory import get_llm_client
 
 # Legacy import to support existing patch-based unit tests
@@ -134,11 +135,11 @@ def extract_json_str(text: str) -> str:
 
 
 class ChatResponse(BaseModel):
-    response: str = Field(description="The answer to the user question")
+    response: MarkdownStr = Field(description="The answer to the user question")
 
 
 class DebateTurn(BaseModel):
-    response: str = Field(
+    response: MarkdownStr = Field(
         description="Your clinical opinion, arguments, and recommendations based on your specialty."
     )
 
@@ -344,7 +345,9 @@ class MedSyntisAgent:
         Once you have collected all the needed information from the tools, output your answer as a single, valid JSON object matching the schema below.{required_keys_hint}
         - All schema keys and enum values must remain strictly in English as defined by the schema.
         - Write only free-form text fields (summaries, diagnostics, recommendations) in {self.response_language}.
-        - Output ONLY the raw JSON — no markdown fences, no explanation, no code blocks.
+        - Free-form string fields in the JSON output (especially fields marked with `"format": "markdown"`, such as clinical summaries, diagnostics, examination results, justifications, expert suggestions, missing items, reflections, and care orientation rationales) support and encourage Markdown formatting: use `**bold**` for key clinical findings, biomarkers, drugs, TNM stages, or scores; `*italics*` for clinical nuances; and bullet lists (`- ` separated by `\n`) for multi-point explanations.
+        - Markdown formatting must ONLY be used inside the JSON string values (escaped properly as valid JSON strings). Strict identifier, filename, enum, and fixed option fields (`first_name`, `last_name`, `born_name`, `Reference.name` PDF filenames, enum values, and fixed `options` values) must remain plain unformatted strings.
+        - Output ONLY the raw JSON — no markdown fences (do NOT wrap the JSON object in ```json code blocks), no explanation, no code blocks.
 
         ## STEP 3 — formatting outputs
         - You MUST respond with output JSON schema:

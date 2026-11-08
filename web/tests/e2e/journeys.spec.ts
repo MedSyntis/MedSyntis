@@ -203,7 +203,8 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await page.getByTestId("btn_sidebar_toggle").click();
     await expect(page.locator("body")).not.toHaveClass(/ds-shell--sidebar-collapsed/);
 
-    // Open Queue Side Sheet from bottom banner
+    // Open Queue Side Sheet from topbar menu
+    await page.getByTestId("menu-topbar-actions").locator("summary").click();
     await page.getByTestId("btn_queue_open").click();
     await expect(page.getByTestId("queue-drawer")).toBeVisible();
     await page.keyboard.press("Escape");

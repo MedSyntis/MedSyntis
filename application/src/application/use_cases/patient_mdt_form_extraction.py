@@ -559,10 +559,14 @@ class PatientMDTFormExtractionService:
         resolved_filename = f"{safe_stem}_{file_hash}{ext}"
 
         target_path = Path(self.config.rcp.path) / resolved_filename
-        if target_path.exists():
-            return resolved_filename, True
-
-        if self.mdt_form_repo.get_by_file(resolved_filename) is not None:
+        doc = self.mdt_form_repo.get_by_file(resolved_filename)
+        is_completed = (
+            doc is not None
+            and doc.get("processing_status") == RCPProcessingStatus.COMPLETED.value
+        )
+        # A file is a genuine duplicate only if it exists on disk AND is already indexed with COMPLETED status.
+        # If it was never indexed or failed during a previous attempt, it must be (re)processed.
+        if target_path.exists() and is_completed:
             return resolved_filename, True
 
         return resolved_filename, False

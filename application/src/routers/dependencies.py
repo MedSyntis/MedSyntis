@@ -109,17 +109,25 @@ class ApiSecurityMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _resolve_client_ip(request: Request) -> str:
+        ip = "unknown"
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
             first = forwarded.split(",")[0].strip()
             if first:
-                return first
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip and real_ip.strip():
-            return real_ip.strip()
-        if request.client and request.client.host:
-            return request.client.host
-        return "unknown"
+                ip = first
+        if ip == "unknown":
+            real_ip = request.headers.get("X-Real-IP")
+            if real_ip and real_ip.strip():
+                ip = real_ip.strip()
+            elif request.client and request.client.host:
+                ip = request.client.host
+        user = (
+            request.headers.get("X-MedSyntis-User")
+            or request.headers.get("X-Auth-Request-Preferred-Username")
+            or request.headers.get("X-Auth-Request-User")
+            or ""
+        ).strip()
+        return f"{ip}:{user}" if user else ip
 
     @staticmethod
     def _apply_security_headers(
@@ -373,10 +381,13 @@ def get_current_user_info(
     """
     base_conf = get_base_config()
     expected_secret = base_conf.proxy_secret
-    proxy_ok = expected_secret is not None and hmac.compare_digest(
-        (x_proxy_secret or "").encode(),
-        expected_secret.get_secret_value().encode(),
-    )
+    if expected_secret is not None:
+        proxy_ok = x_proxy_secret is not None and hmac.compare_digest(
+            x_proxy_secret.encode(),
+            expected_secret.get_secret_value().encode(),
+        )
+    else:
+        proxy_ok = base_conf.dev_mode
     username = (x_user or "").strip()
     if not proxy_ok or not username:
         return {

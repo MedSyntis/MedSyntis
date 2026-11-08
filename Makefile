@@ -26,7 +26,7 @@ CLOUDRUN_PORT ?= 8080
 
 # Configuration Production (Scaleway L4 24G - Multi-Domaines oncologic & sma)
 ENV_PROD ?= $(CURDIR)/.env.prod
-PROD_BASE_DOMAIN ?= medsyntis.bricks-it.fr
+PROD_BASE_DOMAIN ?= medsyntis.fr
 COMPOSE_MILVUS := dist/docker/compose/milvus-standalone-docker-compose.yml
 COMPOSE_DEV := dist/docker/compose/docker-compose.yml
 COMPOSE_PROD := dist/docker/compose/docker-compose.prod.yml

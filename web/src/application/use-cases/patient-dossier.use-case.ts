@@ -15,6 +15,7 @@ import {
   type SectionPresentationMeta,
 } from "../../domain/catalog.js";
 import { translateValue } from "../../domain/i18n.js";
+import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
 import {
   computeLongitudinalDeltas,
   deriveCompletenessInfo,
@@ -33,10 +34,13 @@ import type {
   LongitudinalDelta,
   ManualEditMetadata,
   MdtFormDetail,
+  PatientDashboardView,
   PatientListItem,
+  PatientRecordSummaryView,
   PriorityLevel,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
+import { stripMarkdown } from "../../ui/views/html.js";
 import type {
   ChatReply,
   MedsyntisApiPort,
@@ -77,12 +81,14 @@ export interface DossierFieldView {
   hiddenInReadView?: boolean;
   isModified?: boolean;
   originalAiValue?: string;
+  badgeTone?: "green" | "orange" | "red" | null;
 }
 
 export interface DossierSectionView {
   name: string;
   meta: SectionPresentationMeta;
   summaryText: string;
+  sectionTone?: "green" | "orange" | "red" | null;
   fields: DossierFieldView[];
   subCards: DossierSubCardView[];
   references: CitationRef[];
@@ -103,6 +109,7 @@ export interface TimelineSessionItem {
   priorityLevel: PriorityLevel;
   priorityLabel: string;
   orientationLabel: string;
+  durationSec: number | null;
 }
 
 export interface PatientDossierView {
@@ -126,6 +133,7 @@ export interface PatientDossierView {
     visibleItems: string[];
     hiddenItems: string[];
     hideAll: boolean;
+    isOptional?: boolean;
   };
   orientationBadge: ReturnType<typeof deriveOrientationInfo>;
   specialties: Array<{ name: string; label: string; icon: string }>;
@@ -149,6 +157,7 @@ export interface PatientDossierView {
   };
   allPatients: PatientListItem[];
   agents: AgentModuleInfo[];
+  dashboard: PatientDashboardView;
 }
 
 const LONG_TEXT_KEYS = new Set([
@@ -222,7 +231,14 @@ export class PatientDossierUseCase {
     const patientName = `${lastName} ${firstName}`.trim();
 
     const priorityLevel = normalizePriorityLevel(currentForm.metrics.priority_level);
-    const priorityBadge = derivePriorityBadgeInfo(priorityLevel, lang);
+    const priorityBadge = derivePriorityBadgeInfo(priorityLevel, lang, false, {
+      urgency_reason: currentForm.metrics.urgency_reason
+        ? String(currentForm.metrics.urgency_reason)
+        : null,
+      urgency_reasons: Array.isArray(currentForm.metrics.urgency_reasons)
+        ? currentForm.metrics.urgency_reasons.map(String)
+        : [],
+    });
 
     const mtdCompletedRaw = (currentForm.sections.MTDCompleted ?? {}) as Record<string, unknown>;
     const mtdNested =
@@ -256,16 +272,35 @@ export class PatientDossierUseCase {
       String(currentForm.processingStatus ?? "COMPLETED")
         .trim()
         .toUpperCase() === "COMPLETED";
-    const isFormComplete =
+    const rawMtdCompFlag = mtdNested.is_mtd_complete ?? mtdCompletedRaw.is_mtd_complete;
+    const rawMtdCompNorm = String(rawMtdCompFlag ?? "")
+      .trim()
+      .toLowerCase();
+    const completenessStatus: "yes" | "partial" | "no" =
       hideAllMissing || (allMissingItems.length > 0 && missingItems.length === 0)
-        ? true
+        ? "yes"
         : !isAiCompleted || !hasMtdCompleted
-          ? false
-          : missingItems.length === 0
-            ? typeof currentForm.metrics.is_complete === "boolean"
-              ? currentForm.metrics.is_complete
-              : mtdNested.is_mtd_complete !== false
-            : false;
+          ? "no"
+          : currentForm.metrics.completeness_status === "yes" ||
+              currentForm.metrics.completeness_status === "partial" ||
+              currentForm.metrics.completeness_status === "no"
+            ? currentForm.metrics.completeness_status
+            : rawMtdCompFlag === true ||
+                rawMtdCompNorm === "true" ||
+                rawMtdCompNorm === "yes" ||
+                rawMtdCompNorm === "oui"
+              ? "yes"
+              : rawMtdCompNorm === "partial" || rawMtdCompNorm === "partiel"
+                ? "partial"
+                : rawMtdCompFlag === false ||
+                    rawMtdCompNorm === "false" ||
+                    rawMtdCompNorm === "no" ||
+                    rawMtdCompNorm === "non"
+                  ? "no"
+                  : missingItems.length === 0
+                    ? "yes"
+                    : "no";
+    const isFormComplete = completenessStatus === "yes";
     const completenessBadge = deriveCompletenessInfo(
       {
         is_complete: isFormComplete,
@@ -280,6 +315,7 @@ export class PatientDossierUseCase {
       visibleItems: missingItems,
       hiddenItems: hiddenMissingItems,
       hideAll: hideAllMissing,
+      isOptional: isFormComplete,
     };
 
     const careSec = (currentForm.sections.CareOrientationProposal ?? {}) as Record<string, unknown>;
@@ -306,11 +342,21 @@ export class PatientDossierUseCase {
       : [];
     const specialties = rawSpecs.map((s) => getAgentPresentation(s, lang));
 
-    const [allPatients, agents, domainSchema] = await Promise.all([
+    const resolvedPatientId =
+      currentForm.patientId ?? (!target.toLowerCase().endsWith(".pdf") ? target : currentForm.file);
+
+    const [allPatients, agents, domainSchema, apiDashboard] = await Promise.all([
       this.api.listPatients(domain, false),
       this.api.listAgents(domain, lang),
       this.api.getDomainSchema(domain).catch(() => null),
+      typeof this.api.getPatientDashboard === "function"
+        ? this.api.getPatientDashboard(resolvedPatientId, domain).catch(() => null)
+        : Promise.resolve(null),
     ]);
+
+    const dashboard: PatientDashboardView =
+      apiDashboard ??
+      buildPatientDashboardFromForms(resolvedPatientId, patientName, domain, sorted, null);
 
     const deltas = computeLongitudinalDeltas(currentForm, previousForm, lang);
     const synopticMarkers = this.buildSynopticMarkers(currentForm, deltas, lang);
@@ -332,6 +378,10 @@ export class PatientDossierUseCase {
         },
         lang,
       );
+      const fExecSum = Object.values(f.executionTimes ?? {}).reduce(
+        (acc, v) => acc + (typeof v === "number" && Number.isFinite(v) ? v : 0),
+        0,
+      );
       return {
         file: f.file,
         mdtDate: f.mdtDate ? translateValue(f.mdtDate, lang) : f.file,
@@ -340,6 +390,7 @@ export class PatientDossierUseCase {
         priorityLevel: fPrio,
         priorityLabel: fPrioInfo.label,
         orientationLabel: fOrient.label,
+        durationSec: fExecSum > 0 ? Math.round(fExecSum * 10) / 10 : null,
       };
     });
 
@@ -396,6 +447,7 @@ export class PatientDossierUseCase {
       },
       allPatients,
       agents,
+      dashboard,
     };
   }
 
@@ -509,18 +561,73 @@ export class PatientDossierUseCase {
     lang: Language,
   ): string {
     if (sectionName === "TumorLocation") {
-      return translateValue(rawObj.tumor_location, lang);
+      return stripMarkdown(translateValue(rawObj.tumor_location, lang));
+    }
+    if (sectionName === "CancerDescription") {
+      const parts = [
+        rawObj.type_of_cancer,
+        rawObj.tnm_status,
+        rawObj.recist_response,
+        rawObj.target_lesion_size_mm !== undefined && rawObj.target_lesion_size_mm !== null
+          ? `${rawObj.target_lesion_size_mm} mm`
+          : null,
+      ]
+        .filter((v) => v !== undefined && v !== null && v !== "")
+        .map((v) => stripMarkdown(translateValue(v, lang)));
+      return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
     }
     if (sectionName === "TumorBiology") {
-      const parts = [rawObj.msi_state, rawObj.ca19_9]
-        .filter((v) => v !== undefined && v !== null && v !== "")
-        .map((v) => translateValue(v, lang));
+      const parts = [
+        rawObj.msi_state !== undefined && rawObj.msi_state !== null
+          ? stripMarkdown(translateValue(rawObj.msi_state, lang))
+          : null,
+        rawObj.ca19_9 !== undefined && rawObj.ca19_9 !== null
+          ? `CA 19-9: ${rawObj.ca19_9} U/mL`
+          : null,
+        rawObj.ace !== undefined && rawObj.ace !== null ? `ACE: ${rawObj.ace} ng/mL` : null,
+        rawObj.dpd_uracilemia !== undefined && rawObj.dpd_uracilemia !== null
+          ? `Uracilémie: ${rawObj.dpd_uracilemia} ng/mL`
+          : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "HepaticStatus") {
+      const parts = [
+        rawObj.child_pugh_score
+          ? `Child-Pugh ${stripMarkdown(String(rawObj.child_pugh_score))}`
+          : null,
+        rawObj.bclc_stage ? `BCLC ${stripMarkdown(String(rawObj.bclc_stage))}` : null,
+        rawObj.bilirubin_umol_l !== undefined && rawObj.bilirubin_umol_l !== null
+          ? `${rawObj.bilirubin_umol_l} µmol/L`
+          : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "NutritionalStatus") {
+      const parts = [
+        rawObj.weight_kg !== undefined && rawObj.weight_kg !== null
+          ? `${rawObj.weight_kg} kg`
+          : null,
+        rawObj.weight_loss_percent !== undefined && rawObj.weight_loss_percent !== null
+          ? `-${rawObj.weight_loss_percent} %`
+          : null,
+        rawObj.bmi !== undefined && rawObj.bmi !== null ? `IMC ${rawObj.bmi}` : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "SurgicalStatus") {
+      const parts = [
+        rawObj.resectability_status
+          ? stripMarkdown(translateValue(rawObj.resectability_status, lang))
+          : null,
+        rawObj.resection_margin ? stripMarkdown(String(rawObj.resection_margin)) : null,
+      ].filter((v): v is string => Boolean(v));
       return parts.join(" · ") || translateValue(null, lang);
     }
     if (sectionName === "PatientPerformanceStatus") {
       const ps = rawObj.performance_status;
       if (ps === undefined || ps === null || ps === "") return translateValue(null, lang);
-      return `OMS ${translateValue(ps, lang)}`;
+      return `OMS ${stripMarkdown(translateValue(ps, lang))}`;
     }
     if (sectionName === "RadiologicExams" || sectionName === "RadiologicalExams") {
       if (subCards.length === 0) return lang === "fr" ? "Aucun examen" : "No exam";
@@ -533,39 +640,69 @@ export class PatientDossierUseCase {
       if (has === true) {
         const dt = rawObj.previous_curative_surgery_date;
         return dt && dt !== "Not_given"
-          ? `${translateValue(true, lang)} (${translateValue(dt, lang)})`
+          ? `${translateValue(true, lang)} (${stripMarkdown(translateValue(dt, lang))})`
           : translateValue(true, lang);
       }
-      return translateValue(has ?? false, lang);
+      return stripMarkdown(translateValue(has ?? false, lang));
     }
     if (sectionName === "PlannedCurativeSurgery" || sectionName === "PlannedSurgery") {
-      return translateValue(rawObj.planned_curative_surgery ?? false, lang);
+      return stripMarkdown(translateValue(rawObj.planned_curative_surgery ?? false, lang));
     }
     if (sectionName === "ChemotherapyTreament" || sectionName === "Chemotherapy") {
       if (rawObj.chemotherapy === false) return translateValue(false, lang);
-      if (rawObj.chemotherapy_name) return String(rawObj.chemotherapy_name);
+      if (rawObj.chemotherapy_name) return stripMarkdown(String(rawObj.chemotherapy_name));
       if (subCards.length > 0) {
-        return `${subCards[0]!.title}${subCards.length > 1 ? ` (+${subCards.length - 1})` : ""}`;
+        return `${stripMarkdown(subCards[0]!.title)}${subCards.length > 1 ? ` (+${subCards.length - 1})` : ""}`;
       }
-      return translateValue(rawObj.chemotherapy, lang);
+      return stripMarkdown(translateValue(rawObj.chemotherapy, lang));
     }
     if (sectionName === "MTDCompleted") {
       const missing = Array.isArray(rawObj.what_missing) ? rawObj.what_missing.length : 0;
-      if (rawObj.is_mtd_complete === true && missing === 0) {
+      const rawComp = rawObj.is_mtd_complete;
+      const normComp = String(rawComp ?? "")
+        .trim()
+        .toLowerCase();
+      const status: "yes" | "partial" | "no" =
+        rawComp === true || normComp === "true" || normComp === "yes" || normComp === "oui"
+          ? "yes"
+          : normComp === "partial" || normComp === "partiel"
+            ? "partial"
+            : rawComp === false || normComp === "false" || normComp === "no" || normComp === "non"
+              ? "no"
+              : missing === 0
+                ? "yes"
+                : "no";
+      if (status === "yes") {
+        if (missing > 0) {
+          return lang === "fr"
+            ? `${missing} élément(s) facultatif manquant(s)`
+            : `${missing} optional missing item(s)`;
+        }
         return lang === "fr" ? "Dossier complet" : "Complete";
       }
-      return lang === "fr"
-        ? `${Math.max(1, missing)} élément(s) manquant(s)`
-        : `${Math.max(1, missing)} missing item(s)`;
+      if (status === "partial") {
+        if (missing > 0) {
+          return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+        }
+        return lang === "fr" ? "Dossier partiel" : "Partial";
+      }
+      if (missing > 0) {
+        return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+      }
+      return lang === "fr" ? "Dossier incomplet" : "Incomplete";
     }
     if (sectionName === "PatientAdministrative") {
       const fn =
-        rawObj.first_name && rawObj.first_name !== "Not_given" ? String(rawObj.first_name) : "";
+        rawObj.first_name && rawObj.first_name !== "Not_given"
+          ? stripMarkdown(String(rawObj.first_name))
+          : "";
       const ln =
-        rawObj.last_name && rawObj.last_name !== "Not_given" ? String(rawObj.last_name) : "";
+        rawObj.last_name && rawObj.last_name !== "Not_given"
+          ? stripMarkdown(String(rawObj.last_name))
+          : "";
       const rcpDate =
         rawObj.date_rcp && rawObj.date_rcp !== "Not_given"
-          ? translateValue(rawObj.date_rcp, lang)
+          ? stripMarkdown(translateValue(rawObj.date_rcp, lang))
           : "";
       return (
         [`${ln} ${fn}`.trim(), rcpDate].filter(Boolean).join(" · ") || translateValue(null, lang)
@@ -575,7 +712,7 @@ export class PatientDossierUseCase {
     return (
       fields
         .filter((f) => !f.isLongText && !f.hiddenInReadView)
-        .map((f) => f.value)
+        .map((f) => stripMarkdown(f.value))
         .filter((val) => val && val !== "Non renseigné" && val !== "Not documented")
         .slice(0, 2)
         .join(" · ") || translateValue(null, lang)
@@ -781,6 +918,28 @@ export class PatientDossierUseCase {
           fieldSchema?.inputType ??
           (LONG_TEXT_KEYS.has(k) || finalVal.length > 90 ? "textarea" : "text");
         const editValue = formatRawEditValue(v, fieldSchema);
+        const badgeTone: "green" | "orange" | "red" | null =
+          sectionName === "MTDCompleted" && k === "is_mtd_complete"
+            ? v === true ||
+              String(v ?? "")
+                .trim()
+                .toLowerCase() === "true" ||
+              String(v ?? "")
+                .trim()
+                .toLowerCase() === "yes" ||
+              String(v ?? "")
+                .trim()
+                .toLowerCase() === "oui"
+              ? "green"
+              : String(v ?? "")
+                    .trim()
+                    .toLowerCase() === "partial" ||
+                  String(v ?? "")
+                    .trim()
+                    .toLowerCase() === "partiel"
+                ? "orange"
+                : "red"
+            : null;
 
         fields.push({
           key: k,
@@ -798,16 +957,25 @@ export class PatientDossierUseCase {
           options: mapOptions(fieldSchema?.options),
           isLongText: inputType === "textarea" || LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
           hiddenInReadView: !wasPresentInRaw,
+          badgeTone,
         });
       }
 
-      const summaryText = this.extractSectionHeaderSummary(
-        sectionName,
-        rawObj,
-        subCards,
-        fields,
-        lang,
-      );
+      const mtdFieldTone =
+        sectionName === "MTDCompleted"
+          ? (fields.find((f) => f.key === "is_mtd_complete")?.badgeTone ?? null)
+          : null;
+      const sectionTone: "green" | "orange" | "red" | null =
+        sectionName === "MTDCompleted"
+          ? (form.metrics.completeness_tone ?? mtdFieldTone ?? "green")
+          : null;
+      const summaryText =
+        sectionName === "MTDCompleted" &&
+        lang === "fr" &&
+        typeof form.metrics.completeness_summary === "string" &&
+        form.metrics.completeness_summary.trim()
+          ? form.metrics.completeness_summary.trim()
+          : this.extractSectionHeaderSummary(sectionName, rawObj, subCards, fields, lang);
 
       const canonicalSection = resolveCanonicalSectionName(sectionName);
       const rawManualMeta =
@@ -856,6 +1024,7 @@ export class PatientDossierUseCase {
         name: sectionName,
         meta,
         summaryText,
+        sectionTone,
         fields,
         subCards,
         references,
@@ -1004,5 +1173,25 @@ export class PatientDossierUseCase {
     agentName?: string,
   ): Promise<ChatReply> {
     return this.api.askDossierQuestion(target, question, domain, lang, agentName);
+  }
+
+  async getPatientDashboard(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<PatientDashboardView | null> {
+    return this.api.getPatientDashboard(patientId, domain);
+  }
+
+  async triggerPatientSummary(
+    patientId: string,
+    domain: ClinicalDomain,
+    force = false,
+  ): Promise<{
+    queued: boolean;
+    alreadyQueued: boolean;
+    jobId?: string | null;
+    summary: PatientRecordSummaryView | null;
+  }> {
+    return this.api.triggerPatientSummary(patientId, domain, force);
   }
 }

@@ -30,6 +30,8 @@ export interface MdtFormCard {
   domain: ClinicalDomain;
   mdtDate: string | null;
   priorityLevel: PriorityLevel;
+  priorityReason?: string | null;
+  priorityReasons?: string[];
   isComplete: boolean;
   missingCount: number;
   missingItems: string[];
@@ -58,7 +60,13 @@ export interface ManualEditMetadata {
 
 export interface CardMetrics {
   priority_level?: string | null;
+  urgency_reason?: string | null;
+  urgency_reasons?: string[];
   is_complete?: boolean;
+  completeness_status?: "yes" | "partial" | "no";
+  completeness_label?: string;
+  completeness_tone?: "green" | "orange" | "red";
+  completeness_summary?: string;
   missing_count?: number;
   missing_items?: string[];
   all_missing_items?: string[];
@@ -261,6 +269,8 @@ export interface MdtAgendaItem {
   urgency: string;
   urgencyScore: number;
   priorityLevel: PriorityLevel;
+  priorityReason?: string | null;
+  priorityReasons?: string[];
   isComplete: boolean;
   missingCount: number;
   missingItems: string[];
@@ -298,6 +308,8 @@ export interface MdtAgendaCandidate {
   urgency: string;
   urgencyScore: number;
   priorityLevel: PriorityLevel;
+  priorityReason?: string | null;
+  priorityReasons?: string[];
   isComplete: boolean;
   missingCount: number;
   missingItems: string[];
@@ -363,4 +375,70 @@ export interface DomainFormSchema {
   domain: ClinicalDomain | string;
   sections: FormSectionSchema[];
   enums: Record<string, Array<string | number>>;
+}
+
+export interface PatientMetricPointView {
+  formId: string;
+  formDate: string | null;
+  formDateLabel: string;
+  daysSinceFirstRcp: number;
+  xRatio: number;
+  rawValue: unknown;
+  displayValue: string;
+  numericValue: number | null;
+  subValues?: Record<string, number> | null;
+  isAnnotativeOnly: boolean;
+  isManual: boolean;
+  editedBy?: string | null;
+  editedAt?: string | null;
+  deltaNumeric?: number | null;
+  deltaDisplay?: string | null;
+}
+
+export interface PatientMetricSeriesView {
+  metricKey: string;
+  section: string;
+  field: string;
+  label: string;
+  unit: string;
+  scaleMin?: number | null;
+  scaleMax?: number | null;
+  polarity: "higher_is_better" | "lower_is_better" | "neutral" | string;
+  valueType: "numeric_or_mixed" | "categorical" | "boolean" | "list" | string;
+  points: PatientMetricPointView[];
+}
+
+export interface PatientRecordSummaryContentView {
+  clinicalTrajectoryOverview: string;
+  diseaseAndTreatmentEvolution: string;
+  notableMetricChanges: string[];
+  unresolvedVigilancePoints: string[];
+  mdtDecisionsRecap: string[];
+  sourcesUsed: string[];
+}
+
+export interface PatientRecordSummaryView {
+  hasSummary: boolean;
+  generatedAt: string | null;
+  coveredFormIds: string[];
+  latestFormIdAtGeneration: string | null;
+  latestFormDateAtGeneration: string | null;
+  modelUsed: string | null;
+  isObsolete: boolean;
+  obsoleteReasons: string[];
+  newFormsSinceSummary: string[];
+  removedFormsSinceSummary: string[];
+  modifiedFormsSinceSummary: string[];
+  content: PatientRecordSummaryContentView | null;
+  activeJob: Record<string, unknown> | null;
+}
+
+export interface PatientDashboardView {
+  patientId: string;
+  patientName: string;
+  domain: ClinicalDomain;
+  latestFile: string | null;
+  rcpCount: number;
+  metrics: PatientMetricSeriesView[];
+  summary: PatientRecordSummaryView;
 }

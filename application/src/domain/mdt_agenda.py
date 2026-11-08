@@ -89,6 +89,8 @@ class MDTAgendaCandidateSnapshot(BaseModel):
     date_birth: Optional[datetime] = None
     urgency: str = "Indéfini"
     urgency_score: int = 0
+    urgency_reason: str = ""
+    urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral = "low"
     is_complete: bool = True
     missing_count: int = 0
@@ -113,6 +115,8 @@ class MDTAgendaScheduledItem(BaseModel):
     date_birth: Optional[datetime] = None
     urgency: str
     urgency_score: int
+    urgency_reason: str = ""
+    urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral
     is_complete: bool
     missing_count: int
@@ -494,6 +498,8 @@ class MDTAgendaScheduler:
                     date_birth=snap.date_birth,
                     urgency=snap.urgency,
                     urgency_score=snap.urgency_score,
+                    urgency_reason=snap.urgency_reason,
+                    urgency_reasons=list(snap.urgency_reasons),
                     priority_level=snap.priority_level,
                     is_complete=snap.is_complete,
                     missing_count=snap.missing_count,

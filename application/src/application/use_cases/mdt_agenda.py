@@ -122,6 +122,10 @@ class MDTAgendaService:
                 date_birth=card.get("date_birth"),
                 urgency=str(card.get("urgency") or "Indéfini"),
                 urgency_score=urgency_score,
+                urgency_reason=str(card.get("urgency_reason") or ""),
+                urgency_reasons=[
+                    str(r) for r in (card.get("urgency_reasons") or []) if r
+                ],
                 priority_level=map_urgency_score_to_priority_level(urgency_score),
                 is_complete=is_complete,
                 missing_count=len(missing_list),

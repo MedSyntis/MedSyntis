@@ -52,6 +52,12 @@ export const BOOLEAN_SELECT_OPTIONS: FieldSelectOption[] = [
   { value: "false", labelFr: "Non", labelEn: "No" },
 ];
 
+export const MTD_COMPLETENESS_SELECT_OPTIONS: FieldSelectOption[] = [
+  { value: "true", labelFr: "Oui", labelEn: "Yes" },
+  { value: "partial", labelFr: "Partiel", labelEn: "Partial" },
+  { value: "false", labelFr: "Non", labelEn: "No" },
+];
+
 const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
   PatientAdministrative: [
     { key: "last_name", inputType: "text", nullable: false, defaultValue: "" },
@@ -153,6 +159,87 @@ const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
       ],
     },
   ],
+  CancerDescription: [
+    {
+      key: "type_of_cancer",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : Adénocarcinome canalaire pancréatique",
+      placeholderEn: "E.g. Pancreatic ductal adenocarcinoma",
+    },
+    {
+      key: "histological_grade",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : Bien différencié (G1), Moyennement différencié (G2)",
+      placeholderEn: "E.g. Well differentiated (G1), Moderately differentiated (G2)",
+    },
+    {
+      key: "tnm_status",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : cT3N1M0, ypT2N0M0",
+      placeholderEn: "E.g. cT3N1M0, ypT2N0M0",
+    },
+    {
+      key: "figo_stage",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : FIGO IIIB",
+      placeholderEn: "E.g. FIGO IIIB",
+    },
+    {
+      key: "metastatic_status",
+      inputType: "nullable_boolean",
+      nullable: true,
+      defaultValue: null,
+      options: BOOLEAN_SELECT_OPTIONS,
+    },
+    {
+      key: "metastatic_sites",
+      inputType: "string_list",
+      nullable: false,
+      defaultValue: [],
+      placeholderFr: "Ex : Foie, Péritoine, Poumon (séparer par des virgules)",
+      placeholderEn: "E.g. Liver, Peritoneum, Lung (comma-separated)",
+    },
+    {
+      key: "target_lesion_size_mm",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 500,
+      step: 0.5,
+      unit: "mm",
+    },
+    {
+      key: "recist_response",
+      inputType: "select",
+      nullable: true,
+      defaultValue: null,
+      options: [
+        { value: "", labelFr: "Non renseigné", labelEn: "Not documented" },
+        { value: "CR", labelFr: "RC (CR) — Réponse complète", labelEn: "CR — Complete Response" },
+        { value: "PR", labelFr: "RP (PR) — Réponse partielle", labelEn: "PR — Partial Response" },
+        { value: "SD", labelFr: "MS (SD) — Maladie stable", labelEn: "SD — Stable Disease" },
+        {
+          value: "PD",
+          labelFr: "MP (PD) — Progression tumorale",
+          labelEn: "PD — Progressive Disease",
+        },
+        {
+          value: "Baseline",
+          labelFr: "Bilan initial (Baseline)",
+          labelEn: "Baseline",
+        },
+      ],
+    },
+  ],
   TumorBiology: [
     {
       key: "msi_state",
@@ -171,6 +258,169 @@ const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
           labelFr: "MSI — Instabilité microsatellitaire",
           labelEn: "MSI — Microsatellite Instability",
         },
+      ],
+    },
+    {
+      key: "ca19_9",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 1000000,
+      step: 0.5,
+      unit: "U/mL",
+    },
+    {
+      key: "ace",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 100000,
+      step: 0.1,
+      unit: "ng/mL",
+    },
+    {
+      key: "afp",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 1000000,
+      step: 0.5,
+      unit: "ng/mL",
+    },
+    {
+      key: "dpd_uracilemia",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 500,
+      step: 0.1,
+      unit: "ng/mL",
+    },
+    {
+      key: "ras_braf_status",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : KRAS G12D muté, BRAF V600E sauvage",
+      placeholderEn: "E.g. KRAS G12D mutated, BRAF wild-type",
+    },
+    {
+      key: "her2_status",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : HER2 négatif (IHC 0), CPS PD-L1 = 5",
+      placeholderEn: "E.g. HER2 negative (IHC 0), PD-L1 CPS = 5",
+    },
+  ],
+  HepaticStatus: [
+    {
+      key: "bilirubin_umol_l",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 1000,
+      step: 0.5,
+      unit: "µmol/L",
+    },
+    {
+      key: "child_pugh_score",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : A5, A6, B7",
+      placeholderEn: "E.g. A5, A6, B7",
+    },
+    {
+      key: "bclc_stage",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : BCLC A, BCLC B, BCLC C",
+      placeholderEn: "E.g. BCLC A, BCLC B, BCLC C",
+    },
+  ],
+  NutritionalStatus: [
+    {
+      key: "weight_kg",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 300,
+      step: 0.5,
+      unit: "kg",
+    },
+    {
+      key: "weight_loss_percent",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 100,
+      step: 0.5,
+      unit: "%",
+    },
+    {
+      key: "bmi",
+      inputType: "float",
+      nullable: true,
+      defaultValue: null,
+      min: 0,
+      max: 100,
+      step: 0.1,
+      unit: "kg/m²",
+    },
+    {
+      key: "nutritional_status",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : Normal, Dénutrition modérée, Dénutrition sévère",
+      placeholderEn: "E.g. Normal, Moderate malnutrition, Severe malnutrition",
+    },
+  ],
+  SurgicalStatus: [
+    {
+      key: "resectability_status",
+      inputType: "select",
+      nullable: true,
+      defaultValue: null,
+      options: [
+        { value: "", labelFr: "Non renseigné", labelEn: "Not documented" },
+        { value: "Resectable", labelFr: "Résécable", labelEn: "Resectable" },
+        { value: "Borderline", labelFr: "Borderline (limite)", labelEn: "Borderline" },
+        {
+          value: "Locally advanced",
+          labelFr: "Localement avancé",
+          labelEn: "Locally advanced",
+        },
+        { value: "Unresectable", labelFr: "Non résécable", labelEn: "Unresectable" },
+        { value: "Metastatic", labelFr: "Métastatique", labelEn: "Metastatic" },
+      ],
+    },
+    {
+      key: "surgery_done",
+      inputType: "nullable_boolean",
+      nullable: true,
+      defaultValue: null,
+      options: BOOLEAN_SELECT_OPTIONS,
+    },
+    {
+      key: "resection_margin",
+      inputType: "select",
+      nullable: true,
+      defaultValue: null,
+      options: [
+        { value: "", labelFr: "Non renseigné", labelEn: "Not documented" },
+        { value: "R0", labelFr: "R0 — Résection complète microscopique", labelEn: "R0" },
+        { value: "R1", labelFr: "R1 — Reliquat microscopique", labelEn: "R1" },
+        { value: "R2", labelFr: "R2 — Reliquat macroscopique", labelEn: "R2" },
       ],
     },
   ],
@@ -458,10 +708,10 @@ const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
   MTDCompleted: [
     {
       key: "is_mtd_complete",
-      inputType: "boolean",
+      inputType: "select",
       nullable: false,
-      defaultValue: false,
-      options: BOOLEAN_SELECT_OPTIONS,
+      defaultValue: "false",
+      options: MTD_COMPLETENESS_SELECT_OPTIONS,
     },
     {
       key: "what_missing",
@@ -609,6 +859,11 @@ export function parseJsonSchemaToFieldSchemas(
       continue;
     }
 
+    if (propKey === "is_mtd_complete" && fb) {
+      results.push({ ...fb });
+      continue;
+    }
+
     if (rawEnum && rawEnum.length > 0) {
       const isIntEnum = propType === "integer" || rawEnum.every((v) => typeof v === "number");
       const options: FieldSelectOption[] =
@@ -735,9 +990,13 @@ export function buildDefaultDomainFormSchema(domain: ClinicalDomain): DomainForm
       : [
           "PatientAdministrative",
           "TumorLocation",
+          "CancerDescription",
           "TumorBiology",
+          "HepaticStatus",
           "PatientPerformanceStatus",
+          "NutritionalStatus",
           "RadiologicExams",
+          "SurgicalStatus",
           "PreviousCurativeSurgery",
           "ChemotherapyTreament",
           "PlannedCurativeSurgery",

@@ -321,14 +321,14 @@ services:
       APP_API_DOCS_ENABLED: ${APP_API_DOCS_ENABLED:-false}
       APP_API_DOCS_REQUIRE_AUTH: ${APP_API_DOCS_REQUIRE_AUTH:-true}
       APP_API_CORS_ENABLED: ${APP_API_CORS_ENABLED:-true}
-      APP_API_CORS_ORIGINS: ${APP_API_CORS_ORIGINS:-https://oncologic.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr},https://sma.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr},https://oncologic-st.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr},https://sma-st.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}}
+      APP_API_CORS_ORIGINS: ${APP_API_CORS_ORIGINS:-https://oncologic.${PROD_BASE_DOMAIN:-medsyntis.fr},https://sma.${PROD_BASE_DOMAIN:-medsyntis.fr},https://oncologic-st.${PROD_BASE_DOMAIN:-medsyntis.fr},https://sma-st.${PROD_BASE_DOMAIN:-medsyntis.fr}}
       APP_API_CORS_ORIGIN_REGEX: ${APP_API_CORS_ORIGIN_REGEX:-}
       APP_API_CORS_ALLOW_CREDENTIALS: ${APP_API_CORS_ALLOW_CREDENTIALS:-true}
       APP_API_CORS_ALLOW_METHODS: ${APP_API_CORS_ALLOW_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
       APP_API_CORS_ALLOW_HEADERS: ${APP_API_CORS_ALLOW_HEADERS:-Authorization,Content-Type,X-API-Key,X-MedSyntis-Domain,X-MedSyntis-User,X-MedSyntis-User-Name,X-MedSyntis-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With}
       APP_API_CORS_EXPOSE_HEADERS: ${APP_API_CORS_EXPOSE_HEADERS:-X-MedSyntis-Domain,X-Request-ID,Content-Disposition}
       APP_API_CORS_MAX_AGE: ${APP_API_CORS_MAX_AGE:-600}
-      APP_API_TRUSTED_HOSTS: ${APP_API_TRUSTED_HOSTS:-127.0.0.1,localhost,medsyntis-api,*.${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}}
+      APP_API_TRUSTED_HOSTS: ${APP_API_TRUSTED_HOSTS:-127.0.0.1,localhost,medsyntis-api,*.${PROD_BASE_DOMAIN:-medsyntis.fr}}
       APP_API_FORCE_HTTPS: ${APP_API_FORCE_HTTPS:-false}
       APP_API_GZIP_ENABLED: ${APP_API_GZIP_ENABLED:-true}
       APP_API_GZIP_MINIMUM_SIZE: ${APP_API_GZIP_MINIMUM_SIZE:-1000}
@@ -345,7 +345,7 @@ services:
       APP_API_CORP_POLICY: ${APP_API_CORP_POLICY:-same-origin}
       APP_API_MAX_BODY_BYTES: ${APP_API_MAX_BODY_BYTES:-52428800}
       APP_API_RATE_LIMIT_ENABLED: ${APP_API_RATE_LIMIT_ENABLED:-true}
-      APP_API_RATE_LIMIT_REQUESTS: ${APP_API_RATE_LIMIT_REQUESTS:-300}
+      APP_API_RATE_LIMIT_REQUESTS: ${APP_API_RATE_LIMIT_REQUESTS:-1200}
       APP_API_RATE_LIMIT_WINDOW_SECONDS: ${APP_API_RATE_LIMIT_WINDOW_SECONDS:-60}
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis}/logs:/var/log/medsyntis
@@ -387,7 +387,7 @@ services:
     networks:
       - search-community
 
-  # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.medsyntis.bricks-it.fr)
+  # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.medsyntis.fr)
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
     container_name: medsyntis-oauth2-proxy
@@ -399,9 +399,9 @@ services:
       OAUTH2_PROXY_PROVIDER: "github"
       OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
       OAUTH2_PROXY_UPSTREAMS: "static://202"
-      OAUTH2_PROXY_REDIRECT_URL: "${OAUTH2_PROXY_REDIRECT_URL:-https://sso.medsyntis.bricks-it.fr/oauth2/callback}"
-      OAUTH2_PROXY_COOKIE_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}"
-      OAUTH2_PROXY_WHITELIST_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}"
+      OAUTH2_PROXY_REDIRECT_URL: "${OAUTH2_PROXY_REDIRECT_URL:-https://sso.medsyntis.fr/oauth2/callback}"
+      OAUTH2_PROXY_COOKIE_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.fr}"
+      OAUTH2_PROXY_WHITELIST_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.fr}"
       OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID}
       OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
@@ -432,7 +432,7 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      PROD_BASE_DOMAIN: ${PROD_BASE_DOMAIN:-medsyntis.bricks-it.fr}
+      PROD_BASE_DOMAIN: ${PROD_BASE_DOMAIN:-medsyntis.fr}
       APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
