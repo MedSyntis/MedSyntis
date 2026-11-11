@@ -72,7 +72,7 @@ export function renderAiThinkingModule(agentLabel?: string, lang: Language = "fr
   const resolvedLabel = agentLabel ?? (lang === "fr" ? "Assistant clinique" : "Clinical Assistant");
   const statusText =
     lang === "fr" ? "Analyse clinique en cours…" : "Clinical analysis in progress…";
-  const timerText = lang === "fr" ? "0 min 00 s" : "0 min 00 s";
+  const timerText = "0 min 00 s";
   const stepsLabel = lang === "fr" ? "Étapes d'analyse" : "Analysis steps";
   const step0 = lang === "fr" ? "Lecture du dossier médical" : "Reading medical record";
   const step1 =
@@ -124,7 +124,7 @@ export function renderChatLogMessagePartial(
   fallbackFormFile?: string,
   lang: Language = "fr",
 ): string {
-  const sourcesLabel = lang === "fr" ? "Sources" : "Sources";
+  const sourcesLabel = "Sources";
   const userLabel = lang === "fr" ? "Vous" : "You";
   const assistantLabel = lang === "fr" ? "Assistant clinique" : "Clinical Assistant";
 
