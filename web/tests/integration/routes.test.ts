@@ -108,6 +108,81 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     await app.close();
   });
 
+  it("GET /styleguide works in Zero-Trust production mode, bundles styleguide in Dockerfile.web, and handles trailing slash & missing file", async () => {
+    // 1. Guard against production Docker image regressions: Dockerfile.web MUST copy web/styleguide -> ./styleguide
+    const repoRoot = path.resolve(import.meta.dirname, "../../..");
+    const dockerfileWeb = fs.readFileSync(
+      path.join(repoRoot, "dist/docker/Dockerfile.web"),
+      "utf8",
+    );
+    expect(dockerfileWeb).toMatch(/COPY\s+--chown=1002:1002\s+web\/styleguide\s+\.\/styleguide/);
+
+    const dockerignore = fs.readFileSync(path.join(repoRoot, ".dockerignore"), "utf8");
+    expect(dockerignore).not.toMatch(/^(?:web\/)?styleguide\/?$/m);
+
+    // 2. Production Fastify configuration behind Caddy + OAuth2-Proxy
+    const api = new InMemoryMedsyntisApiFake();
+    const prodConfig = loadConfig({
+      PORT_WEB: "0",
+      NODE_ENV: "production",
+      APP_DEV_MODE: "false",
+      APP_AUTH_MODE: "oauth_proxy",
+      APP_PROXY_SECRET: "prod-secret-styleguide",
+      APP_ALLOWED_DOMAINS: "oncology,sma",
+    });
+    const prodApp = await buildServer({ config: prodConfig, api });
+    const prodHeaders = {
+      host: "oncologic.medsyntis.fr",
+      "x-medsyntis-proxy-secret": "prod-secret-styleguide",
+      "x-medsyntis-domain": "oncology",
+      "x-auth-request-user": "dr.prod",
+    };
+
+    const res = await prodApp.inject({
+      method: "GET",
+      url: "/styleguide?theme=dark&contrast=high",
+      headers: prodHeaders,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["strict-transport-security"]).toContain("max-age=31536000");
+    expect(res.body).toContain('data-theme="dark"');
+    expect(res.body).toContain('data-contrast="high"');
+    expect(res.body).not.toContain("../public/");
+    expect(res.body).toMatch(/href="\/public\/css\/tokens\.css\?v=\d+"/);
+    expect(res.body).toMatch(/href="\/public\/css\/components\.css\?v=\d+"/);
+
+    const csp = String(res.headers["content-security-policy"] ?? "");
+    const nonceMatch = csp.match(/script-src 'self' 'nonce-([^']+)'/);
+    expect(nonceMatch).not.toBeNull();
+    expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(res.body).toContain(`<script nonce="${nonceMatch?.[1]}">`);
+
+    // Trailing slash redirects cleanly to canonical /styleguide preserving query string
+    const slashRes = await prodApp.inject({
+      method: "GET",
+      url: "/styleguide/?contrast=medium",
+      headers: prodHeaders,
+    });
+    expect(slashRes.statusCode).toBe(302);
+    expect(slashRes.headers.location).toBe("/styleguide?contrast=medium");
+
+    await prodApp.close();
+
+    // 3. Missing styleguide file returns clean 404 instead of unhandled 500 ENOENT
+    const missingApp = await buildServer({
+      config: prodConfig,
+      api,
+      styleguidePath: path.join(repoRoot, "web/styleguide/does-not-exist.html"),
+    });
+    const missingRes = await missingApp.inject({
+      method: "GET",
+      url: "/styleguide",
+      headers: prodHeaders,
+    });
+    expect(missingRes.statusCode).toBe(404);
+    await missingApp.close();
+  });
+
   it("GET /worklist filters by domain (sma) and completeness (incomplete)", async () => {
     const { app } = await createTestApp();
     const smaRes = await app.inject({

@@ -57,6 +57,7 @@ import {
   renderWorklistPage,
   stripDomainQuery,
 } from "./templates.js";
+import { ASSET_VERSION } from "./views/html.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../../public");
@@ -133,7 +134,7 @@ const PUBLIC_MIME_TYPES: Record<string, string> = {
 const gunzipAsync = promisify(zlib.gunzip);
 const gunzipCache = new Map<string, Buffer>();
 const staticAssetCache = new Map<string, { mtimeMs: number; etag: string; content: Buffer }>();
-let styleguideHtmlCache: { mtimeMs: number; html: string } | null = null;
+const styleguideHtmlCache = new Map<string, { mtimeMs: number; html: string }>();
 
 async function fileStatOrNull(filePath: string): Promise<fs.Stats | null> {
   try {
@@ -189,9 +190,14 @@ function sendPdfBufferWithRange(
 export interface BuildServerOptions {
   config: WebAppConfig;
   api: MedsyntisApiPort;
+  styleguidePath?: string;
 }
 
-export async function buildServer({ config, api }: BuildServerOptions): Promise<FastifyInstance> {
+export async function buildServer({
+  config,
+  api,
+  styleguidePath = STYLEGUIDE_PATH,
+}: BuildServerOptions): Promise<FastifyInstance> {
   const isTestEnv = process.env.NODE_ENV === "test" || Boolean(process.env.VITEST);
   const app = Fastify({
     logger:
@@ -398,13 +404,11 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   // Strict Hospital-Grade HTTP Security Headers (100% self-hosted)
   app.addHook("onSend", async (req, reply, payload) => {
-    const isStyleguide = req.url.startsWith("/styleguide");
     const isPdfFile = req.url.startsWith("/files/");
     if (!reply.getHeader("content-security-policy")) {
-      const scriptSrc = isStyleguide ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'";
       reply.header(
         "Content-Security-Policy",
-        `default-src 'self'; style-src 'self' 'unsafe-inline'; ${scriptSrc}; worker-src 'self' blob:; img-src 'self' data: blob:; frame-src 'self'; frame-ancestors 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'`,
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; img-src 'self' data: blob:; frame-src 'self'; frame-ancestors 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
       );
     }
     reply.header("X-Content-Type-Options", "nosniff");
@@ -538,16 +542,48 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     return { status: "ok", service: "medsyntis-web" };
   });
 
-  app.get("/styleguide", async (_req, reply) => {
-    const st = await fileStatOrNull(STYLEGUIDE_PATH);
-    if (!styleguideHtmlCache || (st && styleguideHtmlCache.mtimeMs !== st.mtimeMs)) {
-      const rawHtml = await fsp.readFile(STYLEGUIDE_PATH, "utf8");
-      styleguideHtmlCache = {
-        mtimeMs: st?.mtimeMs ?? Date.now(),
-        html: rawHtml.replace(/\.\.\/public\//g, "/public/"),
-      };
+  app.get("/styleguide/", async (req, reply) => {
+    const qIdx = req.url.indexOf("?");
+    const search = qIdx >= 0 ? req.url.slice(qIdx) : "";
+    return reply.redirect(`/styleguide${search}`);
+  });
+
+  app.get("/styleguide", async (req, reply) => {
+    const st = await fileStatOrNull(styleguidePath);
+    if (!st) {
+      return reply.code(404).type("text/plain; charset=utf-8").send("Styleguide introuvable.");
     }
-    return reply.type("text/html; charset=utf-8").send(styleguideHtmlCache.html);
+    let cached = styleguideHtmlCache.get(styleguidePath);
+    if (!cached || cached.mtimeMs !== st.mtimeMs) {
+      const rawHtml = await fsp.readFile(styleguidePath, "utf8");
+      const rewrittenHtml = rawHtml
+        .replace(/\.\.\/public\//g, "/public/")
+        .replace(
+          /\/public\/css\/(tokens|components)\.css(?=")/g,
+          `/public/css/$1.css?v=${ASSET_VERSION}`,
+        );
+      cached = {
+        mtimeMs: st.mtimeMs,
+        html: rewrittenHtml,
+      };
+      styleguideHtmlCache.set(styleguidePath, cached);
+    }
+    const session = resolveSession(req);
+    const initialTheme = session.theme === "dark" ? "dark" : "light";
+    const initialContrast =
+      session.contrast === "medium" || session.contrast === "high" ? session.contrast : "standard";
+    const nonce = crypto.randomBytes(16).toString("base64");
+    reply.header(
+      "Content-Security-Policy",
+      `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; worker-src 'self' blob:; img-src 'self' data: blob:; frame-src 'self'; frame-ancestors 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'`,
+    );
+    const htmlWithNonce = cached.html
+      .replace(
+        /<html lang="fr" data-theme="light">/,
+        `<html lang="fr" data-theme="${initialTheme}" data-contrast="${initialContrast}">`,
+      )
+      .replace(/<script>/g, `<script nonce="${nonce}">`);
+    return reply.type("text/html; charset=utf-8").send(htmlWithNonce);
   });
 
   // 2. Preferences (Theme, Language, Domain, Expert Mode)

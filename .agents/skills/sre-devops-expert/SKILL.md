@@ -44,7 +44,7 @@ graph LR
 
 1. **Multi-Stage Non-Root Dockerfiles & Pinned Tags**:
    - [`dist/docker/Dockerfile.api`](../../../dist/docker/Dockerfile.api) and [`dist/docker/Dockerfile`](../../../dist/docker/Dockerfile) use multi-stage `python:3.13-slim-trixie` builds with pinned `ghcr.io/astral-sh/uv:0.13.7` so compilers (`build-essential`, `gcc`) are never retained in the runtime image; both run as non-root `appuser` (`UID=1002`, `GID=1002`) with `HEALTHCHECK` probes.
-   - [`dist/docker/Dockerfile.web`](../../../dist/docker/Dockerfile.web) uses multi-stage `node:26-trixie-slim` with `npm ci --omit=dev`, strips package managers (`npm`/`npx`/`corepack`) and build-only `styleguide/` assets from runtime, and runs under `dumb-init` as `appuser` (`UID=1002`).
+   - [`dist/docker/Dockerfile.web`](../../../dist/docker/Dockerfile.web) uses multi-stage `node:26-trixie-slim` with `npm ci --omit=dev`, strips package managers (`npm`/`npx`/`corepack`) from runtime while bundling `public/` and `styleguide/` (served at `/styleguide`), and runs under `dumb-init` as `appuser` (`UID=1002`).
    - In `docker-compose.prod.yml`, services enforce `cap_drop: ["ALL"]`, `security_opt: ["no-new-privileges:true"]` (with minimal `cap_add` only where required by `mongod` and `caddy`), and explicit version tags (e.g., `ghcr.io/berriai/litellm:v1.108.4` — never `:main-latest`).
 2. **Fail-Fast Secret Enforcement & Zero Telemetry**:
    - Mandatory `${VAR:?...}` expansion is enforced in `docker-compose.prod.yml` for `OAUTH2_PROXY_CLIENT_ID`, `OAUTH2_PROXY_CLIENT_SECRET`, `OAUTH2_PROXY_COOKIE_SECRET`, `APP_MONGODB_PASSWORD`, `LITELLM_MASTER_KEY`, `APP_API_TOKEN`, and `APP_PROXY_SECRET` (`make init-prod` generates cryptographic secrets into `.env.prod` with `chmod 0600`).
