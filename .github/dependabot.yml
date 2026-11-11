@@ -33,6 +33,24 @@ updates:
           - "minor"
           - "patch"
 
+  # Maintain Python dependencies in the GCS smoke-test utility directory
+  - package-ecosystem: "uv"
+    directory: "/dist/gcloud_test/gcs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "scope:infra"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   # Maintain Node.js / TypeScript dependencies in the web directory
   - package-ecosystem: "npm"
     directory: "/web"

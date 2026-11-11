@@ -40,7 +40,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     libxext6 \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/* \
-    && uv pip uninstall --system pip
+    && uv pip uninstall --system pip \
+    && rm -rf /usr/local/lib/python3.13/ensurepip
 
 RUN groupadd -g 1002 appuser && \
     useradd -u 1002 -g appuser -m -d /home/appuser -s /usr/sbin/nologin appuser && \
