@@ -1,7 +1,5 @@
 import hashlib
 import logging
-import os
-import re
 import time
 import uuid
 from datetime import date, datetime
@@ -549,13 +547,13 @@ class PatientMDTFormExtractionService:
         """
         Compute the SHA-256 digest of the uploaded PDF, generate an opaque storage filename
         `doc_<sha256[:16]>.pdf` (zero PII in filesystem/URLs/Milvus collections), and detect
-        duplicates against both `doc_<sha256[:16]>.pdf` and legacy `<stem>_<hash10>.pdf` files.
+        whether an already-completed `doc_<sha256[:16]>.pdf` record exists.
         """
+        _ = original_filename
         full_digest = hashlib.sha256(file_bytes).hexdigest()
         resolved_filename = f"doc_{full_digest[:16]}.pdf"
 
-        rcp_dir = Path(self.config.rcp.path)
-        target_path = rcp_dir / resolved_filename
+        target_path = Path(self.config.rcp.path) / resolved_filename
         doc = self.mdt_form_repo.get_by_file(resolved_filename)
         is_completed = (
             doc is not None
@@ -563,26 +561,6 @@ class PatientMDTFormExtractionService:
         )
         if target_path.exists() and is_completed:
             return resolved_filename, True
-
-        # Backward-compatible duplicate check for legacy `<safe_stem>_<hash10>.pdf` files
-        file_hash10 = full_digest[:10]
-        base_name = os.path.basename(
-            (original_filename or "mdt_form.pdf").replace("\\", "/")
-        )
-        stem, ext = os.path.splitext(base_name)
-        ext = ext if ext.lower() == ".pdf" else ".pdf"
-        stem = re.sub(r"_[0-9a-f]{10}$", "", stem)
-        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("_") or "mdt_form"
-        legacy_filename = f"{safe_stem}_{file_hash10}{ext}"
-        legacy_path = rcp_dir / legacy_filename
-        legacy_doc = self.mdt_form_repo.get_by_file(legacy_filename)
-        if (
-            legacy_path.exists()
-            and legacy_doc is not None
-            and legacy_doc.get("processing_status")
-            == RCPProcessingStatus.COMPLETED.value
-        ):
-            return legacy_filename, True
 
         return resolved_filename, False
 

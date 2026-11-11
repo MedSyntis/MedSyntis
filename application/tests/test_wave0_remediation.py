@@ -147,10 +147,10 @@ def test_mongodb_find_patient_by_identity_forbids_name_only_homonym_merge():
     mongo.get_document.assert_not_called()
 
 
-def test_resolve_upload_produces_opaque_filename_and_supports_legacy_duplicates(
+def test_resolve_upload_produces_opaque_filename_without_legacy_fallback(
     tmp_path,
 ):
-    """resolve_upload must return doc_<sha256[:16]>.pdf with zero PII while honoring legacy <stem>_<hash10>.pdf duplicates."""
+    """resolve_upload must return doc_<sha256[:16]>.pdf strictly without legacy <stem>_<hash10>.pdf runtime fallbacks."""
     mock_conf = MagicMock()
     mock_conf.rcp.path = str(tmp_path)
     mock_conf.rcp.display_type = "stdout"
@@ -165,30 +165,40 @@ def test_resolve_upload_produces_opaque_filename_and_supports_legacy_duplicates(
 
     pdf_bytes = b"%PDF-1.4 Confidential Patient DUPONT Jean 1954-02-11"
     expected_digest16 = hashlib.sha256(pdf_bytes).hexdigest()[:16]
+    opaque_name = f"doc_{expected_digest16}.pdf"
 
     fname, is_dup = extraction_service.resolve_upload(
         pdf_bytes, "DUPONT_Jean_1954_02_11_RCP.pdf"
     )
     assert is_dup is False
-    assert fname == f"doc_{expected_digest16}.pdf"
+    assert fname == opaque_name
     assert "dupont" not in fname.lower()
     assert "jean" not in fname.lower()
     assert "1954" not in fname
 
-    # Backward compatibility: existing legacy <stem>_<hash10>.pdf already COMPLETED on disk is detected as duplicate
-    legacy_bytes = b"%PDF-1.4 Legacy Indexed Patient File"
-    legacy_hash10 = hashlib.sha256(legacy_bytes).hexdigest()[:10]
+    # Unmigrated legacy `<stem>_<hash10>.pdf` files are NOT recognized at runtime (must run `make migrate`)
+    legacy_hash10 = hashlib.sha256(pdf_bytes).hexdigest()[:10]
     legacy_name = f"fiche_rcp_{legacy_hash10}.pdf"
-    (tmp_path / legacy_name).write_bytes(legacy_bytes)
+    (tmp_path / legacy_name).write_bytes(pdf_bytes)
     mdt_repo.upsert_fields(
         legacy_name, {"file": legacy_name, "processing_status": "COMPLETED"}
     )
-
-    resolved_legacy, is_legacy_dup = extraction_service.resolve_upload(
-        legacy_bytes, "fiche_rcp.pdf"
+    resolved_after_legacy, is_legacy_dup = extraction_service.resolve_upload(
+        pdf_bytes, "fiche_rcp.pdf"
     )
-    assert is_legacy_dup is True
-    assert resolved_legacy == legacy_name
+    assert is_legacy_dup is False
+    assert resolved_after_legacy == opaque_name
+
+    # Canonical `doc_<sha256[:16]>.pdf` on disk + COMPLETED in repo IS detected as duplicate
+    (tmp_path / opaque_name).write_bytes(pdf_bytes)
+    mdt_repo.upsert_fields(
+        opaque_name, {"file": opaque_name, "processing_status": "COMPLETED"}
+    )
+    resolved_canonical, is_canonical_dup = extraction_service.resolve_upload(
+        pdf_bytes, "DUPONT_Jean_1954_02_11_RCP.pdf"
+    )
+    assert is_canonical_dup is True
+    assert resolved_canonical == opaque_name
 
 
 def test_upload_endpoint_persists_original_filename_without_url_pii(
@@ -283,16 +293,9 @@ def test_resource_pdf_endpoint_never_serves_patient_files_from_rcp_dir(
     conf.rcp.path = str(rcp_dir)
     app.dependency_overrides[get_domain_config] = lambda: conf
 
-    assert (
-        _resolve_resource_pdf_path(
-            conf, "patient_secret.pdf", form_file="patient_secret.pdf"
-        )
-        is None
-    )
+    assert _resolve_resource_pdf_path(conf, "patient_secret.pdf") is None
 
-    resp_patient = client.get(
-        "/api/v1/resources/patient_secret.pdf/file?form_file=patient_secret.pdf"
-    )
+    resp_patient = client.get("/api/v1/resources/patient_secret.pdf/file")
     assert resp_patient.status_code == 404
 
     resp_guideline = client.get("/api/v1/resources/TNCD_pancreas.pdf/file")
@@ -401,3 +404,294 @@ def test_pdf_endpoint_removes_bbox_variant_from_openapi_and_disk_lookup(
     resp = client.get("/api/v1/patientmdtform/doc_plain.pdf/pdf?inline=true")
     assert resp.status_code == 200
     assert resp.content == b"%PDF-1.4 canonical plain pdf"
+
+
+# ---------------------------------------------------------------------------
+# Canonical Zero-Legacy Migration Script (`scripts/migrate.py`)
+# ---------------------------------------------------------------------------
+
+
+class _FakeMongoCollection:
+    """Minimal in-memory PyMongo collection double supporting `$set`, `$unset`, `insert_one`, and `delete_one`."""
+
+    def __init__(self, initial_docs: list[dict[str, Any]] | None = None):
+        self._docs: list[dict[str, Any]] = []
+        self._seq = 0
+        for d in initial_docs or []:
+            self.insert_one(d)
+
+    def _next_id(self) -> str:
+        self._seq += 1
+        return f"oid_{self._seq}"
+
+    def find(self, query: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        query = query or {}
+        out: list[dict[str, Any]] = []
+        for doc in self._docs:
+            if all(doc.get(k) == v for k, v in query.items()):
+                out.append(dict(doc))
+        return out
+
+    def insert_one(self, doc: dict[str, Any]) -> None:
+        copy = dict(doc)
+        copy.setdefault("_id", self._next_id())
+        self._docs.append(copy)
+
+    def update_one(self, query: dict[str, Any], update: dict[str, Any]) -> None:
+        for doc in self._docs:
+            if all(doc.get(k) == v for k, v in query.items()):
+                if "$set" in update:
+                    doc.update(update["$set"])
+                if "$unset" in update:
+                    for key in update["$unset"]:
+                        doc.pop(key, None)
+                break
+
+    def delete_one(self, query: dict[str, Any]) -> None:
+        for idx, doc in enumerate(self._docs):
+            if all(doc.get(k) == v for k, v in query.items()):
+                self._docs.pop(idx)
+                break
+
+
+class _FakeMongoDatabase:
+    def __init__(self, collections: dict[str, _FakeMongoCollection]):
+        self._collections = collections
+
+    def __getitem__(self, name: str) -> _FakeMongoCollection:
+        if name not in self._collections:
+            self._collections[name] = _FakeMongoCollection()
+        return self._collections[name]
+
+
+def test_migrate_script_converts_legacy_files_schemas_homonyms_and_is_idempotent(
+    tmp_path, monkeypatch
+):
+    """`scripts/migrate.py` must migrate filesystem PDFs, MongoDB schemas/identities, and Milvus collections idempotently."""
+    from scripts.migrate import (
+        build_vector_collection_name,
+        migrate_database_storage_and_schema,
+        migrate_filesystem_pdfs,
+        migrate_milvus_collections,
+    )
+    from src.domain.patient import Patient
+
+    # 1. Seed legacy files on disk (including `.bbox` sidecar + two legacy homonym PDFs)
+    bytes_1 = b"%PDF-1.4 Homonym Patient 1"
+    bytes_2 = b"%PDF-1.4 Homonym Patient 2"
+    digest_1 = hashlib.sha256(bytes_1).hexdigest()
+    digest_2 = hashlib.sha256(bytes_2).hexdigest()
+    opaque_1 = f"doc_{digest_1[:16]}.pdf"
+    opaque_2 = f"doc_{digest_2[:16]}.pdf"
+
+    legacy_file_1 = f"DUPONT_Jean_{digest_1[:10]}.pdf"
+    legacy_file_2 = f"DUPONT_Jean_{digest_2[:10]}.pdf"
+    (tmp_path / legacy_file_1).write_bytes(bytes_1)
+    (tmp_path / legacy_file_2).write_bytes(bytes_2)
+    (tmp_path / f"{legacy_file_1}.bbox").write_bytes(b"%PDF-1.4 dead bbox")
+
+    # Dry-run filesystem check: zero disk mutation
+    dry_map, dry_fs_stats = migrate_filesystem_pdfs(tmp_path, dry_run=True)
+    assert dry_fs_stats["bbox_files_deleted"] == 1
+    assert dry_fs_stats["pdf_files_renamed"] == 2
+    assert dry_map == {legacy_file_1: opaque_1, legacy_file_2: opaque_2}
+    assert (tmp_path / legacy_file_1).exists()
+    assert (tmp_path / f"{legacy_file_1}.bbox").exists()
+
+    # Live filesystem migration
+    live_map, live_fs_stats = migrate_filesystem_pdfs(tmp_path, dry_run=False)
+    assert live_fs_stats["bbox_files_deleted"] == 1
+    assert live_fs_stats["pdf_files_renamed"] == 2
+    assert not (tmp_path / legacy_file_1).exists()
+    assert not (tmp_path / f"{legacy_file_1}.bbox").exists()
+    assert (tmp_path / opaque_1).read_bytes() == bytes_1
+    assert (tmp_path / opaque_2).read_bytes() == bytes_2
+
+    # 2. Seed MongoDB with legacy merged unverified homonyms + legacy `Chemotherapy` section
+    legacy_merged_pid = (
+        "pat_" + hashlib.sha256(b"medsyntis:patient:dupont_jean").hexdigest()[:16]
+    )
+    fake_db = _FakeMongoDatabase(
+        {
+            "patients": _FakeMongoCollection(
+                [
+                    {
+                        "patient_id": legacy_merged_pid,
+                        "name_key": "dupont_jean",
+                        "first_name": "Jean",
+                        "last_name": "DUPONT",
+                        "date_birth": None,
+                        "files": [legacy_file_1, legacy_file_2],
+                    }
+                ]
+            ),
+            "rcp_info": _FakeMongoCollection(
+                [
+                    {
+                        "file": legacy_file_1,
+                        "patient_id": legacy_merged_pid,
+                        "Chemotherapy": {"chemotherapy_name": "FOLFIRINOX"},
+                        "manual_edits": {
+                            "Chemotherapy": {
+                                "is_manual": True,
+                                "edited_by": "dr.martin",
+                            }
+                        },
+                        "manually_edited_sections": ["Chemotherapy"],
+                        "execution_times": {"Chemotherapy": 4.2},
+                        "bbox": {"obsolete": True},
+                    },
+                    {
+                        "file": legacy_file_2,
+                        "patient_id": legacy_merged_pid,
+                        "RadiologicalExams": {"exams_list": []},
+                    },
+                ]
+            ),
+            "document_cache": _FakeMongoCollection(
+                [
+                    {"hash": digest_1, "file": legacy_file_1, "markdown": "# Doc 1"},
+                ]
+            ),
+            "mdt_agendas": _FakeMongoCollection(
+                [
+                    {
+                        "agenda_id": "default",
+                        "entries": [
+                            {
+                                "patient_id": legacy_merged_pid,
+                                "filename": legacy_file_1,
+                                "manual_order": 0,
+                            }
+                        ],
+                    }
+                ]
+            ),
+            "bug_reports": _FakeMongoCollection(
+                [
+                    {
+                        "bug_id": "BUG-1",
+                        "patient_id": legacy_merged_pid,
+                        "rcp_file": legacy_file_2,
+                    }
+                ]
+            ),
+        }
+    )
+
+    # Dry-run DB check: zero DB mutation
+    _, dry_db_stats = migrate_database_storage_and_schema(
+        fake_db, file_map=live_map, dry_run=True
+    )
+    assert dry_db_stats["forms_file_migrated"] == 2
+    assert dry_db_stats["forms_sections_migrated"] == 2
+    assert dry_db_stats["unverified_patients_isolated"] == 1
+    assert fake_db["rcp_info"].find()[0]["file"] == legacy_file_1
+
+    # Live DB migration
+    effective_map, live_db_stats = migrate_database_storage_and_schema(
+        fake_db, file_map=live_map, dry_run=False
+    )
+    assert live_db_stats["forms_file_migrated"] == 2
+    assert live_db_stats["forms_sections_migrated"] == 2
+    assert live_db_stats["unverified_patients_isolated"] == 1
+    assert live_db_stats["cache_docs_migrated"] == 1
+    assert live_db_stats["agendas_files_migrated"] == 1
+    assert live_db_stats["bugs_files_migrated"] == 1
+
+    # Verify isolated provisional patients
+    patients_after = fake_db["patients"].find()
+    assert len(patients_after) == 2
+    expected_pid_1 = Patient.build_id(
+        first_name="Jean",
+        last_name="DUPONT",
+        date_birth=None,
+        fallback_file=opaque_1,
+    )
+    expected_pid_2 = Patient.build_id(
+        first_name="Jean",
+        last_name="DUPONT",
+        date_birth=None,
+        fallback_file=opaque_2,
+    )
+    assert {p["patient_id"] for p in patients_after} == {expected_pid_1, expected_pid_2}
+    assert all(p["identity_verification_required"] is True for p in patients_after)
+
+    # Verify forms canonicalization (`Chemotherapy` -> `ChemotherapyTreament`, `original_filename` preserved)
+    forms_after = {f["file"]: f for f in fake_db["rcp_info"].find()}
+    assert set(forms_after.keys()) == {opaque_1, opaque_2}
+    f1 = forms_after[opaque_1]
+    assert f1["original_filename"] == legacy_file_1
+    assert f1["patient_id"] == expected_pid_1
+    assert "Chemotherapy" not in f1
+    assert "bbox" not in f1
+    assert f1["ChemotherapyTreament"] == {"chemotherapy_name": "FOLFIRINOX"}
+    assert "ChemotherapyTreament" in f1["manual_edits"]
+    assert "Chemotherapy" not in f1["manual_edits"]
+    assert f1["manually_edited_sections"] == ["ChemotherapyTreament"]
+    assert f1["execution_times"] == {"ChemotherapyTreament": 4.2}
+
+    f2 = forms_after[opaque_2]
+    assert f2["patient_id"] == expected_pid_2
+    assert "RadiologicalExams" not in f2
+    assert f2["RadiologicExams"] == {"exams_list": []}
+
+    # Verify cache, agenda, and bug report cascades
+    assert fake_db["document_cache"].find()[0]["file"] == opaque_1
+    agenda_entry = fake_db["mdt_agendas"].find()[0]["entries"][0]
+    assert agenda_entry["filename"] == opaque_1
+    assert agenda_entry["patient_id"] == expected_pid_1
+    bug_after = fake_db["bug_reports"].find()[0]
+    assert bug_after["rcp_file"] == opaque_2
+    assert bug_after["patient_id"] == expected_pid_2
+
+    # 3. Idempotency check: second run mutates nothing
+    _, rerun_fs = migrate_filesystem_pdfs(tmp_path, dry_run=False)
+    _, rerun_db = migrate_database_storage_and_schema(
+        fake_db, file_map={}, dry_run=False
+    )
+    assert rerun_fs["pdf_files_renamed"] == 0
+    assert rerun_fs["pdf_files_already_opaque"] == 2
+    assert rerun_db["forms_file_migrated"] == 0
+    assert rerun_db["forms_sections_migrated"] == 0
+    assert rerun_db["unverified_patients_isolated"] == 0
+    assert rerun_db["patients_flags_updated"] == 0
+
+    # 4. Milvus collection rename test with mocked pymilvus
+    conf = api_deps.get_base_config().model_copy(deep=True)
+    conf.dbvec.type = "milvus"
+    old_coll_1 = build_vector_collection_name(conf, legacy_file_1)
+    new_coll_1 = build_vector_collection_name(conf, opaque_1)
+    old_coll_2 = build_vector_collection_name(conf, legacy_file_2)
+    new_coll_2 = build_vector_collection_name(conf, opaque_2)
+    existing_colls = {old_coll_1, old_coll_2, new_coll_2}
+    renamed_pairs: list[tuple[str, str]] = []
+    dropped_colls: list[str] = []
+
+    import pymilvus
+
+    monkeypatch.setattr(pymilvus.connections, "connect", lambda **_k: None)
+    monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        pymilvus.db, "list_database", lambda **_k: [conf.milvus.database]
+    )
+    monkeypatch.setattr(pymilvus.db, "using_database", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        pymilvus.utility, "has_collection", lambda c, **_k: c in existing_colls
+    )
+    monkeypatch.setattr(
+        pymilvus.utility,
+        "rename_collection",
+        lambda old_c, new_c, **_k: renamed_pairs.append((old_c, new_c)),
+    )
+    monkeypatch.setattr(
+        pymilvus.utility,
+        "drop_collection",
+        lambda old_c, **_k: dropped_colls.append(old_c),
+    )
+
+    vec_stats = migrate_milvus_collections(conf, effective_map, dry_run=False)
+    assert vec_stats["vector_collections_renamed"] == 1
+    assert vec_stats["vector_collections_dropped_duplicate"] == 1
+    assert renamed_pairs == [(old_coll_1, new_coll_1)]
+    assert dropped_colls == [old_coll_2]

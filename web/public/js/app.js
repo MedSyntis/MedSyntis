@@ -1508,24 +1508,10 @@
   initM3Tabs(document);
 
   // Direct navigation from highlighted patient dossier metrics/badges ([data-jump-section]) to expanded detail sections
-  var SECTION_FALLBACK_ALIASES = {
-    Chemotherapy: ["Chemotherapy", "ChemotherapyTreament"],
-    ChemotherapyTreament: ["ChemotherapyTreament", "Chemotherapy"],
-    RadiologicExams: ["RadiologicExams", "RadiologicalExams"],
-    RadiologicalExams: ["RadiologicalExams", "RadiologicExams"],
-    PreviousCurativeSurgery: ["PreviousCurativeSurgery", "PreviousSurgery"],
-    PreviousSurgery: ["PreviousSurgery", "PreviousCurativeSurgery"],
-    PlannedCurativeSurgery: ["PlannedCurativeSurgery", "PlannedSurgery"],
-    PlannedSurgery: ["PlannedSurgery", "PlannedCurativeSurgery"],
-  };
-
   function resolveDossierSectionElement(sectionName) {
     if (!sectionName) return null;
-    var candidates = SECTION_FALLBACK_ALIASES[sectionName] || [sectionName];
-    for (var i = 0; i < candidates.length; i++) {
-      var el = document.getElementById("section-" + candidates[i]);
-      if (el) return el;
-    }
+    var el = document.getElementById("section-" + sectionName);
+    if (el) return el;
     var opinionEl = document.querySelector(
       '[data-testid="opinion-' + cssEscape(sectionName) + '"]',
     );

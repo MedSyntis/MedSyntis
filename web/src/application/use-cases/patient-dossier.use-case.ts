@@ -575,10 +575,7 @@ export class PatientDossierUseCase {
     const loc = (form.sections.TumorLocation ?? {}) as Record<string, unknown>;
     const bio = (form.sections.TumorBiology ?? {}) as Record<string, unknown>;
     const perf = (form.sections.PatientPerformanceStatus ?? {}) as Record<string, unknown>;
-    const chemoSectionName = form.sections.Chemotherapy ? "Chemotherapy" : "ChemotherapyTreament";
-    const chemo = (form.sections.Chemotherapy ??
-      form.sections.ChemotherapyTreament ??
-      {}) as Record<string, unknown>;
+    const chemo = (form.sections.ChemotherapyTreament ?? {}) as Record<string, unknown>;
     const chemoList = Array.isArray(chemo.chemotherapy_list)
       ? (chemo.chemotherapy_list as Array<Record<string, unknown>>)
       : [];
@@ -616,7 +613,7 @@ export class PatientDossierUseCase {
         label: lang === "fr" ? "Traitement systémique" : "Systemic Treatment",
         value: translateValue(firstChemoName, lang),
         isMissing: !firstChemoName && chemo.chemotherapy === undefined,
-        targetSection: chemoSectionName,
+        targetSection: "ChemotherapyTreament",
         targetTab: "clinical",
       },
     ];
@@ -701,13 +698,13 @@ export class PatientDossierUseCase {
       if (ps === undefined || ps === null || ps === "") return translateValue(null, lang);
       return `${lang === "fr" ? "OMS" : "WHO"} ${stripMarkdown(translateValue(ps, lang))}`;
     }
-    if (sectionName === "RadiologicExams" || sectionName === "RadiologicalExams") {
+    if (sectionName === "RadiologicExams") {
       if (subCards.length === 0) return lang === "fr" ? "Aucun examen" : "No exam";
       return lang === "fr"
         ? `${subCards.length} examen${subCards.length > 1 ? "s" : ""}`
         : `${subCards.length} exam(s)`;
     }
-    if (sectionName === "PreviousCurativeSurgery" || sectionName === "PreviousSurgery") {
+    if (sectionName === "PreviousCurativeSurgery") {
       const has = rawObj.previous_curative_surgery;
       if (has === true) {
         const dt = rawObj.previous_curative_surgery_date;
@@ -717,10 +714,10 @@ export class PatientDossierUseCase {
       }
       return stripMarkdown(translateValue(has ?? false, lang));
     }
-    if (sectionName === "PlannedCurativeSurgery" || sectionName === "PlannedSurgery") {
+    if (sectionName === "PlannedCurativeSurgery") {
       return stripMarkdown(translateValue(rawObj.planned_curative_surgery ?? false, lang));
     }
-    if (sectionName === "ChemotherapyTreament" || sectionName === "Chemotherapy") {
+    if (sectionName === "ChemotherapyTreament") {
       if (rawObj.chemotherapy === false) return translateValue(false, lang);
       if (rawObj.chemotherapy_name) return stripMarkdown(String(rawObj.chemotherapy_name));
       if (subCards.length > 0) {

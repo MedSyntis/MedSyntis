@@ -133,11 +133,7 @@ export interface MedsyntisApiPort {
   ): Promise<ResourceDocument>;
   reindexResource(filename: string, domain: ClinicalDomain): Promise<void>;
   deleteResource(filename: string, domain: ClinicalDomain): Promise<void>;
-  getResourcePdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    formFile?: string,
-  ): Promise<Buffer | null>;
+  getResourcePdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null>;
   listAgents(domain: ClinicalDomain, language: Language): Promise<AgentModuleInfo[]>;
   askGuidelineQuestion(
     question: string,

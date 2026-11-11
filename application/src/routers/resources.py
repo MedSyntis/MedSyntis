@@ -262,12 +262,10 @@ def _best_token_match(raw_query: str, candidates: list[str]) -> str | None:
     return best_file if best_score >= 3 else None
 
 
-def _resolve_resource_pdf_path(
-    config, raw_name: str, form_file: str | None = None
-) -> tuple[str, str] | None:
+def _resolve_resource_pdf_path(config, raw_name: str) -> tuple[str, str] | None:
     """
-    Dynamically resolve a citation label or filename against the domain's indexed
-    resources directory (`additional_path`) or patient records directory (`rcp.path`).
+    Dynamically resolve a citation label or filename strictly against the domain's indexed
+    clinical reference resources directory (`additional_path`).
     """
     cleaned = os.path.basename((raw_name or "").strip().replace("\\", "/"))
     if not cleaned or ".." in raw_name or "\0" in raw_name:
@@ -310,7 +308,6 @@ def _resolve_resource_pdf_path(
 def get_resource_file(
     filename: str,
     config: DomainConfigDep,
-    form_file: str | None = None,
 ):
     """Serve a clinical reference resource PDF inline after validating safe path boundaries."""
     if ".." in filename or "\0" in filename:
@@ -319,7 +316,7 @@ def get_resource_file(
             detail="Nom de fichier invalide.",
         )
 
-    resolved = _resolve_resource_pdf_path(config, filename, form_file=form_file)
+    resolved = _resolve_resource_pdf_path(config, filename)
     if resolved is None:
         if not is_safe_filename(filename):
             raise HTTPException(

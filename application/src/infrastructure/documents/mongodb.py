@@ -344,13 +344,22 @@ class Mongodb:
             last_name=patient_data.get("last_name"),
         )
 
+        dob_val = patient_data.get("date_birth")
+        verification_required = bool(
+            patient_data.get(
+                "identity_verification_required",
+                dob_val is None or not name_key,
+            )
+        )
+
         upsertable = {
             "patient_id": patient_id,
             "name_key": name_key,
+            "identity_verification_required": verification_required,
             "first_name": patient_data.get("first_name", ""),
             "last_name": patient_data.get("last_name", ""),
             "born_name": patient_data.get("born_name"),
-            "date_birth": patient_data.get("date_birth"),
+            "date_birth": dob_val,
             "gender": (
                 patient_data["gender"].value
                 if hasattr(patient_data.get("gender"), "value")

@@ -1434,7 +1434,7 @@ export async function buildServer({
 
     const safeFormFile =
       query.formFile && isSafeFilename(query.formFile) ? query.formFile : undefined;
-    let buf = await api.getResourcePdfBuffer(filename, session.domain, safeFormFile);
+    let buf = await api.getResourcePdfBuffer(filename, session.domain);
 
     if (!buf && safeFormFile) {
       buf = await api.getFormPdfBuffer(safeFormFile, session.domain);

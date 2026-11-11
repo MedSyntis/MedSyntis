@@ -76,21 +76,25 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await page.getByTestId("btn_toggle_all_sections").click();
     await expect(page.getByTestId("reasoning-TumorLocation")).toBeVisible();
 
-    // Edit Chemotherapy section inline
-    await page.getByTestId("btn_edit_section_Chemotherapy").click();
-    const chemoInput = page.locator("#inp-Chemotherapy-chemotherapy_name");
+    // Edit ChemotherapyTreament section inline
+    await page.getByTestId("btn_edit_section_ChemotherapyTreament").click();
+    const chemoInput = page.locator("#inp-ChemotherapyTreament-chemotherapy_name");
     await expect(chemoInput).toBeVisible();
     await chemoInput.fill("FOLFIRINOX modifié (8 cures validées RCP)");
-    await page.getByTestId("btn_save_section_Chemotherapy").click();
+    await page.getByTestId("btn_save_section_ChemotherapyTreament").click();
 
-    await expect(page.getByTestId("section-Chemotherapy")).toContainText("Modifié manuellement");
-    await expect(page.getByTestId("section-Chemotherapy")).toContainText(
+    await expect(page.getByTestId("section-ChemotherapyTreament")).toContainText(
+      "Modifié manuellement",
+    );
+    await expect(page.getByTestId("section-ChemotherapyTreament")).toContainText(
       "FOLFIRINOX modifié (8 cures validées RCP)",
     );
 
-    // Rerun TumorBiology and verify Chemotherapy manual edit is preserved
+    // Rerun TumorBiology and verify ChemotherapyTreament manual edit is preserved
     await page.getByTestId("btn_rerun_section_TumorBiology").click();
-    await expect(page.getByTestId("section-Chemotherapy")).toContainText("Modifié manuellement");
+    await expect(page.getByTestId("section-ChemotherapyTreament")).toContainText(
+      "Modifié manuellement",
+    );
 
     // Switch to Opinions tab, inspect missing items checklist, and expand specialist opinion
     await page.getByTestId("tab-opinions").click();

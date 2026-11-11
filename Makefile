@@ -48,7 +48,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st stop-prod restart-prod prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st stop-prod restart-prod prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
 
 ## Show available Makefile targets
 help:
@@ -97,6 +97,7 @@ help:
 	@echo -e "  $(YELLOW)make hooks-all$(RESET)           Run all Git pre-commit hooks (prek) across the entire repository"
 	@echo -e "  $(YELLOW)make e2e-web$(RESET)             Run Playwright E2E clinical & mobile journeys in $(WEB_DIR)/"
 	@echo -e "  $(YELLOW)make get-bugs$(RESET)            Fetch and display bug reports stored in MongoDB"
+	@echo -e "  $(YELLOW)make migrate$(RESET)             Migrate legacy PDFs, .bbox sidecars, MongoDB schemas/IDs, and Milvus collections (DRY_RUN=1 to preview)"
 	@echo -e "  $(YELLOW)make patient-id-migrate$(RESET)  Migrate legacy cleartext patient_id slugs in MongoDB to SHA-256 IDs (DRY_RUN=1 to preview)"
 	@echo ""
 	@echo -e "$(GREEN)Infrastructure & Local Ollama Targets:$(RESET)"
@@ -414,6 +415,22 @@ docker-build-web:
 get-bugs:
 	@echo -e "$(CYAN)--> Fetching bug reports from MongoDB...$(RESET)"
 	@cd $(APP_DIR) && $(UV) run python scripts/get_bugs.py
+
+## Migrate legacy PDFs, .bbox sidecars, MongoDB schemas/identities, and Milvus collections (set DRY_RUN=1 to preview, DOMAIN=oncology to filter, SKIP_VECTORDB=1 to skip Milvus)
+migrate:
+	@echo -e "$(CYAN)--> Running canonical MedSyntis storage & schema migration...$(RESET)"
+	@MIGRATE_ARGS=""; \
+	if [ "$(DRY_RUN)" = "1" ] || [ "$(DRY_RUN)" = "true" ]; then MIGRATE_ARGS="$$MIGRATE_ARGS --dry-run"; fi; \
+	if [ "$(SKIP_VECTORDB)" = "1" ] || [ "$(SKIP_VECTORDB)" = "true" ]; then MIGRATE_ARGS="$$MIGRATE_ARGS --skip-vectordb"; fi; \
+	if [ -n "$(DOMAIN)" ]; then MIGRATE_ARGS="$$MIGRATE_ARGS --domain $(DOMAIN)"; fi; \
+	if [ -x "$(APP_DIR)/.venv/bin/python" ] || command -v "$(UV)" >/dev/null 2>&1; then \
+		cd $(APP_DIR) && $(UV) run python scripts/migrate.py $$MIGRATE_ARGS; \
+	elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^medsyntis-api$$'; then \
+		docker exec medsyntis-api uv run --no-sync python scripts/migrate.py $$MIGRATE_ARGS; \
+	else \
+		echo -e "  [$(RED)ERROR$(RESET)] Neither local uv/virtualenv nor running medsyntis-api container found."; \
+		exit 1; \
+	fi
 
 ## Migrate legacy cleartext patient_id values in MongoDB to SHA-256 pseudonymized IDs (set DRY_RUN=1 to preview, DOMAIN=oncology to filter)
 patient-id-migrate:

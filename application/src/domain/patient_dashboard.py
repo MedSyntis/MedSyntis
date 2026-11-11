@@ -684,11 +684,6 @@ def build_patient_metric_series(
 
         for pos, (dt, _, doc) in enumerate(dated_forms):
             sec_data = doc.get(desc.section)
-            if (
-                not isinstance(sec_data, dict)
-                and desc.section == "ChemotherapyTreament"
-            ):
-                sec_data = doc.get("Chemotherapy")
             if not isinstance(sec_data, dict):
                 continue
             raw_val = sec_data.get(desc.field)
@@ -722,11 +717,6 @@ def build_patient_metric_series(
             manual_edits = doc.get("manual_edits")
             manual_meta = (
                 manual_edits.get(desc.section)
-                or (
-                    manual_edits.get("Chemotherapy")
-                    if desc.section == "ChemotherapyTreament"
-                    else None
-                )
                 if isinstance(manual_edits, dict)
                 else None
             )

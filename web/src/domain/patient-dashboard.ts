@@ -265,10 +265,7 @@ export function buildPatientMetricSeriesFromForms(
     let prevNumeric: number | null = null;
 
     chronological.forEach((form, idx) => {
-      let sec = form.sections[spec.section];
-      if (!sec && spec.section === "ChemotherapyTreament") {
-        sec = form.sections.Chemotherapy;
-      }
+      const sec = form.sections[spec.section];
       if (!sec) return;
       let rawVal = sec[spec.field];
       if (
@@ -300,9 +297,7 @@ export function buildPatientMetricSeriesFromForms(
             ? Math.min(1, Math.max(0, daysSinceFirst / totalSpanDays))
             : idx / (chronological.length - 1);
 
-      const manualMeta =
-        form.manualEdits?.[spec.section] ??
-        (spec.section === "ChemotherapyTreament" ? form.manualEdits?.Chemotherapy : undefined);
+      const manualMeta = form.manualEdits?.[spec.section];
       const isManual = Boolean(manualMeta);
 
       let deltaNumeric: number | null = null;
