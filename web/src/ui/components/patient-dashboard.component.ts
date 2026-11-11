@@ -68,6 +68,7 @@ const MFM_METRIC_KEYS = new Set<string>([
 
 interface SeriesVisualConfig {
   color: string;
+  tokenVar: string;
   symbol: "circle" | "diamond" | "rect" | "triangle";
   lineType: "solid" | "dashed" | "dotted";
   lineWidth: number;
@@ -83,6 +84,7 @@ const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = Object.fromEntrie
       [
         "MotorFunctionStatus.mfm_total_score",
         "#0f766e",
+        "var(--ds-chart-series-1)",
         "circle",
         "solid",
         3,
@@ -93,6 +95,7 @@ const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = Object.fromEntrie
       [
         "MotorFunctionStatus.mfm_d1_score",
         "#0284c7",
+        "var(--ds-chart-series-2)",
         "diamond",
         "solid",
         2.2,
@@ -103,6 +106,7 @@ const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = Object.fromEntrie
       [
         "MotorFunctionStatus.mfm_d2_score",
         "#7c3aed",
+        "var(--ds-chart-series-3)",
         "rect",
         "dashed",
         2.2,
@@ -113,6 +117,7 @@ const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = Object.fromEntrie
       [
         "MotorFunctionStatus.mfm_d3_score",
         "#d97706",
+        "var(--ds-chart-series-4)",
         "triangle",
         "dotted",
         2.2,
@@ -121,10 +126,11 @@ const MFM_SERIES_VISUALS: Record<string, SeriesVisualConfig> = Object.fromEntrie
         "MFM D3",
       ],
     ] as const
-  ).map(([key, color, symbol, lineType, lineWidth, labelFr, labelEn, shortLabel]) => [
+  ).map(([key, color, tokenVar, symbol, lineType, lineWidth, labelFr, labelEn, shortLabel]) => [
     key,
     {
       color,
+      tokenVar,
       symbol,
       lineType,
       lineWidth,
@@ -142,6 +148,7 @@ function resolveSeriesVisual(
   fallbackIndex = 0,
 ): {
   color: string;
+  tokenVar: string;
   symbol: "circle" | "diamond" | "rect" | "triangle";
   lineType: "solid" | "dashed" | "dotted";
   lineWidth: number;
@@ -152,6 +159,7 @@ function resolveSeriesVisual(
   if (mfmCfg) {
     return {
       color: mfmCfg.color,
+      tokenVar: mfmCfg.tokenVar,
       symbol: mfmCfg.symbol,
       lineType: mfmCfg.lineType,
       lineWidth: mfmCfg.lineWidth,
@@ -161,22 +169,35 @@ function resolveSeriesVisual(
   }
   const palette: Array<{
     color: string;
+    tokenVar: string;
     symbol: "circle" | "diamond" | "rect" | "triangle";
     lineType: "solid" | "dashed" | "dotted";
   }> = [
-    { color: "#0f766e", symbol: "circle", lineType: "solid" },
-    { color: "#0284c7", symbol: "diamond", lineType: "solid" },
-    { color: "#7c3aed", symbol: "rect", lineType: "dashed" },
-    { color: "#d97706", symbol: "triangle", lineType: "dotted" },
+    { color: "#0f766e", tokenVar: "var(--ds-chart-series-1)", symbol: "circle", lineType: "solid" },
+    {
+      color: "#0284c7",
+      tokenVar: "var(--ds-chart-series-2)",
+      symbol: "diamond",
+      lineType: "solid",
+    },
+    { color: "#7c3aed", tokenVar: "var(--ds-chart-series-3)", symbol: "rect", lineType: "dashed" },
+    {
+      color: "#d97706",
+      tokenVar: "var(--ds-chart-series-4)",
+      symbol: "triangle",
+      lineType: "dotted",
+    },
   ];
   const pick = palette[fallbackIndex % palette.length] ?? {
     color: "#0f766e",
+    tokenVar: "var(--ds-chart-series-1)",
     symbol: "circle" as const,
     lineType: "solid" as const,
   };
   const resolvedLabel = resolveClinicalMetricLabel(series, lang);
   return {
     color: pick.color,
+    tokenVar: pick.tokenVar,
     symbol: pick.symbol,
     lineType: pick.lineType,
     lineWidth: fallbackIndex === 0 ? 3 : 2.2,
@@ -282,7 +303,7 @@ export function renderMultiMetricSeriesEChartsSvg(
           numericValue: pt.numericValue,
           seriesKey: series.metricKey,
           seriesLabel: vis.label,
-          seriesColor: pt.isManual ? "#b45309" : vis.color,
+          seriesColor: pt.isManual ? "var(--ds-manual)" : vis.tokenVar,
           dateLabel: pt.formDateLabel || sess.formDateLabel,
           exactValue: exactVal,
           deltaDisplay: deltaStr,
@@ -340,6 +361,7 @@ export function renderMultiMetricSeriesEChartsSvg(
               symbol: "diamond" as const,
               lineType: "dashed" as const,
               color: "#0284c7",
+              tokenVar: "var(--ds-chart-series-2)",
             },
             {
               sideKey: "G" as const,
@@ -347,6 +369,7 @@ export function renderMultiMetricSeriesEChartsSvg(
               symbol: "triangle" as const,
               lineType: "dotted" as const,
               color: "#7c3aed",
+              tokenVar: "var(--ds-chart-series-3)",
             },
           ]) {
             const sideSeriesIndex = echartsSeries.length;
@@ -369,7 +392,7 @@ export function renderMultiMetricSeriesEChartsSvg(
                     numericValue: valSide,
                     seriesKey: `${series.metricKey}:${side.sideKey}`,
                     seriesLabel: sideFullLabel,
-                    seriesColor: side.color,
+                    seriesColor: pt.isManual ? "var(--ds-manual)" : side.tokenVar,
                     dateLabel: pt.formDateLabel || sess.formDateLabel,
                     exactValue: formatExactPointValueWithUnit(String(valSide), series.unit),
                     deltaDisplay: "",
@@ -834,7 +857,7 @@ function renderMfmCombinedChartCard(
           ? `<span class="ds-raw-pill__delta">Δ ${esc(pt.deltaDisplay)}</span>`
           : "";
         return `<div class="ds-raw-pill" role="button" data-testid="mfm_legend_item_${esc(s.metricKey)}" data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
-          <span class="ds-chart-legend__dot" style="--legend-color:${esc(vis.color)}" aria-hidden="true"></span>
+          <span class="ds-chart-legend__dot" style="--legend-color:${esc(vis.tokenVar)}" aria-hidden="true"></span>
           <span class="ds-raw-pill__series">${esc(vis.shortLabel)}</span>
           <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
           <strong class="ds-raw-pill__val ds-metric-pill__value ds-markdown-inline">${esc(exactVal)}</strong>

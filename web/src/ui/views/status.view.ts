@@ -124,10 +124,9 @@ export function renderStatusPage(opts: StatusPageOptions): string {
       : tr(lang, "RCP Oncologie Digestive", "Digestive Oncology MDT");
 
   const contrastPref = session.contrast ?? "auto";
-  const effectiveContrast = contrastPref === "high" ? "high" : "standard";
 
   const pageHtml = html`<!doctype html>
-<html lang="${lang}" data-theme="${session.theme}" data-theme-pref="${session.theme}" data-contrast="${effectiveContrast}" data-contrast-pref="${contrastPref}">
+<html lang="${lang}" data-theme="${session.theme}" data-theme-pref="${session.theme}" data-contrast="${contrastPref}" data-contrast-pref="${contrastPref}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">

@@ -36,6 +36,7 @@ import type {
   PatientRecordSummaryView,
   QueueJobItem,
   QueueStats,
+  RawCompletenessStatus,
   ResourceDocument,
 } from "../../domain/types.js";
 import {
@@ -201,10 +202,24 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       typeof raw.missing_count === "number" ? raw.missing_count : missingItems.length;
     const processingStatus = String(raw.processing_status ?? "COMPLETED");
     const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
-    const isComplete =
-      isAiCompleted &&
-      (typeof raw.is_complete === "boolean" ? raw.is_complete : missingCount === 0) &&
-      missingCount === 0;
+    const rawCompStatusStr = String(raw.completeness_status ?? "")
+      .trim()
+      .toLowerCase();
+    const completenessStatus: RawCompletenessStatus = !isAiCompleted
+      ? "pending"
+      : rawCompStatusStr === "yes" ||
+          rawCompStatusStr === "partial" ||
+          rawCompStatusStr === "no" ||
+          rawCompStatusStr === "pending"
+        ? rawCompStatusStr
+        : raw.is_complete === true
+          ? "yes"
+          : raw.is_complete === false
+            ? "no"
+            : missingCount === 0
+              ? "yes"
+              : "no";
+    const isComplete = completenessStatus === "yes";
     const specialties = Array.isArray(raw.specialties)
       ? (raw.specialties as string[])
       : Array.isArray(raw.experts)
@@ -237,6 +252,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       priorityReason,
       priorityReasons,
       isComplete,
+      completenessStatus,
       missingCount,
       missingItems,
       careAdaptationSuggested:
@@ -371,19 +387,63 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           ? (rawMetrics.missing as string[]).filter((x) => !hiddenSet.has(x))
           : allMissingItems.filter((x) => !hiddenSet.has(x));
     const missingCount = missingItems.length;
+    const rawManualEdits =
+      ((raw.manual_edits ?? raw.manually_edited_sections) as Record<
+        string,
+        Record<string, unknown>
+      >) ?? {};
+    const manualEdits: MdtFormDetail["manualEdits"] = {};
+    for (const [secKey, metaVal] of Object.entries(rawManualEdits)) {
+      if (metaVal && typeof metaVal === "object" && metaVal.is_manual !== false) {
+        manualEdits[secKey] = metaVal as MdtFormDetail["manualEdits"][string];
+      }
+    }
+
     const processingStatus = String(raw.processing_status ?? "COMPLETED");
     const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
     const hasMtdCompleted = Boolean(
       sections.MTDCompleted && Object.keys(sections.MTDCompleted).length > 0,
     );
-    const isComplete =
-      hideMissingItems || (allMissingItems.length > 0 && missingCount === 0)
-        ? true
-        : !isAiCompleted || !hasMtdCompleted
-          ? false
-          : typeof rawMetrics.is_complete === "boolean"
-            ? rawMetrics.is_complete
-            : derivedIsComplete;
+    const isMtdManual = Boolean(manualEdits.MTDCompleted);
+    const isEvaluated = (isAiCompleted || isMtdManual) && hasMtdCompleted;
+    const rawMetricsStatusStr = String(rawMetrics.completeness_status ?? "")
+      .trim()
+      .toLowerCase();
+    const completenessStatus: RawCompletenessStatus = !isEvaluated
+      ? "pending"
+      : rawMetricsStatusStr === "yes" ||
+          rawMetricsStatusStr === "partial" ||
+          rawMetricsStatusStr === "no" ||
+          (rawMetricsStatusStr === "pending" && !isMtdManual)
+        ? (rawMetricsStatusStr as RawCompletenessStatus)
+        : rawCompFlag === true ||
+            rawCompNorm === "true" ||
+            rawCompNorm === "yes" ||
+            rawCompNorm === "oui"
+          ? "yes"
+          : rawCompNorm === "partial" || rawCompNorm === "partiel"
+            ? "partial"
+            : rawCompFlag === false ||
+                rawCompNorm === "false" ||
+                rawCompNorm === "no" ||
+                rawCompNorm === "non"
+              ? "no"
+              : typeof rawMetrics.is_complete === "boolean"
+                ? rawMetrics.is_complete
+                  ? "yes"
+                  : "no"
+                : derivedIsComplete
+                  ? "yes"
+                  : "no";
+    const isComplete = completenessStatus === "yes";
+    const completenessTone: "green" | "orange" | "red" | "neutral" =
+      completenessStatus === "yes"
+        ? "green"
+        : completenessStatus === "partial"
+          ? "orange"
+          : completenessStatus === "pending"
+            ? "neutral"
+            : "red";
     const specialties = Array.isArray(rawMetrics.specialties)
       ? (rawMetrics.specialties as string[])
       : Array.isArray(rawMetrics.experts)
@@ -396,6 +456,8 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         rawMetrics.priority_level ?? rawMetrics.urgency ?? highestPriority ?? "none",
       ),
       is_complete: isComplete,
+      completeness_status: completenessStatus,
+      completeness_tone: completenessTone,
       missing_count: missingCount,
       missing_items: missingItems,
       all_missing_items: allMissingItems,
@@ -412,18 +474,6 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           : null,
       specialties,
     };
-
-    const rawManualEdits =
-      ((raw.manual_edits ?? raw.manually_edited_sections) as Record<
-        string,
-        Record<string, unknown>
-      >) ?? {};
-    const manualEdits: MdtFormDetail["manualEdits"] = {};
-    for (const [secKey, metaVal] of Object.entries(rawManualEdits)) {
-      if (metaVal && typeof metaVal === "object" && metaVal.is_manual !== false) {
-        manualEdits[secKey] = metaVal as MdtFormDetail["manualEdits"][string];
-      }
-    }
 
     return {
       file: String(raw.file ?? ""),
@@ -1590,7 +1640,19 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       priorityReasons: Array.isArray(it.urgency_reasons)
         ? (it.urgency_reasons as string[]).map(String).filter(Boolean)
         : [],
-      isComplete: Boolean(it.is_complete ?? true),
+      isComplete:
+        typeof it.is_complete === "boolean"
+          ? it.is_complete
+          : String(it.completeness_status ?? "").toLowerCase() === "yes",
+      completenessStatus: (["yes", "partial", "no", "pending"].includes(
+        String(it.completeness_status ?? "").toLowerCase(),
+      )
+        ? String(it.completeness_status).toLowerCase()
+        : typeof it.is_complete === "boolean"
+          ? it.is_complete
+            ? "yes"
+            : "no"
+          : "pending") as RawCompletenessStatus,
       missingCount: Number(it.missing_count ?? 0),
       missingItems: Array.isArray(it.missing_items)
         ? (it.missing_items as string[]).map(String)
@@ -1650,7 +1712,19 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       priorityReasons: Array.isArray(c.urgency_reasons)
         ? (c.urgency_reasons as string[]).map(String).filter(Boolean)
         : [],
-      isComplete: Boolean(c.is_complete ?? true),
+      isComplete:
+        typeof c.is_complete === "boolean"
+          ? c.is_complete
+          : String(c.completeness_status ?? "").toLowerCase() === "yes",
+      completenessStatus: (["yes", "partial", "no", "pending"].includes(
+        String(c.completeness_status ?? "").toLowerCase(),
+      )
+        ? String(c.completeness_status).toLowerCase()
+        : typeof c.is_complete === "boolean"
+          ? c.is_complete
+            ? "yes"
+            : "no"
+          : "pending") as RawCompletenessStatus,
       missingCount: Number(c.missing_count ?? 0),
       missingItems: Array.isArray(c.missing_items) ? (c.missing_items as string[]).map(String) : [],
       careAdaptationSuggested:

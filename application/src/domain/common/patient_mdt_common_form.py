@@ -858,26 +858,25 @@ class PatientMDTForm:
             and isinstance(d["MTDCompleted"], dict)
             and len(d["MTDCompleted"]) > 0
         )
+        raw_status = processing_status
         status_upper = (
             (
-                processing_status.value
-                if isinstance(processing_status, Enum)
-                else str(processing_status or "COMPLETED")
+                raw_status.value
+                if isinstance(raw_status, Enum)
+                else str(
+                    raw_status or ("COMPLETED" if has_mtd_completed else "PENDING")
+                )
             )
             .strip()
             .upper()
         )
-        is_ai_completed = (
+        is_manually_edited = cls.is_section_manually_edited(d, "MTDCompleted")
+        is_ai_completed = is_manually_edited or (
             status_upper == "COMPLETED" and has_mtd_completed
-        ) or cls.is_section_manually_edited(d, "MTDCompleted")
+        )
 
-        if hide_missing_items or (
-            raw_missing and all(m in hidden_set for m in raw_missing)
-        ):
-            completeness_status = "yes"
-            is_complete = True
-        elif not is_ai_completed:
-            completeness_status = "no"
+        if not is_ai_completed:
+            completeness_status = "pending"
             is_complete = False
         elif raw_is_mtd_complete is True:
             completeness_status = "yes"
@@ -889,14 +888,18 @@ class PatientMDTForm:
             completeness_status = "no"
             is_complete = False
         else:
-            is_complete = len(missing) == 0
+            is_complete = len(raw_missing) == 0
             completeness_status = "yes" if is_complete else "no"
 
-        if completeness_status == "yes":
+        if completeness_status == "pending":
+            completeness_label = "En attente IA"
+            completeness_tone = "neutral"
+            completeness_summary = "En attente d'analyse IA"
+        elif completeness_status == "yes":
             completeness_label = "Oui"
             completeness_tone = "green"
             completeness_summary = (
-                f"{len(missing)} élément(s) facultatif manquant(s)"
+                f"{len(missing)} élément(s) facultatif(s) manquant(s)"
                 if len(missing) > 0
                 else "Dossier complet"
             )

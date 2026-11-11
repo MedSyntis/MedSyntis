@@ -383,17 +383,16 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           .join("");
 
   const contrastPref = session.contrast ?? "auto";
-  const effectiveContrast = contrastPref === "high" ? "high" : "standard";
 
   const html = `<!doctype html>
-<html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}" data-contrast="${effectiveContrast}" data-contrast-pref="${contrastPref}">
+<html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}" data-contrast="${esc(contrastPref)}" data-contrast-pref="${esc(contrastPref)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — MedSyntis</title>
   <link rel="icon" href="/public/img/medsyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=33">
-  <link rel="stylesheet" href="/public/css/components.css?v=33">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=${ASSET_VERSION}">
+  <link rel="stylesheet" href="/public/css/components.css?v=${ASSET_VERSION}">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -521,7 +520,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
 
         <!-- Menu contextuel d'accès rapide (...) -->
         <details class="ds-menu" data-testid="menu-topbar-actions">
-          <summary class="ds-menu__trigger" aria-label="Menu contextuel d'affichage et d'accès rapide" title="Plus d'options">
+          <summary class="ds-menu__trigger" aria-label="${esc(t("topbar.menu.aria", lang))}" title="${esc(t("topbar.menu.title", lang))}">
             ${iconSvg("ic-more-vert")}
           </summary>
           <div class="ds-menu__panel" role="menu">
@@ -543,12 +542,20 @@ export function renderLayout(opts: ShellLayoutOptions): string {
             <hr class="ds-menu__divider">
             <div class="ds-menu__header">${esc(t("topbar.contrast.heading", lang))}</div>
             <div role="group" aria-label="${esc(t("topbar.contrast.heading", lang))}" data-testid="contrast-selector">
-              <button type="button" class="ds-menu__item ${contrastPref !== "high" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${contrastPref !== "high" ? "true" : "false"}" data-menu-action="set-contrast" data-contrast-value="standard" data-testid="btn_contrast_standard">
+              <button type="button" class="ds-menu__item ${contrastPref === "auto" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${contrastPref === "auto" ? "true" : "false"}" data-menu-action="set-contrast" data-contrast-value="auto" data-testid="btn_contrast_auto">
                 ${iconSvg("ic-contrast")}
+                <span>${esc(t("topbar.contrast.auto", lang))}</span>
+              </button>
+              <button type="button" class="ds-menu__item ${contrastPref === "standard" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${contrastPref === "standard" ? "true" : "false"}" data-menu-action="set-contrast" data-contrast-value="standard" data-testid="btn_contrast_standard">
+                ${iconSvg("ic-contrast-standard")}
                 <span>${esc(t("topbar.contrast.standard", lang))}</span>
               </button>
+              <button type="button" class="ds-menu__item ${contrastPref === "medium" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${contrastPref === "medium" ? "true" : "false"}" data-menu-action="set-contrast" data-contrast-value="medium" data-testid="btn_contrast_medium">
+                ${iconSvg("ic-contrast-medium")}
+                <span>${esc(t("topbar.contrast.medium", lang))}</span>
+              </button>
               <button type="button" class="ds-menu__item ${contrastPref === "high" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${contrastPref === "high" ? "true" : "false"}" data-menu-action="set-contrast" data-contrast-value="high" data-testid="btn_contrast_high">
-                ${iconSvg("ic-contrast")}
+                ${iconSvg("ic-contrast-high")}
                 <span>${esc(t("topbar.contrast.high", lang))}</span>
               </button>
             </div>
@@ -648,7 +655,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=33"></script>
+  <script src="/public/js/app.js?v=${ASSET_VERSION}"></script>
 </body>
 </html>`;
   return session.hostBoundDomain ? stripDomainQuery(html) : html;
@@ -700,6 +707,52 @@ function renderPriorityBadgeHtml(
   </div>`;
 }
 
+function renderCompletenessBadgeHtml(
+  compl: ReturnType<typeof deriveCompletenessInfo>,
+  options?: {
+    testId?: string;
+    lang?: Language;
+    jumpSection?: string;
+    jumpTab?: "clinical" | "opinions";
+  },
+): string {
+  const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
+  const jumpAttrs = options?.jumpSection
+    ? ` role="button" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
+    : "";
+  const interactiveCls = options?.jumpSection ? " ds-badge--interactive" : "";
+  const hasItems = compl.missingItems.length > 0;
+  const badgeTabIndex = options?.jumpSection && !hasItems ? ' tabindex="0"' : "";
+  const badgeHtml = `<span class="ds-badge ${compl.badgeClass} ds-badge--sm${interactiveCls}"${testIdAttr}${jumpAttrs}${badgeTabIndex}>${iconSvg(compl.icon)} ${esc(compl.label)}</span>`;
+  if (!hasItems) {
+    return badgeHtml;
+  }
+  const lang = options?.lang ?? "fr";
+  const titleLabel = compl.isOptionalMissing
+    ? lang === "en"
+      ? "Optional missing items"
+      : "Éléments facultatifs manquants"
+    : compl.status === "partial"
+      ? lang === "en"
+        ? "Expected complementary items"
+        : "Éléments complémentaires attendus"
+      : lang === "en"
+        ? "Missing items"
+        : "Pièces manquantes";
+  const titleIcon = compl.isOptionalMissing
+    ? "ic-info"
+    : compl.status === "partial"
+      ? "ic-warning"
+      : "ic-error";
+  return `<div class="ds-hovercard"${jumpAttrs} tabindex="0">
+    ${badgeHtml}
+    <div class="ds-hovercard__panel" role="tooltip">
+      <span class="ds-hovercard__title">${iconSvg(titleIcon)} ${esc(titleLabel)}</span>
+      <ul class="ds-hovercard__list">${compl.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}</ul>
+    </div>
+  </div>`;
+}
+
 export function renderWorklistPage(
   view: WorklistViewResult,
   session: UserSession,
@@ -729,6 +782,7 @@ export function renderWorklistPage(
             const compl = deriveCompletenessInfo(
               {
                 is_complete: effectiveComplete,
+                completeness_status: proc.isProcessing ? "pending" : c.completenessStatus,
                 missing_count: c.missingCount,
                 missing_items: c.missingItems,
                 processing_status: proc.isProcessing ? "RUNNING" : c.processingStatus,
@@ -774,16 +828,7 @@ export function renderWorklistPage(
                 }</div>`
               : "";
 
-            const completenessCell =
-              !effectiveComplete && c.missingItems.length > 0
-                ? `<div class="ds-hovercard" tabindex="0">
-                    <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
-                    <div class="ds-hovercard__panel" role="tooltip">
-                      <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
-                      <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}</ul>
-                    </div>
-                  </div>`
-                : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`;
+            const completenessCell = renderCompletenessBadgeHtml(compl, { lang });
 
             const orientationCell =
               c.proposedCareType || c.summaryText
@@ -803,7 +848,14 @@ export function renderWorklistPage(
 
             const prioSortVal =
               c.priorityLevel === "high" ? "1" : c.priorityLevel === "medium" ? "2" : "3";
-            const complSortVal = effectiveComplete ? "1" : String(2 + Math.max(1, c.missingCount));
+            const complSortVal =
+              compl.status === "incomplete"
+                ? String(100 - Math.min(99, c.missingCount))
+                : compl.status === "partial"
+                  ? String(200 - Math.min(99, c.missingCount))
+                  : compl.status === "pending"
+                    ? "300"
+                    : "400";
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
             const rowCls = [
               c.priorityLevel === "high" ? "is-urgent" : "",
@@ -907,6 +959,7 @@ export function renderWorklistPage(
               const compl = deriveCompletenessInfo(
                 {
                   is_complete: effectiveComplete,
+                  completeness_status: proc.isProcessing ? "pending" : c.completenessStatus,
                   missing_count: c.missingCount,
                   missing_items: c.missingItems,
                   processing_status: proc.isProcessing ? "RUNNING" : c.processingStatus,
@@ -953,17 +1006,7 @@ export function renderWorklistPage(
                       reasons: c.priorityReasons,
                       lang,
                     })}
-                    ${
-                      !effectiveComplete && c.missingItems.length > 0
-                        ? `<div class="ds-hovercard" tabindex="0">
-                            <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
-                            <div class="ds-hovercard__panel" role="tooltip">
-                              <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
-                              <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}</ul>
-                            </div>
-                          </div>`
-                        : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`
-                    }
+                    ${renderCompletenessBadgeHtml(compl, { lang })}
                     ${
                       c.proposedCareType || c.summaryText
                         ? `<div class="ds-hovercard" tabindex="0">
@@ -1172,6 +1215,7 @@ export function renderWorklistPage(
           <select id="f-compl" name="completeness" class="ds-select" data-autosubmit="true" data-testid="select-completeness">
             <option value="all" ${(filter.completeness ?? "all") === "all" ? "selected" : ""}>Tous les dossiers</option>
             <option value="incomplete" ${filter.completeness === "incomplete" ? "selected" : ""}>Incomplets uniquement</option>
+            <option value="partial" ${filter.completeness === "partial" ? "selected" : ""}>Partiels uniquement</option>
             <option value="complete" ${filter.completeness === "complete" ? "selected" : ""}>Complets uniquement</option>
           </select>
         </div>
@@ -1406,11 +1450,11 @@ export function renderSectionDetailsPartial(
         </div>`;
       }
 
-      if (f.inputType === "textarea") {
+      if (f.inputType === "textarea" || (sec.name === "MTDCompleted" && f.key === "what_missing")) {
         const ph = f.placeholder || (f.nullable ? "Non renseigné (optionnel)" : "");
         return `<div class="ds-field">
           <label class="ds-label" for="${inputId}">${esc(f.label)}</label>
-          <textarea class="ds-textarea" rows="3" id="${inputId}" name="${esc(f.key)}" data-field-type="textarea" placeholder="${esc(ph)}">${esc(f.editValue)}</textarea>
+          <textarea class="ds-textarea" rows="3" id="${inputId}" name="${esc(f.key)}" data-field-type="${esc(f.inputType)}" placeholder="${esc(ph)}">${esc(f.editValue)}</textarea>
         </div>`;
       }
 
@@ -1534,20 +1578,21 @@ export function renderSectionDetailsPartial(
           )
           .join("");
 
-  const canDismissPerItem = (missingItemsState?.allItems.length ?? 0) > 1;
+  const canDismissPerItem = (missingItemsState?.allItems.length ?? 0) > 0;
   const isOptionalMissingList = Boolean(
     missingItemsState?.isOptional || sec.sectionTone === "green",
   );
   const missingListTitle = isOptionalMissingList
     ? "Éléments facultatifs manquants"
     : "Éléments manquants détectés";
+  const missingListIcon = isOptionalMissingList ? "ic-info" : "ic-warning";
   const missingItemsInteractiveHtml =
     sec.name === "MTDCompleted" && missingItemsState && missingItemsState.allItems.length > 0
       ? `<div class="ds-missing-panel" data-testid="missing-items-panel">
           <div class="ds-cluster" style="justify-content:space-between;margin-bottom:var(--ds-space-2)">
-            <span class="ds-label">${iconSvg("ic-warning", "ds-icon--xs")} ${missingListTitle} (${missingItemsState.visibleItems.length} affiché${missingItemsState.visibleItems.length > 1 ? "s" : ""}${missingItemsState.hiddenItems.length > 0 ? ` · ${missingItemsState.hiddenItems.length} masqué${missingItemsState.hiddenItems.length > 1 ? "s" : ""}` : ""})</span>
+            <span class="ds-label">${iconSvg(missingListIcon, "ds-icon--xs")} ${missingListTitle} (${missingItemsState.visibleItems.length} affiché${missingItemsState.visibleItems.length > 1 ? "s" : ""}${missingItemsState.hiddenItems.length > 0 ? ` · ${missingItemsState.hiddenItems.length} masqué${missingItemsState.hiddenItems.length > 1 ? "s" : ""}` : ""})</span>
             <form method="post" action="/forms/${fileParam}/missing-items?domain=${domainParam}" style="display:inline-flex">
-              <input type="hidden" name="hidden" value="${missingItemsState.hideAll ? "false" : "true"}">
+              <input type="hidden" name="hide_missing_items" value="${missingItemsState.hideAll ? "false" : "true"}">
               <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" data-testid="btn_toggle_missing_list">
                 ${iconSvg("ic-eye")} ${missingItemsState.hideAll ? "Afficher la liste" : "Masquer la liste"}
               </button>
@@ -1563,8 +1608,9 @@ export function renderSectionDetailsPartial(
                         idx: number,
                       ) => `<li class="ds-missing-list__item" data-testid="missing-item-${idx}">
                         <div class="ds-missing-list__content">
-                          <span class="ds-missing-list__icon" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--xs")}</span>
+                          <span class="ds-missing-list__icon" aria-hidden="true">${iconSvg(missingListIcon, "ds-icon--xs")}</span>
                           <div class="ds-missing-list__text ds-markdown">${renderSafeMarkdown(item)}</div>
+                          ${isOptionalMissingList ? `<span class="ds-badge ds-badge--neutral ds-badge--sm" style="flex-shrink:0">Facultatif</span>` : ""}
                         </div>
                         ${
                           canDismissPerItem
@@ -1678,13 +1724,17 @@ export function renderSectionDetailsPartial(
   const resolvedMtdTone =
     sec.name === "MTDCompleted"
       ? (sec.sectionTone ??
-        (sec.summaryText.toLowerCase().includes("partiel")
-          ? "orange"
-          : sec.summaryText.toLowerCase().includes("incomplet") ||
-              (sec.summaryText.toLowerCase().includes("manquant") &&
-                !sec.summaryText.toLowerCase().includes("facultatif"))
-            ? "red"
-            : "green"))
+        (sec.summaryText.toLowerCase().includes("en attente") ||
+        sec.summaryText.toLowerCase().includes("pending")
+          ? "neutral"
+          : sec.summaryText.toLowerCase().includes("partiel") ||
+              sec.summaryText.toLowerCase().includes("partial")
+            ? "orange"
+            : sec.summaryText.toLowerCase().includes("incomplet") ||
+                (sec.summaryText.toLowerCase().includes("manquant") &&
+                  !sec.summaryText.toLowerCase().includes("facultatif"))
+              ? "red"
+              : "green"))
       : sec.name === "CareOrientationProposal"
         ? (sec.sectionTone ?? "green")
         : null;
@@ -1820,9 +1870,9 @@ export function renderDossierPage(
   const timelineHtml = `${dossier.timeline
     .map((step) => {
       const markerCls =
-        step.priorityLevel === "high"
+        step.priorityLevel === "high" || step.completenessStatus === "incomplete"
           ? "ds-timeline__marker--high"
-          : step.priorityLevel === "medium"
+          : step.priorityLevel === "medium" || step.completenessStatus === "partial"
             ? "ds-timeline__marker--medium"
             : "ds-timeline__marker--low";
       const markerIcon =
@@ -1830,13 +1880,21 @@ export function renderDossierPage(
           ? "ic-priority-high"
           : step.priorityLevel === "medium"
             ? "ic-trend-up"
-            : "ic-check";
+            : step.completenessStatus === "incomplete"
+              ? "ic-error"
+              : step.completenessStatus === "partial"
+                ? "ic-warning"
+                : step.completenessStatus === "pending"
+                  ? "ic-clock"
+                  : "ic-check";
       const stepTone =
-        step.priorityLevel === "high"
+        step.priorityLevel === "high" || step.completenessStatus === "incomplete"
           ? "red"
-          : step.priorityLevel === "medium"
+          : step.priorityLevel === "medium" || step.completenessStatus === "partial"
             ? "orange"
-            : "green";
+            : step.completenessStatus === "pending"
+              ? "neutral"
+              : "green";
       const stepDurationHtml =
         step.durationSec !== null && step.durationSec > 0
           ? `<span class="ds-timeline__duration" title="${lang === "fr" ? "Temps global de génération IA de cette fiche RCP" : "Global AI generation time for this MDT record"}">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(step.durationSec)}</span>`
@@ -1849,7 +1907,7 @@ export function renderDossierPage(
               <span class="ds-timeline__date-main">${esc(step.mdtDate)} ${step.isLatest ? iconSvg("ic-star", "ds-icon--xs") : ""}</span>
               ${stepDurationHtml}
             </span>
-            <span class="ds-timeline__meta">${esc(step.priorityLabel)} · ${esc(step.orientationLabel)}</span>
+            <span class="ds-timeline__meta">${esc(step.priorityLabel)} · ${esc(step.completenessLabel)} · ${esc(step.orientationLabel)}</span>
           </span>
         </a>
       </li>`;
@@ -2240,21 +2298,12 @@ export function renderDossierPage(
               jumpSection: "CareOrientationProposal",
               jumpTab: "opinions",
             })}
-            <div class="ds-hovercard" role="button" data-jump-section="MTDCompleted" data-jump-tab="opinions" tabindex="0">
-              <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm ds-badge--interactive" role="button" data-jump-section="MTDCompleted" data-jump-tab="opinions" data-testid="badge-completeness">
-                ${iconSvg(dossier.completenessBadge.icon)} ${esc(dossier.completenessBadge.label)}
-              </span>
-              ${
-                dossier.completenessBadge.missingItems.length > 0
-                  ? `<div class="ds-hovercard__panel" role="tooltip">
-                      <span class="ds-hovercard__title">${iconSvg("ic-warning")} Pièces manquantes</span>
-                      <ul class="ds-hovercard__list">
-                        ${dossier.completenessBadge.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}
-                      </ul>
-                    </div>`
-                  : ""
-              }
-            </div>
+            ${renderCompletenessBadgeHtml(dossier.completenessBadge, {
+              lang,
+              testId: "badge-completeness",
+              jumpSection: "MTDCompleted",
+              jumpTab: "opinions",
+            })}
             ${
               dossier.careProposal?.proposedCareType || dossier.careProposal?.clinicalRationale
                 ? `<div class="ds-hovercard" role="button" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" tabindex="0">
@@ -3533,6 +3582,7 @@ export function renderAgendaPage(
               const compl = deriveCompletenessInfo(
                 {
                   is_complete: item.isComplete,
+                  completeness_status: item.completenessStatus,
                   missing_count: item.missingCount,
                   missing_items: item.missingItems,
                 },
@@ -3560,16 +3610,7 @@ export function renderAgendaPage(
                 })
                 .join(" ");
 
-              const completenessBadge =
-                !item.isComplete && item.missingItems.length > 0
-                  ? `<div class="ds-hovercard" tabindex="0">
-                      <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
-                      <div class="ds-hovercard__panel" role="tooltip">
-                        <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
-                        <ul class="ds-hovercard__list">${item.missingItems.map((m) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(m)}</li>`).join("")}</ul>
-                      </div>
-                    </div>`
-                  : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`;
+              const completenessBadge = renderCompletenessBadgeHtml(compl, { lang });
 
               const isFirst = idx === 0;
               const isLast = idx === agenda.items.length - 1;

@@ -39,6 +39,7 @@ import {
   PreferencesBodySchema,
   parseWorklistFilter,
   QueueCleanBodySchema,
+  resolveContrastMode,
 } from "../infrastructure/validation/schemas.js";
 import {
   renderAgendaPage,
@@ -467,9 +468,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const rawTheme = (query.theme || cookies.ds_theme || config.defaultTheme).toLowerCase();
     const theme: ThemeMode = rawTheme === "dark" ? "dark" : rawTheme === "light" ? "light" : "auto";
 
-    const rawContrast = (query.contrast || cookies.ds_contrast || "auto").toLowerCase();
-    const contrast: ContrastMode =
-      rawContrast === "high" ? "high" : rawContrast === "standard" ? "standard" : "auto";
+    const contrast: ContrastMode = resolveContrastMode(
+      query.contrast || cookies.ds_contrast,
+      "auto",
+    );
 
     const expertMode = cookies.ds_expert === "true" || query.expert === "true";
 
@@ -1072,6 +1074,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
             session.domain,
             !isCancelToView,
             session.expertMode,
+            secView.name === "MTDCompleted" ? dossier.missingItemsState : undefined,
           ),
         );
     }
@@ -1162,10 +1165,24 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const secView = dossier?.sections.find((s) => s.name === section);
 
     if (req.headers["hx-request"] === "true" && secView) {
+      if (
+        section === "MTDCompleted" ||
+        section === "CareOrientationProposal" ||
+        section === "PatientAdministrative"
+      ) {
+        reply.header("x-refresh-dossier", "true");
+      }
       return reply
         .type("text/html; charset=utf-8")
         .send(
-          renderSectionDetailsPartial(secView, filename, session.domain, false, session.expertMode),
+          renderSectionDetailsPartial(
+            secView,
+            filename,
+            session.domain,
+            false,
+            session.expertMode,
+            secView.name === "MTDCompleted" ? dossier?.missingItemsState : undefined,
+          ),
         );
     }
 

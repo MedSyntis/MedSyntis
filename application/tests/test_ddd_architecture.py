@@ -277,8 +277,10 @@ class TestPureDomainEntitiesAndValueObjects:
             "**Pancréas** : Surveillance standard post-opératoire"
         ]
         assert "Hors périmètre" not in metrics_non_rel["urgency_reason"]
-        # Without MTDCompleted section evaluated by AI, is_complete must be False
+        # Without MTDCompleted section evaluated by AI, is_complete must be False and status is "pending"
         assert metrics["is_complete"] is False
+        assert metrics["completeness_status"] == "pending"
+        assert metrics["completeness_tone"] == "neutral"
 
         # Once MTDCompleted is present and processing_status is COMPLETED with no missing items, is_complete is True
         raw_doc["MTDCompleted"] = {
@@ -304,7 +306,8 @@ class TestPureDomainEntitiesAndValueObjects:
         assert metrics_opt["completeness_label"] == "Oui"
         assert metrics_opt["completeness_tone"] == "green"
         assert (
-            metrics_opt["completeness_summary"] == "2 élément(s) facultatif manquant(s)"
+            metrics_opt["completeness_summary"]
+            == "2 élément(s) facultatif(s) manquant(s)"
         )
 
         # If is_mtd_complete is "partial" ("Partiel"), tone is orange and is_complete is False
@@ -335,10 +338,25 @@ class TestPureDomainEntitiesAndValueObjects:
         assert metrics_no["completeness_tone"] == "red"
         assert metrics_no["completeness_summary"] == "2 élément(s) manquant(s)"
 
-        # If processing_status is not COMPLETED (e.g. PENDING_EXPERTS), is_complete must remain False
+        # Hiding missing items in the UI MUST NOT flip completeness_status to "yes":
+        # only an explicit practitioner change on is_mtd_complete changes completeness
+        raw_doc_hidden = {
+            **raw_doc,
+            "hidden_missing_items": ["Anatomopathologie", "TDM TAP"],
+            "hide_missing_items": True,
+        }
+        metrics_hidden = PatientMDTOncologicForm.extract_card_metrics(raw_doc_hidden)
+        assert metrics_hidden["missing"] == []
+        assert metrics_hidden["is_complete"] is False
+        assert metrics_hidden["completeness_status"] == "no"
+        assert metrics_hidden["completeness_tone"] == "red"
+
+        # If processing_status is not COMPLETED (e.g. PENDING_EXPERTS) and not manually edited, status is "pending"
         raw_doc["processing_status"] = RCPProcessingStatus.PENDING_EXPERTS.value
         metrics_pending = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
         assert metrics_pending["is_complete"] is False
+        assert metrics_pending["completeness_status"] == "pending"
+        assert metrics_pending["completeness_tone"] == "neutral"
 
     def test_cross_domain_care_orientation_proposal_collaborative_schema_and_metrics(
         self,

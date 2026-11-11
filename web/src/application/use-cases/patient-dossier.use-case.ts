@@ -28,6 +28,7 @@ import type {
   AgentModuleInfo,
   CitationRef,
   ClinicalDomain,
+  CompletenessStatus,
   DomainFormSchema,
   ExpertSuggestion,
   Language,
@@ -38,6 +39,7 @@ import type {
   PatientListItem,
   PatientRecordSummaryView,
   PriorityLevel,
+  RawCompletenessStatus,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
 import { stripMarkdown } from "../../ui/views/html.js";
@@ -88,7 +90,7 @@ export interface DossierSectionView {
   name: string;
   meta: SectionPresentationMeta;
   summaryText: string;
-  sectionTone?: "green" | "orange" | "red" | null;
+  sectionTone?: "green" | "orange" | "red" | "neutral" | null;
   fields: DossierFieldView[];
   subCards: DossierSubCardView[];
   references: CitationRef[];
@@ -108,6 +110,8 @@ export interface TimelineSessionItem {
   isLatest: boolean;
   priorityLevel: PriorityLevel;
   priorityLabel: string;
+  completenessStatus: CompletenessStatus;
+  completenessLabel: string;
   orientationLabel: string;
   durationSec: number | null;
 }
@@ -272,42 +276,46 @@ export class PatientDossierUseCase {
           )
         : allMissingItems.filter((x) => !hiddenSet.has(x));
     const hasMtdCompleted = Object.keys(mtdCompletedRaw).length > 0;
+    const isMtdManual = Boolean(
+      currentForm.manualEdits.MTDCompleted &&
+        currentForm.manualEdits.MTDCompleted.is_manual !== false,
+    );
     const isAiCompleted =
       String(currentForm.processingStatus ?? "COMPLETED")
         .trim()
         .toUpperCase() === "COMPLETED";
+    const isMtdEvaluated = (isAiCompleted || isMtdManual) && hasMtdCompleted;
     const rawMtdCompFlag = mtdNested.is_mtd_complete ?? mtdCompletedRaw.is_mtd_complete;
     const rawMtdCompNorm = String(rawMtdCompFlag ?? "")
       .trim()
       .toLowerCase();
-    const completenessStatus: "yes" | "partial" | "no" =
-      hideAllMissing || (allMissingItems.length > 0 && missingItems.length === 0)
-        ? "yes"
-        : !isAiCompleted || !hasMtdCompleted
-          ? "no"
-          : currentForm.metrics.completeness_status === "yes" ||
-              currentForm.metrics.completeness_status === "partial" ||
-              currentForm.metrics.completeness_status === "no"
-            ? currentForm.metrics.completeness_status
-            : rawMtdCompFlag === true ||
-                rawMtdCompNorm === "true" ||
-                rawMtdCompNorm === "yes" ||
-                rawMtdCompNorm === "oui"
-              ? "yes"
-              : rawMtdCompNorm === "partial" || rawMtdCompNorm === "partiel"
-                ? "partial"
-                : rawMtdCompFlag === false ||
-                    rawMtdCompNorm === "false" ||
-                    rawMtdCompNorm === "no" ||
-                    rawMtdCompNorm === "non"
-                  ? "no"
-                  : missingItems.length === 0
-                    ? "yes"
-                    : "no";
+    const completenessStatus: RawCompletenessStatus = !isMtdEvaluated
+      ? "pending"
+      : currentForm.metrics.completeness_status === "yes" ||
+          currentForm.metrics.completeness_status === "partial" ||
+          currentForm.metrics.completeness_status === "no"
+        ? currentForm.metrics.completeness_status
+        : rawMtdCompFlag === true ||
+            rawMtdCompNorm === "true" ||
+            rawMtdCompNorm === "yes" ||
+            rawMtdCompNorm === "oui"
+          ? "yes"
+          : rawMtdCompNorm === "partial" || rawMtdCompNorm === "partiel"
+            ? "partial"
+            : rawMtdCompFlag === false ||
+                rawMtdCompNorm === "false" ||
+                rawMtdCompNorm === "no" ||
+                rawMtdCompNorm === "non"
+              ? "no"
+              : allMissingItems.length === 0
+                ? "yes"
+                : "no";
     const isFormComplete = completenessStatus === "yes";
     const completenessBadge = deriveCompletenessInfo(
       {
         is_complete: isFormComplete,
+        completeness_status: completenessStatus,
+        is_manually_edited: isMtdManual,
         missing_count: missingItems.length,
         missing_items: missingItems,
         processing_status: currentForm.processingStatus,
@@ -370,6 +378,22 @@ export class PatientDossierUseCase {
     const timeline: TimelineSessionItem[] = sorted.map((f, idx) => {
       const fPrio = normalizePriorityLevel(f.metrics.priority_level);
       const fPrioInfo = derivePriorityBadgeInfo(fPrio, lang, true);
+      const fMtdRaw = (f.sections.MTDCompleted ?? {}) as Record<string, unknown>;
+      const fHasMtd = Object.keys(fMtdRaw).length > 0;
+      const fMtdManual = Boolean(
+        f.manualEdits.MTDCompleted && f.manualEdits.MTDCompleted.is_manual !== false,
+      );
+      const fCompl = deriveCompletenessInfo(
+        {
+          is_complete: f.metrics.is_complete,
+          completeness_status: !fHasMtd ? "pending" : f.metrics.completeness_status,
+          is_manually_edited: fMtdManual,
+          missing_count: f.metrics.missing_count,
+          missing_items: f.metrics.missing_items,
+          processing_status: f.processingStatus,
+        },
+        lang,
+      );
       const fOrient = deriveOrientationInfo(
         {
           care_adaptation_suggested:
@@ -393,6 +417,8 @@ export class PatientDossierUseCase {
         isLatest: idx === sorted.length - 1,
         priorityLevel: fPrio,
         priorityLabel: fPrioInfo.label,
+        completenessStatus: fCompl.status,
+        completenessLabel: fCompl.label,
         orientationLabel: fOrient.label,
         durationSec: fExecSum > 0 ? Math.round(fExecSum * 10) / 10 : null,
       };
@@ -602,6 +628,7 @@ export class PatientDossierUseCase {
     subCards: DossierSubCardView[],
     fields: DossierFieldView[],
     lang: Language,
+    form?: MdtFormDetail,
   ): string {
     if (sectionName === "TumorLocation") {
       return stripMarkdown(translateValue(rawObj.tumor_location, lang));
@@ -702,37 +729,57 @@ export class PatientDossierUseCase {
       return stripMarkdown(translateValue(rawObj.chemotherapy, lang));
     }
     if (sectionName === "MTDCompleted") {
-      const missing = Array.isArray(rawObj.what_missing) ? rawObj.what_missing.length : 0;
+      if (form?.metrics.completeness_status === "pending" || Object.keys(rawObj).length === 0) {
+        return t("completeness.pending", lang);
+      }
+      const rawList = Array.isArray(rawObj.what_missing)
+        ? rawObj.what_missing.filter((x) => Boolean(x) && x !== "no data").map(String)
+        : [];
+      const hideAll = Boolean(form?.metrics.hide_missing_items);
+      const hiddenSet = new Set(
+        Array.isArray(form?.metrics.hidden_missing_items)
+          ? form.metrics.hidden_missing_items.map(String)
+          : [],
+      );
+      const visibleMissing = hideAll ? 0 : rawList.filter((x) => !hiddenSet.has(x)).length;
       const rawComp = rawObj.is_mtd_complete;
       const normComp = String(rawComp ?? "")
         .trim()
         .toLowerCase();
       const status: "yes" | "partial" | "no" =
-        rawComp === true || normComp === "true" || normComp === "yes" || normComp === "oui"
-          ? "yes"
-          : normComp === "partial" || normComp === "partiel"
-            ? "partial"
-            : rawComp === false || normComp === "false" || normComp === "no" || normComp === "non"
-              ? "no"
-              : missing === 0
-                ? "yes"
-                : "no";
+        form?.metrics.completeness_status === "yes" ||
+        form?.metrics.completeness_status === "partial" ||
+        form?.metrics.completeness_status === "no"
+          ? form.metrics.completeness_status
+          : rawComp === true || normComp === "true" || normComp === "yes" || normComp === "oui"
+            ? "yes"
+            : normComp === "partial" || normComp === "partiel"
+              ? "partial"
+              : rawComp === false || normComp === "false" || normComp === "no" || normComp === "non"
+                ? "no"
+                : rawList.length === 0
+                  ? "yes"
+                  : "no";
       if (status === "yes") {
-        if (missing > 0) {
+        if (visibleMissing > 0) {
           return lang === "fr"
-            ? `${missing} élément(s) facultatif(s) manquant(s)`
-            : `${missing} optional missing item(s)`;
+            ? `${visibleMissing} élément(s) facultatif(s) manquant(s)`
+            : `${visibleMissing} optional missing item(s)`;
         }
         return lang === "fr" ? "Dossier complet" : "Complete";
       }
       if (status === "partial") {
-        if (missing > 0) {
-          return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+        if (visibleMissing > 0) {
+          return lang === "fr"
+            ? `Partiel · ${visibleMissing} élément(s) manquant(s)`
+            : `Partial · ${visibleMissing} missing item(s)`;
         }
         return lang === "fr" ? "Dossier partiel" : "Partial";
       }
-      if (missing > 0) {
-        return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+      if (visibleMissing > 0) {
+        return lang === "fr"
+          ? `Incomplet · ${visibleMissing} élément(s) manquant(s)`
+          : `Incomplete · ${visibleMissing} missing item(s)`;
       }
       return lang === "fr" ? "Dossier incomplet" : "Incomplete";
     }
@@ -1030,7 +1077,12 @@ export class PatientDossierUseCase {
           placeholder: lang === "fr" ? fieldSchema?.placeholderFr : fieldSchema?.placeholderEn,
           options: mapOptions(fieldSchema?.options),
           isLongText: inputType === "textarea" || LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
-          hiddenInReadView: !wasPresentInRaw,
+          hiddenInReadView:
+            !wasPresentInRaw ||
+            (sectionName === "MTDCompleted" &&
+              k === "what_missing" &&
+              Array.isArray(v) &&
+              v.length > 0),
           badgeTone,
         });
       }
@@ -1043,9 +1095,11 @@ export class PatientDossierUseCase {
         sectionName === "CareOrientationProposal"
           ? normalizePriorityLevel(rawObj.suggested_priority ?? form.metrics.priority_level)
           : null;
-      const sectionTone: "green" | "orange" | "red" | null =
+      const sectionTone: "green" | "orange" | "red" | "neutral" | null =
         sectionName === "MTDCompleted"
-          ? (form.metrics.completeness_tone ?? mtdFieldTone ?? "green")
+          ? form.metrics.completeness_status === "pending"
+            ? "neutral"
+            : (form.metrics.completeness_tone ?? mtdFieldTone ?? "neutral")
           : sectionName === "CareOrientationProposal"
             ? carePriorityLevel === "high"
               ? "red"
@@ -1054,13 +1108,14 @@ export class PatientDossierUseCase {
                 ? "orange"
                 : "green"
             : null;
-      const summaryText =
-        sectionName === "MTDCompleted" &&
-        lang === "fr" &&
-        typeof form.metrics.completeness_summary === "string" &&
-        form.metrics.completeness_summary.trim()
-          ? form.metrics.completeness_summary.trim()
-          : this.extractSectionHeaderSummary(sectionName, rawObj, subCards, fields, lang);
+      const summaryText = this.extractSectionHeaderSummary(
+        sectionName,
+        rawObj,
+        subCards,
+        fields,
+        lang,
+        form,
+      );
 
       const canonicalSection = resolveCanonicalSectionName(sectionName);
       const rawManualMeta =

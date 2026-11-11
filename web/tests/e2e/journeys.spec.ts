@@ -225,6 +225,19 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await page.getByTestId("btn_theme_light").click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
+    // Topbar contextual menu: cycle M3 contrast modes (Medium +0.5 -> High +1.0 -> Standard 0.0)
+    await page.getByTestId("menu-topbar-actions").locator("summary").click();
+    await page.getByTestId("btn_contrast_medium").click();
+    await expect(page.locator("html")).toHaveAttribute("data-contrast", "medium");
+
+    await page.getByTestId("menu-topbar-actions").locator("summary").click();
+    await page.getByTestId("btn_contrast_high").click();
+    await expect(page.locator("html")).toHaveAttribute("data-contrast", "high");
+
+    await page.getByTestId("menu-topbar-actions").locator("summary").click();
+    await page.getByTestId("btn_contrast_standard").click();
+    await expect(page.locator("html")).toHaveAttribute("data-contrast", "standard");
+
     // Collapse and expand the M3 Navigation Rail
     await page.getByTestId("btn_sidebar_toggle").click();
     await expect(page.locator("body")).toHaveClass(/ds-shell--sidebar-collapsed/);

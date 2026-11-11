@@ -48,10 +48,11 @@ export function formatRawEditValue(val: unknown, schema?: SectionFieldSchema): s
   }
   if (schema?.inputType === "string_list") {
     if (Array.isArray(val)) {
+      const sep = schema.key === "what_missing" ? "\n" : ", ";
       return val
         .map((item) => String(item ?? "").trim())
         .filter((s) => s.length > 0 && !isPlaceholderValue(s))
-        .join(", ");
+        .join(sep);
     }
     if (typeof val === "string") {
       return isPlaceholderValue(val) ? "" : val.trim();
@@ -253,6 +254,23 @@ export function coerceSelectValue(
     if (noneOpt) return noneOpt.value;
   }
   return fallback;
+}
+
+export function coerceMultilineStringListValue(val: unknown): string[] {
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => String(item ?? "").trim())
+      .filter((s) => s.length > 0 && !isPlaceholderValue(s));
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!trimmed || isPlaceholderValue(trimmed)) return [];
+    return trimmed
+      .split(/[;\r\n]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !isPlaceholderValue(s));
+  }
+  return [];
 }
 
 export function coerceStringListValue(val: unknown): string[] {
@@ -489,7 +507,7 @@ export function coerceSectionUpdatePayload(
       rawBody.what_missing !== undefined
         ? rawBody.what_missing
         : (existingSectionData.what_missing ?? existingNested.what_missing ?? []);
-    const whatMissing = coerceStringListValue(rawMissing);
+    const whatMissing = coerceMultilineStringListValue(rawMissing);
     const rawComplete =
       rawBody.is_mtd_complete !== undefined
         ? rawBody.is_mtd_complete

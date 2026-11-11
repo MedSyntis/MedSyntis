@@ -596,6 +596,42 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
     // Second call hits in-memory patientsListCache without a network round-trip
     expect((await adapter.listPatients("oncology", true)).length).toBe(1);
 
+    // Optional missing items on a complete record keep isComplete=true and completenessStatus="yes"
+    const completenessAdapter = new HttpMedsyntisApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => [
+          {
+            file: "opt_complete.pdf",
+            patient_id: "P-OPT",
+            patient: "Dupont Jean",
+            is_complete: true,
+            completeness_status: "yes",
+            missing: ["TEP-TDM facultatif"],
+            processing_status: "COMPLETED",
+          },
+          {
+            file: "partial_case.pdf",
+            patient_id: "P-PART",
+            patient: "Martin Claire",
+            is_complete: false,
+            completeness_status: "partial",
+            missing: ["IRM hépatique"],
+            processing_status: "COMPLETED",
+          },
+        ],
+      }) as unknown as typeof fetch,
+      cacheTtlMs: 0,
+    });
+    const mappedCards = await completenessAdapter.listRcpCards("oncology");
+    expect(mappedCards[0]?.isComplete).toBe(true);
+    expect(mappedCards[0]?.completenessStatus).toBe("yes");
+    expect(mappedCards[0]?.missingCount).toBe(1);
+    expect(mappedCards[1]?.isComplete).toBe(false);
+    expect(mappedCards[1]?.completenessStatus).toBe("partial");
+
     // Wrapper `{ patients: [...] }` shape with Not_given placeholders and rcp_count fallback
     const wrappedAdapter = new HttpMedsyntisApiAdapter({
       baseUrl: "http://127.0.0.1:8000",

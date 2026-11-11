@@ -725,8 +725,8 @@ const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
       inputType: "string_list",
       nullable: false,
       defaultValue: [],
-      placeholderFr: "Éléments manquants séparés par des virgules ou points-virgules",
-      placeholderEn: "Missing items separated by commas or semicolons",
+      placeholderFr: "Un élément manquant par ligne (ou séparés par un point-virgule)",
+      placeholderEn: "One missing item per line (or semicolon-separated)",
     },
     {
       key: "reflection",

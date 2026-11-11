@@ -114,6 +114,7 @@ class MDTAgendaScheduledItemResponse(BaseModel):
     urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral
     is_complete: bool
+    completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int = 0
     missing_items: list[str] = Field(default_factory=list)
     care_adaptation_suggested: Optional[bool] = None
@@ -157,6 +158,7 @@ class MDTAgendaCandidateResponse(BaseModel):
     urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral
     is_complete: bool
+    completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int = 0
     missing_items: list[str] = Field(default_factory=list)
     care_adaptation_suggested: Optional[bool] = None

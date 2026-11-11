@@ -161,9 +161,10 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     // Collapsible RCP timeline drawer with label
     expect(res.body).toContain('data-testid="timeline-drawer"');
     expect(res.body).toContain("Frise chronologique RCP");
-    // Missing items interactive list visible inside MTDCompleted
+    // Missing items interactive list visible inside MTDCompleted (with hide_missing_items field name & zero duplicate kv field)
     expect(res.body).toContain('data-testid="missing-items-panel"');
     expect(res.body).toContain('data-testid="missing-items-list"');
+    expect(res.body).toContain('name="hide_missing_items"');
     expect(res.body).toContain('class="ds-missing-list__content"');
     expect(res.body).toContain('class="ds-missing-list__icon"');
     expect(res.body).toContain('class="ds-missing-list__text ds-markdown"');
@@ -172,14 +173,36 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     // Zero raw JSON blocks for MTDCompleted or RadiologicalExams
     expect(res.body).not.toContain('{"is_mtd_complete"');
 
-    // Toggle individual missing item visibility
+    // Toggle individual missing item visibility -> does NOT flip dossier to complete without explicit practitioner update
     const toggleMissingRes = await app.inject({
       method: "POST",
       url: "/forms/jeanne_fictive_2026_11_06.pdf/missing-items?domain=oncology",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      payload: "toggle_item=Compte+rendu+d%27anatomopathologie+définitif+%28biopsie+EUS%29",
+      payload: "hide_missing_items=true",
     });
     expect([200, 302]).toContain(toggleMissingRes.statusCode);
+    const afterHideRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042",
+    });
+    expect(afterHideRes.body).toContain("La liste des éléments manquants est actuellement masquée");
+    expect(afterHideRes.body).toContain("Dossier incomplet");
+
+    // AJAX save on MTDCompleted preserves missing-items-panel and signals header refresh
+    const editMtdRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/MTDCompleted",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload:
+        "is_mtd_complete=true&what_missing=TEP-TDM+facultatif&reflection=Valid%C3%A9+par+le+praticien",
+    });
+    expect(editMtdRes.statusCode).toBe(200);
+    expect(editMtdRes.headers["x-refresh-dossier"]).toBe("true");
+    expect(editMtdRes.body).toContain('data-testid="missing-items-panel"');
+    expect(editMtdRes.body).toContain("Éléments facultatifs manquants");
 
     // Save a manual edit on Chemotherapy section
     const editRes = await app.inject({
@@ -365,6 +388,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(ingestRes.statusCode).toBe(200);
     expect(ingestRes.body).toContain('data-testid="input-ingest-files"');
     expect(ingestRes.body).toContain('data-testid="btn_ingest_submit"');
+    expect(ingestRes.body).toContain('data-contrast="auto"');
+    expect(ingestRes.body).toContain('data-contrast-pref="auto"');
+    expect(ingestRes.body).toMatch(
+      /aria-checked="true"[^>]*data-testid="btn_contrast_auto"|data-testid="btn_contrast_auto"[^>]*aria-checked="true"/,
+    );
 
     const prefRes = await app.inject({
       method: "POST",
@@ -382,6 +410,25 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(cookieStr).toContain("ds_contrast=high");
     expect(cookieStr).toContain("ds_lang=en");
     expect(cookieStr).toContain("ds_expert=true");
+
+    const hxMediumContrastRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: { "hx-request": "true" },
+      payload: { contrast: "medium" },
+    });
+    expect(hxMediumContrastRes.statusCode).toBe(204);
+    expect(hxMediumContrastRes.cookies.find((c) => c.name === "ds_contrast")?.value).toBe("medium");
+
+    const mediumWorklistRes = await app.inject({
+      method: "GET",
+      url: "/worklist",
+      cookies: { ds_contrast: "medium", ds_theme: "light", ds_lang: "en" },
+    });
+    expect(mediumWorklistRes.statusCode).toBe(200);
+    expect(mediumWorklistRes.body).toContain('data-contrast="medium"');
+    expect(mediumWorklistRes.body).toContain('data-contrast-pref="medium"');
+    expect(mediumWorklistRes.body).not.toContain('title="Plus d\'options"');
 
     const hxContrastRes = await app.inject({
       method: "POST",
@@ -402,8 +449,10 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(worklistRes.body).toContain('data-contrast="high"');
     expect(worklistRes.body).toContain('data-contrast-pref="high"');
     expect(worklistRes.body).toContain('data-testid="contrast-selector"');
-    expect(worklistRes.body).toContain('data-testid="btn_contrast_high"');
+    expect(worklistRes.body).toContain('data-testid="btn_contrast_auto"');
     expect(worklistRes.body).toContain('data-testid="btn_contrast_standard"');
+    expect(worklistRes.body).toContain('data-testid="btn_contrast_medium"');
+    expect(worklistRes.body).toContain('data-testid="btn_contrast_high"');
     await app.close();
   });
 
@@ -1616,6 +1665,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       },
     });
     expect(statusHtml).toContain('href="/" data-testid="btn_status_retry"');
+    expect(statusHtml).toContain('data-contrast="auto"');
+    expect(statusHtml).toContain('data-contrast-pref="auto"');
 
     // Status page EN / SMA / high-contrast & all status kinds + validation cleaners
     for (const kind of ["forbidden", "not_found", "maintenance", "server_error"] as const) {

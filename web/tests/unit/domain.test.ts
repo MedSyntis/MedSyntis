@@ -39,6 +39,10 @@ import {
 } from "../../src/domain/triage.js";
 import type { MdtFormCard, MdtFormDetail, QueueStats } from "../../src/domain/types.js";
 import {
+  PreferencesBodySchema,
+  resolveContrastMode,
+} from "../../src/infrastructure/validation/schemas.js";
+import {
   renderSafeInlineMarkdown as chatRenderSafeInlineMarkdown,
   renderSafeMarkdown as chatRenderSafeMarkdown,
   stripMarkdown as chatStripMarkdown,
@@ -118,22 +122,53 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(prioWithReasons.reasons).toEqual(["**Pancréas** : Progression sous FOLFIRINOX"]);
   });
 
-  it("derives completeness status and missing count", () => {
+  it("derives all 4 completeness states (complete, partial, incomplete, pending) consistently", () => {
     const incomplete = deriveCompletenessInfo(
       {
         is_complete: false,
+        completeness_status: "no",
         missing_count: 2,
         missing_items: ["TEP-TDM", "CR anapath"],
       },
       "fr",
     );
     expect(incomplete.status).toBe("incomplete");
-    expect(incomplete.icon).toBe("ic-warning");
-    expect(incomplete.label).toBe("2 manquantes");
+    expect(incomplete.icon).toBe("ic-error");
+    expect(incomplete.badgeClass).toBe("ds-badge--urgency-high");
+    expect(incomplete.label).toBe("Incomplet · 2 manquantes");
+    expect(incomplete.isOptionalMissing).toBe(false);
+
+    // Analyzed and explicitly marked "no" with 0 items in what_missing must NOT say "En attente IA"
+    const incompleteZeroItems = deriveCompletenessInfo(
+      {
+        is_complete: false,
+        completeness_status: "no",
+        missing_count: 0,
+      },
+      "fr",
+    );
+    expect(incompleteZeroItems.status).toBe("incomplete");
+    expect(incompleteZeroItems.icon).toBe("ic-error");
+    expect(incompleteZeroItems.label).toBe("Dossier incomplet");
+
+    const partial = deriveCompletenessInfo(
+      {
+        is_complete: false,
+        completeness_status: "partial",
+        missing_count: 1,
+        missing_items: ["IRM hépatique"],
+      },
+      "fr",
+    );
+    expect(partial.status).toBe("partial");
+    expect(partial.icon).toBe("ic-warning");
+    expect(partial.badgeClass).toBe("ds-badge--incomplete");
+    expect(partial.label).toBe("Partiel · 1 manquante");
 
     const complete = deriveCompletenessInfo(
       {
         is_complete: true,
+        completeness_status: "yes",
         missing_count: 0,
       },
       "fr",
@@ -145,6 +180,7 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     const completeWithOptional = deriveCompletenessInfo(
       {
         is_complete: true,
+        completeness_status: "yes",
         missing_count: 2,
         missing_items: ["TEP-TDM", "Oncogénétique"],
       },
@@ -153,16 +189,18 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(completeWithOptional.status).toBe("complete");
     expect(completeWithOptional.badgeClass).toBe("ds-badge--complete");
     expect(completeWithOptional.label).toBe("2 élément(s) facultatif(s) manquant(s)");
+    expect(completeWithOptional.isOptionalMissing).toBe(true);
 
     const pendingAi = deriveCompletenessInfo(
       {
-        is_complete: true,
+        is_complete: false,
+        completeness_status: "pending",
         missing_count: 0,
         processing_status: "PENDING_CLINICAL",
       },
       "fr",
     );
-    expect(pendingAi.status).toBe("incomplete");
+    expect(pendingAi.status).toBe("pending");
     expect(pendingAi.icon).toBe("ic-clock");
     expect(pendingAi.label).toBe("En attente IA");
 
@@ -173,7 +211,7 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
       },
       "fr",
     );
-    expect(notEvaluated.status).toBe("incomplete");
+    expect(notEvaluated.status).toBe("pending");
     expect(notEvaluated.icon).toBe("ic-clock");
     expect(notEvaluated.label).toBe("En attente IA");
   });
@@ -246,6 +284,22 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     const searched = filterAndSortCards(cards, { query: "nusinersen" });
     expect(searched).toHaveLength(1);
     expect(searched[0]?.id).toBe("S-0007");
+
+    // Complete record with optional missing items MUST stay complete in KPIs & filters
+    const cardWithOptional: MdtFormCard = {
+      ...cards[0]!,
+      id: "O-OPT",
+      isComplete: true,
+      completenessStatus: "yes",
+      missingCount: 2,
+      missingItems: ["TEP-TDM facultatif", "Oncogénétique facultative"],
+    };
+    const kpisWithOpt = computeWorklistKpis([...cards, cardWithOptional]);
+    expect(kpisWithOpt.incompleteCount).toBe(1);
+    const completeFiltered = filterAndSortCards([...cards, cardWithOptional], {
+      completeness: "complete",
+    });
+    expect(completeFiltered.map((c) => c.id)).toContain("O-OPT");
   });
 
   it("computes longitudinal deltas between consecutive RCP forms", () => {
@@ -536,10 +590,17 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     // MTDCompleted, RadiologicExams, ChemotherapyTreament, PatientAdministrative
     const mtdCoerced = coerceSectionUpdatePayload(
       "MTDCompleted",
-      { what_missing: "TEP-TDM, Bilan hépatique", reflection: "Attente TEP" },
+      {
+        what_missing: "TEP-TDM (< 4 semaines), dosage CA 19-9\nBilan hépatique complet",
+        reflection: "Attente TEP",
+      },
       { mtd_complete: { references: [{ name: "TNCD" }] } },
     );
     expect(mtdCoerced.is_mtd_complete).toBe(false);
+    expect(mtdCoerced.what_missing).toEqual([
+      "TEP-TDM (< 4 semaines), dosage CA 19-9",
+      "Bilan hépatique complet",
+    ]);
     expect(buildStrictBackendSectionPayload("MTDCompleted", mtdCoerced)).toHaveProperty(
       "mtd_complete",
     );
@@ -1663,5 +1724,34 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     );
     expect(editSectionHtml).toContain('value="**Adénocarcinome** canalaire"');
     expect(editSectionHtml).toContain(">Lésion **cT3N1M0** :");
+  });
+
+  it("supports all 4 M3 contrast modes (auto, standard, medium, high) in schemas and i18n", () => {
+    expect(resolveContrastMode("auto")).toBe("auto");
+    expect(resolveContrastMode("standard")).toBe("standard");
+    expect(resolveContrastMode("medium")).toBe("medium");
+    expect(resolveContrastMode("high")).toBe("high");
+    expect(resolveContrastMode("  MEDIUM ")).toBe("medium");
+    expect(resolveContrastMode("invalid")).toBe("auto");
+    expect(resolveContrastMode(undefined, "medium")).toBe("medium");
+
+    expect(PreferencesBodySchema.parse({ contrast: "auto" }).contrast).toBe("auto");
+    expect(PreferencesBodySchema.parse({ contrast: "standard" }).contrast).toBe("standard");
+    expect(PreferencesBodySchema.parse({ contrast: "medium" }).contrast).toBe("medium");
+    expect(PreferencesBodySchema.parse({ contrast: "high" }).contrast).toBe("high");
+    expect(PreferencesBodySchema.parse({ contrast: "bogus" }).contrast).toBeUndefined();
+
+    for (const lang of ["fr", "en"] as const) {
+      for (const key of [
+        "topbar.contrast.auto",
+        "topbar.contrast.standard",
+        "topbar.contrast.medium",
+        "topbar.contrast.high",
+        "topbar.menu.aria",
+        "topbar.menu.title",
+      ]) {
+        expect(t(key, lang)).not.toBe(key);
+      }
+    }
   });
 });

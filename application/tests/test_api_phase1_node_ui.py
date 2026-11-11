@@ -1006,7 +1006,7 @@ def test_get_patient_detail_by_pdf_filename_resolves_or_synthesizes_patient(
 # 15. PATCH /api/v1/patientmdtform/{filename}/missing-items
 # ---------------------------------------------------------------------------
 def test_patch_missing_items_visibility_and_completeness_metrics(
-    api_app, client, tmp_path
+    api_app, client, tmp_path, monkeypatch
 ):
     """Verify PATCH /patientmdtform/{filename}/missing-items toggles, hides, and updates what_missing."""
     patient_repo = InMemoryPatientRepository()
@@ -1037,7 +1037,13 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
         config=conf,
     )
     api_app.dependency_overrides[get_record_service] = lambda: service
+    api_app.dependency_overrides[get_mdt_form_repo] = lambda: mdt_repo
+    api_app.dependency_overrides[api_deps.require_db] = lambda: SimpleNamespace()
     api_app.dependency_overrides[get_domain_config] = lambda: conf
+    monkeypatch.setattr(
+        "src.routers.patientmdtform._build_record_service",
+        lambda *_a, **_kw: service,
+    )
 
     # 1. Toggle one item -> hidden_missing_items=["TEP-TDM"], missing=["CA 19-9"], is_complete=False
     resp1 = client.patch(
@@ -1051,7 +1057,7 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
     assert b1["metrics"]["missing"] == ["CA 19-9"]
     assert b1["metrics"]["is_complete"] is False
 
-    # 2. Toggle second item -> all items hidden -> is_complete=True
+    # 2. Toggle second item -> all items hidden visually, but is_complete stays False until practitioner explicitly updates MTDCompleted
     resp2 = client.patch(
         "/api/v1/patientmdtform/missing_case.pdf/missing-items",
         json={"toggle_item": "CA 19-9"},
@@ -1060,9 +1066,10 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
     b2 = resp2.json()
     assert set(b2["metrics"]["hidden_missing_items"]) == {"TEP-TDM", "CA 19-9"}
     assert b2["metrics"]["missing"] == []
-    assert b2["metrics"]["is_complete"] is True
+    assert b2["metrics"]["is_complete"] is False
+    assert b2["metrics"]["completeness_status"] == "no"
 
-    # 3. Replace what_missing and set hide_missing_items=True
+    # 3. Replace what_missing and set hide_missing_items=True -> still preserves explicit is_mtd_complete=False
     resp3 = client.patch(
         "/api/v1/patientmdtform/missing_case.pdf/missing-items",
         json={
@@ -1076,7 +1083,29 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
     assert b3["metrics"]["all_missing_items"] == ["IRM hépatique"]
     assert b3["metrics"]["hide_missing_items"] is True
     assert b3["metrics"]["missing"] == []
-    assert b3["metrics"]["is_complete"] is True
+    assert b3["metrics"]["is_complete"] is False
+    assert b3["metrics"]["completeness_status"] == "no"
+
+    # 4. Explicit practitioner update on MTDCompleted changes completeness_status to "yes" (with optional item)
+    resp4 = client.patch(
+        "/api/v1/patientmdtform/missing_case.pdf/sections/MTDCompleted",
+        json={
+            "section_data": {
+                "mtd_complete": {
+                    "is_mtd_complete": True,
+                    "what_missing": ["IRM hépatique"],
+                    "references": [],
+                }
+            },
+            "edited_by": "dr_martin",
+        },
+    )
+    assert resp4.status_code == 200
+    resp_det = client.get("/api/v1/patientmdtform/missing_case.pdf")
+    assert resp_det.status_code == 200
+    b4 = resp_det.json()
+    assert b4["metrics"]["is_complete"] is True
+    assert b4["metrics"]["completeness_status"] == "yes"
 
 
 # ---------------------------------------------------------------------------

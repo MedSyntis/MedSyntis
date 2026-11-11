@@ -104,9 +104,9 @@ class _RcpTriageCardBase(BaseModel):
     hidden_missing_items: List[str] = Field(default_factory=list)
     hide_missing_items: bool = False
     is_complete: Optional[bool] = None
-    completeness_status: Optional[Literal["yes", "partial", "no"]] = None
+    completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     completeness_label: Optional[str] = None
-    completeness_tone: Optional[Literal["green", "orange", "red"]] = None
+    completeness_tone: Optional[Literal["green", "orange", "red", "neutral"]] = None
     completeness_summary: Optional[str] = None
     urgency: str
     urgency_score: int

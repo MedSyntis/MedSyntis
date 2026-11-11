@@ -940,17 +940,29 @@ def synthesize_patient_record_summary_from_forms(
                 treatment_notes.append(f"**[{d_label}]** {rationale}")
 
         mtd = doc.get("MTDCompleted")
-        if isinstance(mtd, dict):
+        if isinstance(mtd, dict) and not bool(doc.get("hide_missing_items", False)):
             nested = (
                 mtd.get("mtd_complete")
                 if isinstance(mtd.get("mtd_complete"), dict)
                 else mtd
             )
+            is_comp_flag = (
+                nested.get("is_mtd_complete")
+                if isinstance(nested, dict)
+                else mtd.get("is_mtd_complete")
+            )
+            hidden_set = {
+                str(x).strip() for x in (doc.get("hidden_missing_items") or []) if x
+            }
             missing = nested.get("what_missing") if isinstance(nested, dict) else None
-            if isinstance(missing, list):
+            if isinstance(missing, list) and is_comp_flag is not True:
                 for item in missing:
                     item_s = str(item).strip()
-                    if item_s and item_s not in vigilance_points:
+                    if (
+                        item_s
+                        and item_s not in hidden_set
+                        and item_s not in vigilance_points
+                    ):
                         vigilance_points.append(item_s)
 
     disease_evolution = (

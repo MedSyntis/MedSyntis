@@ -225,16 +225,35 @@ class PatientRecordService:
             edited_by=edited_by,
             edited_at=now,
         )
+        fields_to_update: dict[str, Any] = {
+            section_name: validated_payload,
+            "manual_edits": manual_edits,
+            "date_refresh": now,
+        }
+        if section_name == "MTDCompleted":
+            nested = validated_payload.get("mtd_complete")
+            new_missing = (
+                nested.get("what_missing")
+                if isinstance(nested, dict)
+                else validated_payload.get("what_missing")
+            )
+            if isinstance(new_missing, list):
+                new_missing_set = {str(x) for x in new_missing if x}
+                prev_hidden = [
+                    str(x)
+                    for x in (existing_doc.get("hidden_missing_items") or [])
+                    if str(x) in new_missing_set
+                ]
+                fields_to_update["hidden_missing_items"] = prev_hidden
+                if new_missing_set:
+                    fields_to_update["hide_missing_items"] = False
         self.mdt_form_repo.upsert_fields(
             filename,
-            {
-                section_name: validated_payload,
-                "manual_edits": manual_edits,
-                "date_refresh": now,
-            },
+            fields_to_update,
             set_on_insert={"file": filename, "ui_date": now},
         )
-        return self.mdt_form_repo.get_by_file(filename) or {}
+        updated_doc = self.mdt_form_repo.get_by_file(filename)
+        return self.enrich_form_doc(updated_doc) if updated_doc else {}
 
     def rollback_patient_mdt_form_section(
         self,
@@ -336,10 +355,12 @@ class PatientRecordService:
             mtd_sec = dict(existing_doc.get("MTDCompleted") or {})
             nested = mtd_sec.get("mtd_complete")
             nested_dict = dict(nested) if isinstance(nested, dict) else {}
+            existing_flag = nested_dict.get(
+                "is_mtd_complete", mtd_sec.get("is_mtd_complete")
+            )
             nested_dict["what_missing"] = clean_missing
             nested_dict["is_mtd_complete"] = (
-                effective_hide_all
-                or len([m for m in clean_missing if m not in set(current_hidden)]) == 0
+                existing_flag if existing_flag is not None else len(clean_missing) == 0
             )
             nested_dict.setdefault("references", [])
             mtd_sec["mtd_complete"] = nested_dict

@@ -31,46 +31,57 @@ Brand source of truth: `application/.streamlit/config.toml` and `web/public/img/
 
 All tokens use the `--ds-` prefix. Components consume **only semantic tokens** (`--ds-color-*`, `--ds-urgency-*`, etc.), never primitive palette variables (`--ds-teal-600`) or hardcoded hex values.
 
-### 2.1 Theme Modes
+### 2.1 Theme & Contrast Modes (Material Design 3)
 
-| Mechanism | Effect |
+MedSyntis implements the **Material Design 3 (M3) HCT Color System** with **2 brightness schemes** (`Light` / `Dark`) × **3 contrast levels** (`Standard 0.0`, `Medium +0.5`, `High +1.0` — 6 semantic schemes total), plus OS-reactive `auto` resolution:
+
+| Attribute / Media Query | Effect |
 | :--- | :--- |
-| Default | Light theme |
+| Default (`data-theme="light"`, `data-contrast="standard"`) | Light Standard (`0.0`) |
 | `<html data-theme="dark">` | Forced Dark theme |
 | `<html data-theme="light">` | Forced Light theme (overrides OS preference) |
 | `<html data-theme="auto">` or no attribute + OS in Dark mode | Automatic Dark theme (`prefers-color-scheme: dark`) |
+| `<html data-contrast="standard">` | Forced M3 Standard contrast (`0.0`: ≥ 4.5:1 text, ≥ 3.0:1 UI) |
+| `<html data-contrast="medium">` | Forced M3 Medium contrast (`+0.5`: ≥ 6.0:1 text, ≥ 4.5:1 UI, inverted `*Container` badges) |
+| `<html data-contrast="high">` | Forced M3 High contrast (`+1.0`: ≥ 7.0:1 AAA text & UI, inverted `*Container` badges) |
+| `<html data-contrast="auto">` + `@media (prefers-contrast: more)` | Automatic M3 High contrast (`+1.0`) when OS requests increased contrast |
 
-The dark token block is **intentionally duplicated** (explicit attribute selector + media query) to remain compatible with older hospital browsers (without relying on `light-dark()`). Keep both blocks synchronized.
+The dark and contrast token blocks are **intentionally duplicated** (explicit attribute selectors + `@media` queries) to remain compatible with hospital browsers without relying on `light-dark()`. Parity between explicit attributes and `@media` blocks is enforced automatically by `node scripts/check-contrast.mjs`.
 
-### 2.2 Colors (Contrast Ratios Computed per WCAG 2.x)
+### 2.2 HCT Tonal Palettes & Semantic Roles
 
-Normal text: ≥ 4.5:1 (AA). UI components, form field borders, focus rings: ≥ 3:1.
+All semantic tokens in `public/css/tokens.css` derive from `:root` M3 HCT tonal palettes (`--md-ref-palette-{primary,secondary,tertiary,neutral,neutral-variant,error,success,warning,manual,cerulean}-{tone}`):
 
-| Role | Token | Light | Dark | Contrast (Light / Dark) |
+- **5-step surface container hierarchy**: `--ds-surface-container-lowest` → `-low` → `container` → `-high` → `-highest`, with **anti-halation dark canvases** (`neutral-6` `#0f1417` in Standard/Medium Dark, `neutral-4` `#0a0f11` in High Dark — never `#000000` pure black).
+- **Unified Danger / Error seed**: MedSyntis Rose (`#B83B5E`) across all 6 schemes (never diverging to neon scarlet).
+- **Strict M3 Container vs Surface-Text separation**:
+  - **`*Container` + `on*Container` pairs** (`--ds-color-primary-soft` + `--ds-color-on-primary-container`, `--ds-color-{success,warning,danger,info,neutral}-bg` + `-fg`, clinical urgency/orientation/domain badges): light pastel with dark text in Standard (`Tone 90` / `Tone 30` Light, `Tone 28` / `Tone 90` Dark), **tonally inverted** in Medium (`Tone 38` / `Tone 100` Light, `Tone 62` / `Tone 0` Dark) and High (`Tone 26` / `Tone 100` Light, `Tone 80` / `Tone 0` Dark) so badges and active pills stand out `≥ 3.0:1` (Medium) / `≥ 4.5:1` (High) against cards while keeping `≥ 7.0:1` internal text contrast.
+  - **Surface-safe accent text** (`--ds-color-primary-text`, `--ds-color-{success,warning,danger,info}-text`, `--ds-manual-text`): guaranteed readable on `--ds-color-surface` and `--ds-color-canvas` across all 6 schemes. Never pair `-text` tokens onto `-bg`/`-soft` containers (enforced by `scripts/check-contrast.mjs`).
+  - **Non-inverting surface washes** (`--ds-surface-tint-{primary,warning,manual}`): subtle card/dropzone/callout backgrounds safe with `--ds-color-text` and `--ds-color-*-text` in every contrast mode.
+
+| Role | Token | Light Standard | Dark Standard | Contrast (Light / Dark Std) |
 | :--- | :--- | :--- | :--- | :--- |
-| Workspace canvas | `--ds-color-canvas` | `#E6ECF0` | `#0F172A` | — |
-| Card surface | `--ds-color-surface` | `#FBFDFF` | `#162032` | — |
-| Sunken surface | `--ds-color-surface-sunken` | `#F1F5F9` | `#111A2B` | — |
-| Primary text | `--ds-color-text` | `#2A3647` | `#E2E8F0` | 11.99 / 13.24 on surface |
-| Secondary text | `--ds-color-text-muted` | `#4A5A70` | `#A3B1C4` | 6.89 / 7.49 on surface, 5.90 / 8.20 on canvas |
-| Subtle text | `--ds-color-text-subtle` | `#5F6E82` | `#8D9BB0` | 5.10 / 5.79 |
-| Input border | `--ds-color-border-strong` | `#7A8799` | `#64748B` | 3.58 / 3.43 (UI) |
-| Primary (clinical teal) | `--ds-color-primary` | `#467E79` | `#72A8A2` | button text: 4.65 (white) / 7.03 (`#0B1120`) |
-| Link, active tab | `--ds-color-primary-text` | `#3A6B66` | `#88BDB7` | 5.93 / 7.78 on surface, 5.07 / 8.51 on canvas |
-| Focus ring | `--ds-color-focus` | `#3B6E9C` | `#7FB2F0` | 4.52 / 8.10 on canvas (UI) |
-| Success / compliance (sage) | `--ds-color-success-fg` / `-bg` | `#2E544A` / `#E6F1EE` | `#BFE3D6` / `#16362E` | 7.32 / 9.48 |
-| Warning (amber) | `--ds-color-warning-fg` / `-bg` | `#7C4718` / `#FBF0E4` | `#FCD9A8` / `#43290F` | 6.74 / 10.00 |
-| Danger (rose) | `--ds-color-danger` | `#B83B5E` | `#E11D48` | white text: 5.49 / 4.70 |
-| Danger badge | `--ds-color-danger-fg` / `-bg` | `#882644` / `#F9E8EC` | `#FECDD6` / `#4A1424` | 7.39 / 10.53 |
-| Info (clinical blue) | `--ds-color-info-fg` / `-bg` | `#234B6E` / `#E3EFF8` | `#DBEAFE` / `#1E3A5F` | 7.80 / 9.43 |
-| Neutral | `--ds-color-neutral-fg` / `-bg` | `#3D4A5C` / `#E2E8EE` | `#CBD5E1` / `#273449` | 7.29 / 8.45 |
-| 🧭 Care adaptation suggested | `--ds-orientation-adapt-fg` / `-bg` | `#2C5753` / `#E2EFED` | `#BCE0DB` / `#173A37` | 6.86 / 8.74 |
-| ✍️ Manually edited | `--ds-manual-fg` / `-bg` | `#6E4F12` / `#FAF3E0` | `#F5DFA6` / `#3D3010` | 6.80 / 9.82 |
-| Required specialty | `--ds-specialty-fg` / `-bg` | `#3B475C` / `#EAEFF5` | `#D3DCE8` / `#2A3548` | 8.10 / 8.92 |
-| Oncology domain | `--ds-domain-onco-fg` / `-bg` | `#1F5470` / `#E1EEF5` | `#BFE0F0` / `#123247` | 6.93 / 9.62 |
-| SMA domain | `--ds-domain-sma-fg` / `-bg` | `#56427A` / `#EFEAF6` | `#DCD0F0` / `#2E2447` | 7.24 / 9.81 |
-| Navigation rail | `--ds-sidebar-bg` / `-text` | `#2B3748` / `#E8EEF3` | `#0B1120` / `#E2E8F0` | 10.30 / 15.27 |
-| Table header | `--ds-table-header-bg` / `-text` | `#2B3748` / `#F1F5F9` | `#0B1120` / `#F8FAFC` | 11.00 / 18.00 |
+| Workspace canvas | `--ds-color-canvas` | `#f5fafc` | `#0f1417` | — |
+| Card surface | `--ds-color-surface` | `#ffffff` | `#171c1f` | — |
+| Sunken surface | `--ds-color-surface-sunken` | `#eff4f7` | `#1b2023` | — |
+| Primary text | `--ds-color-text` | `#171c1f` | `#dfe3e7` | ≥ 14.5 / ≥ 13.0 on surface |
+| Secondary text | `--ds-color-text-muted` | `#40484c` | `#bfc8cc` | ≥ 9.0 / ≥ 9.5 on surface |
+| Subtle text | `--ds-color-text-subtle` | `#586064` | `#a4adb1` | ≥ 6.0 / ≥ 6.8 on surface |
+| Input border / outline | `--ds-color-border-strong` | `#70787c` | `#8a9296` | ≥ 4.3 / ≥ 5.0 (UI) |
+| Primary (clinical teal) | `--ds-color-primary` | `#2b6964` | `#95d3cd` | on-primary: ≥ 6.3 / ≥ 8.6 |
+| Link, active tab | `--ds-color-primary-text` | `#1c5c57` | `#95d3cd` | ≥ 7.5 / ≥ 9.8 on surface |
+| Primary container | `--ds-color-primary-soft` / `--ds-color-on-primary-container` | `#b0efea` / `#003734` | `#09504c` / `#b0efea` | ≥ 9.8 / ≥ 7.4 (inverts in Med/High) |
+| Focus ring | `--ds-color-focus` | `#1e6586` | `#90cef4` | ≥ 6.0 / ≥ 9.5 on canvas |
+| Success / compliance (sage) | `--ds-color-success-fg` / `-bg` | `#08382c` / `#b9ebdc` | `#b9ebdc` / `#225043` | ≥ 10.0 / ≥ 6.8 (inverts in Med/High) |
+| Warning (amber) | `--ds-color-warning-fg` / `-bg` | `#4c2700` / `#ffdcbe` | `#ffdcbe` / `#693c07` | ≥ 10.2 / ≥ 6.9 (inverts in Med/High) |
+| Danger (MedSyntis Rose) | `--ds-color-danger` | `#a42b4f` | `#ffb2c1` | on-danger: ≥ 6.0 / ≥ 6.8 |
+| Danger badge | `--ds-color-danger-fg` / `-bg` | `#5d0023` / `#ffd9df` | `#ffd9df` / `#7d1639` | ≥ 10.8 / ≥ 6.8 (inverts in Med/High) |
+| Info (cerulean) | `--ds-color-info-fg` / `-bg` | `#003549` / `#c5e7ff` | `#c5e7ff` / `#004c68` | ≥ 10.4 / ≥ 7.1 (inverts in Med/High) |
+| Neutral | `--ds-color-neutral-fg` / `-bg` | `#252b2e` / `#dde3e6` | `#dde3e6` / `#3b4144` | ≥ 10.8 / ≥ 7.8 (inverts in Med/High) |
+| 🧭 Care adaptation suggested | `--ds-orientation-adapt-fg` / `-bg` | `#003734` / `#b0efea` | `#b0efea` / `#09504c` | ≥ 9.8 / ≥ 7.4 |
+| ✍️ Manually edited | `--ds-manual-fg` / `-bg` | `#422c00` / `#ffdf9c` | `#ffdf9c` / `#5c4300` | ≥ 10.5 / ≥ 7.4 |
+| Oncology domain | `--ds-domain-onco-fg` / `-bg` | `#003549` / `#c5e7ff` | `#c5e7ff` / `#004c68` | ≥ 10.4 / ≥ 7.1 |
+| SMA domain | `--ds-domain-sma-fg` / `-bg` | `#3a255b` / `#ebdcff` | `#ebdcff` / `#513c73` | ≥ 9.9 / ≥ 7.2 |
 
 Clinical semantic aliases:
 
