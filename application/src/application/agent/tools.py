@@ -1,9 +1,12 @@
 import os
+import time
 from typing import TypedDict, List, Optional, Any
 
 from langchain.tools import tool, ToolRuntime
+from opentelemetry.trace import SpanKind
 
 from src.application.reader import DocumentReader
+from src.infrastructure.observability import get_metrics, start_span
 
 MAX_SEARCH_K_PER_READER = 4
 MAX_TOOL_OUTPUT_CHARS = 48_000
@@ -184,14 +187,41 @@ def search_on_mtd(
     runtime.context["logger"].debug(
         "tool search_on_mtd called with k=%s, timeout=%s", k, timeout
     )
-    if runtime.context["reader"] is None:
+    reader = runtime.context["reader"]
+    if reader is None:
         raise ValueError("No main document reader (mtd) provided in Context.")
 
-    retrieved_docs = runtime.context[
-        "reader"
-    ].vecdb.clientdb.max_marginal_relevance_search(
-        query, k=k, fetch_k=20, param=None, expr=None, timeout=timeout
-    )
+    backend = str(
+        getattr(getattr(reader, "config", None), "dbvec", None)
+        and reader.config.dbvec.type
+        or "milvus"
+    ).lower()
+    domain = str(getattr(getattr(reader, "config", None), "domain", None) or "oncology")
+    t0 = time.perf_counter_ns()
+    with start_span(
+        "medsyntis.vectordb.search",
+        kind=SpanKind.CLIENT,
+        attributes={
+            "db.system": backend,
+            "db.operation.name": "search",
+            "medsyntis.domain": domain,
+            "medsyntis.top_k": k,
+            "medsyntis.search_target": "mtd",
+        },
+    ) as span:
+        try:
+            retrieved_docs = reader.vecdb.clientdb.max_marginal_relevance_search(
+                query, k=k, fetch_k=20, param=None, expr=None, timeout=timeout
+            )
+            if span.is_recording():
+                span.set_attribute("medsyntis.result_count", len(retrieved_docs))
+        finally:
+            get_metrics().record_vectordb_op(
+                backend=backend,
+                operation="search",
+                domain=domain,
+                duration_ms=(time.perf_counter_ns() - t0) / 1_000_000.0,
+            )
     serialized = "\n\n".join(_format_doc_for_llm(doc) for doc in retrieved_docs)
     return serialized, retrieved_docs
 
@@ -266,12 +296,50 @@ def search_on_ressources(
         "tool search_on_ressources called with k=%s, timeout=%s", k, timeout
     )
     retrieved_docs = []
-    for r in runtime.context["additionnal_readers"]:
-        docs = r.vecdb.clientdb.max_marginal_relevance_search(
-            query, k=k, fetch_k=20, param=None, expr=None, timeout=timeout
-        )
-        for doc in docs:
-            retrieved_docs.append(doc)
+    t0 = time.perf_counter_ns()
+    first_reader = (
+        runtime.context["additionnal_readers"][0]
+        if runtime.context["additionnal_readers"]
+        else None
+    )
+    reader_conf = first_reader.config if first_reader is not None else None
+    backend = (
+        reader_conf.dbvec.type.lower()
+        if reader_conf is not None and reader_conf.dbvec.type
+        else "milvus"
+    )
+    domain = (
+        reader_conf.domain
+        if reader_conf is not None and reader_conf.domain
+        else "oncology"
+    )
+    with start_span(
+        "medsyntis.vectordb.search",
+        kind=SpanKind.CLIENT,
+        attributes={
+            "db.system": backend,
+            "db.operation.name": "search",
+            "medsyntis.domain": domain,
+            "medsyntis.top_k": k,
+            "medsyntis.search_target": "guidelines",
+        },
+    ) as span:
+        try:
+            for r in runtime.context["additionnal_readers"]:
+                docs = r.vecdb.clientdb.max_marginal_relevance_search(
+                    query, k=k, fetch_k=20, param=None, expr=None, timeout=timeout
+                )
+                for doc in docs:
+                    retrieved_docs.append(doc)
+            if span.is_recording():
+                span.set_attribute("medsyntis.result_count", len(retrieved_docs))
+        finally:
+            get_metrics().record_vectordb_op(
+                backend=backend,
+                operation="search",
+                domain=domain,
+                duration_ms=(time.perf_counter_ns() - t0) / 1_000_000.0,
+            )
 
     runtime.context["logger"].info(
         f"search_on_ressources - retrieved {len(retrieved_docs)} doc(s): "

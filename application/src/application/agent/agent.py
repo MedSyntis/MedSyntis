@@ -1,7 +1,9 @@
 import json
 import re
+import time
 
 from typing import ClassVar, Any, cast
+from opentelemetry.trace import SpanKind
 from pydantic import ValidationError, BaseModel, Field
 
 from langchain.agents import create_agent
@@ -9,6 +11,7 @@ from langchain.agents import create_agent
 from src.application.config import AppConfig
 from src.domain.common.common_ressources import MarkdownStr
 from src.infrastructure.llm.factory import get_llm_client
+from src.infrastructure.observability import get_metrics, start_span
 
 # Legacy import to support existing patch-based unit tests
 from src.application.reader import DocumentReader
@@ -595,18 +598,72 @@ class MedSyntisAgent:
                     logger=self.logger,
                 )
             )
-            try:
-                result = self.agent.invoke(
-                    {"messages": [{"role": "user", "content": question}]},
-                    context=runtime_context,
-                    config={
-                        "callbacks": callbacks,
-                        "tags": [self.agent_name] if self.agent_name else [],
-                    }
-                    if callbacks
-                    else None,
+            reader_conf = self.reader.config if self.reader is not None else None
+            provider_name = (
+                reader_conf.llm.type
+                if reader_conf is not None and reader_conf.llm.type
+                else "LiteLLM"
+            )
+            model_id = (
+                self.model
+                or (
+                    reader_conf.llm.models
+                    if reader_conf is not None and reader_conf.llm.models
+                    else None
                 )
+                or "default"
+            )
+            llm_t0 = time.perf_counter_ns()
+            try:
+                with start_span(
+                    "gen_ai.chat",
+                    kind=SpanKind.CLIENT,
+                    attributes={
+                        "gen_ai.system": provider_name,
+                        "gen_ai.operation.name": "chat",
+                        "gen_ai.request.model": model_id,
+                        "medsyntis.agent": self.agent_name or self.__class__.__name__,
+                        "medsyntis.section": schema_name,
+                        "medsyntis.attempt": r + 1,
+                    },
+                ) as llm_span:
+                    result = self.agent.invoke(
+                        {"messages": [{"role": "user", "content": question}]},
+                        context=runtime_context,
+                        config={
+                            "callbacks": callbacks,
+                            "tags": [self.agent_name] if self.agent_name else [],
+                        }
+                        if callbacks
+                        else None,
+                    )
+                    in_tok, out_tok = self._extract_token_usage(
+                        result.get("messages", [])
+                    )
+                    if llm_span.is_recording():
+                        if in_tok > 0:
+                            llm_span.set_attribute("gen_ai.usage.input_tokens", in_tok)
+                        if out_tok > 0:
+                            llm_span.set_attribute(
+                                "gen_ai.usage.output_tokens", out_tok
+                            )
+                    get_metrics().record_llm_call(
+                        provider=provider_name,
+                        model=model_id,
+                        operation="chat",
+                        status="ok",
+                        duration_ms=(time.perf_counter_ns() - llm_t0) / 1_000_000.0,
+                        input_tokens=in_tok,
+                        output_tokens=out_tok,
+                    )
             except Exception as invoke_exc:
+                get_metrics().record_llm_call(
+                    provider=provider_name,
+                    model=model_id,
+                    operation="chat",
+                    status="error",
+                    duration_ms=(time.perf_counter_ns() - llm_t0) / 1_000_000.0,
+                )
                 validation_error = invoke_exc
                 last_failed_output = None
                 self.logger.info(
@@ -724,6 +781,25 @@ class MedSyntisAgent:
             f"Unable to validate AI response for schema {schema_name} after {retry} attempt(s): "
             f"{self._summarize_validation_error(validation_error)}"
         )
+
+    @staticmethod
+    def _extract_token_usage(messages: list[Any]) -> tuple[int, int]:
+        """Sum input and output token counts across LangChain AI messages without reading content."""
+        in_tokens = 0
+        out_tokens = 0
+        for msg in messages:
+            usage = getattr(msg, "usage_metadata", None)
+            if isinstance(usage, dict):
+                in_tokens += int(usage.get("input_tokens") or 0)
+                out_tokens += int(usage.get("output_tokens") or 0)
+                continue
+            resp_meta = getattr(msg, "response_metadata", None)
+            if isinstance(resp_meta, dict):
+                tok = resp_meta.get("token_usage")
+                if isinstance(tok, dict):
+                    in_tokens += int(tok.get("prompt_tokens") or 0)
+                    out_tokens += int(tok.get("completion_tokens") or 0)
+        return in_tokens, out_tokens
 
     @staticmethod
     def _message_text(content: Any) -> str:

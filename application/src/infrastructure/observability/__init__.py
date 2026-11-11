@@ -1,0 +1,39 @@
+"""OpenTelemetry observability setup, official instrumentors, Zero-PHI sanitizer, and domain metrics."""
+
+from src.infrastructure.observability.otel import (
+    MedSyntisMetrics,
+    SanitizingSpanProcessor,
+    configure_observability,
+    extract_trace_context,
+    get_active_trace_ids,
+    get_meter,
+    get_metrics,
+    get_tracer,
+    inject_trace_context,
+    instrument_fastapi_app,
+    is_observability_enabled,
+    record_manual_edit,
+    reset_observability_for_tests,
+    sanitize_otel_attributes,
+    shutdown_observability,
+    start_span,
+)
+
+__all__ = [
+    "MedSyntisMetrics",
+    "SanitizingSpanProcessor",
+    "configure_observability",
+    "extract_trace_context",
+    "get_active_trace_ids",
+    "get_meter",
+    "get_metrics",
+    "get_tracer",
+    "inject_trace_context",
+    "instrument_fastapi_app",
+    "is_observability_enabled",
+    "record_manual_edit",
+    "reset_observability_for_tests",
+    "sanitize_otel_attributes",
+    "shutdown_observability",
+    "start_span",
+]

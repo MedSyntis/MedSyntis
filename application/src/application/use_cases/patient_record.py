@@ -34,6 +34,7 @@ from src.infrastructure.documents.repositories import (
     MongoPatientMDTFormRepository,
     MongoPatientRepository,
 )
+from src.infrastructure.observability import record_manual_edit
 from src.infrastructure.vectorial.database import sanitize_collection_name
 
 logger = logging.getLogger(__name__)
@@ -212,6 +213,15 @@ class PatientRecordService:
                 admin_data=section_data,
                 edited_by=edited_by,
             )
+            record_manual_edit(
+                domain=(
+                    self.config.domain
+                    if self.config is not None and self.config.domain
+                    else "oncology"
+                ),
+                section="PatientAdministrative",
+                action="update",
+            )
             return updated_doc
 
         validated_payload = self.form_cls.validate_manual_section_update(
@@ -252,6 +262,15 @@ class PatientRecordService:
             filename,
             fields_to_update,
             set_on_insert={"file": filename, "ui_date": now},
+        )
+        record_manual_edit(
+            domain=(
+                self.config.domain
+                if self.config is not None and self.config.domain
+                else "oncology"
+            ),
+            section=section_name,
+            action="update",
         )
         updated_doc = self.mdt_form_repo.get_by_file(filename)
         return self.enrich_form_doc(updated_doc) if updated_doc else {}
@@ -303,6 +322,15 @@ class PatientRecordService:
                 fields_to_update[canonical_name] = ai_original
 
         self.mdt_form_repo.upsert_fields(filename, fields_to_update)
+        record_manual_edit(
+            domain=(
+                self.config.domain
+                if self.config is not None and self.config.domain
+                else "oncology"
+            ),
+            section=canonical_name,
+            action="rollback",
+        )
         updated_doc = self.mdt_form_repo.get_by_file(filename) or existing_doc
         return self.enrich_form_doc(updated_doc)
 
@@ -377,6 +405,16 @@ class PatientRecordService:
             )
 
         self.mdt_form_repo.upsert_fields(filename, fields_to_update)
+        if what_missing is not None:
+            record_manual_edit(
+                domain=(
+                    self.config.domain
+                    if self.config is not None and self.config.domain
+                    else "oncology"
+                ),
+                section="MTDCompleted",
+                action="update",
+            )
         updated_doc = self.mdt_form_repo.get_by_file(filename) or existing_doc
         return self.enrich_form_doc(updated_doc)
 

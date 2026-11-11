@@ -252,3 +252,20 @@ Used in production Docker stacks (`dist/docker/compose/docker-compose.prod.yml`)
    * `X-MedSyntis-Proxy-Secret` (shared secret matching `APP_PROXY_SECRET`)
    * `X-MedSyntis-Domain` (`oncology` or `sma` derived from the virtual host)
 3. Both the Fastify BFF (`web/`) and FastAPI (`application/src/routers/dependencies.py`) verify `X-MedSyntis-Proxy-Secret` in constant time (`hmac.compare_digest`) before trusting user identity or granting `require_admin` privileges.
+
+---
+
+## 🔭 OpenTelemetry Observability & Optional Local MLflow Tracing
+
+MedSyntis uses the official **OpenTelemetry** SDKs (`opentelemetry-sdk` + upstream FastAPI/HTTPX/PyMongo/Logging instrumentors in Python, and `@opentelemetry/sdk-node` + `@fastify/otel` in Node.js) as its end-to-end instrumentation backbone.
+
+* **Safe Default (`OTEL_SDK_DISABLED=true`)**: By default, tracing and metrics export are completely disabled (`NoOpTracerProvider` / `NoOpMeterProvider`) and structured logs are emitted strictly to `stdout`.
+* **Zero-PHI Sanitization (`SanitizingSpanProcessor`)**: All spans in both `medsyntis-web` and `medsyntis-api` scrub clinical/identity keys (`first_name`, `last_name`, `date_birth`, `prompt`, `thinking`, `query`, `db.statement`, `url.query`), enforce `capture_statement=False` on PyMongo, redact non-pseudonymized `patient_id` values, and hash cleartext filenames (`sha256:<12hex>`).
+* **Local Sovereignty Guardrail**: When `APP_ALLOW_REMOTE_LLM=false`, any non-local `OTEL_EXPORTER_OTLP_*ENDPOINT` is rejected at startup.
+* **End-to-End W3C Correlation**: `medsyntis-web` injects W3C `traceparent` headers into FastAPI requests (`HttpMedsyntisApiAdapter`), `InMemoryQueueManager` propagates trace context into background worker jobs, and `stdout` logs automatically include `trace_id` and `span_id` whenever a recording span is active.
+* **Optional Production MLflow Profile**: Start the hardened local MLflow container (`127.0.0.1:5000`, `backend_internal` network) and enable OTLP export via:
+  ```bash
+  make start-prod-mlflow
+  # Or toggle MLflow tracing on an already running stack without unloading GPU VRAM:
+  make restart-prod-mlflow
+  ```

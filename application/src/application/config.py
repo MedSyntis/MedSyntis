@@ -453,11 +453,11 @@ class ApiSecuritySettings(BaseSettings):
         description="Comma-separated HTTP methods allowed for CORS (APP_API_CORS_ALLOW_METHODS).",
     )
     cors_allow_headers: str = Field(
-        default="Authorization,Content-Type,X-API-Key,X-MedSyntis-Domain,X-MedSyntis-User,X-MedSyntis-User-Name,X-MedSyntis-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With",
+        default="Authorization,Content-Type,X-API-Key,X-MedSyntis-Domain,X-MedSyntis-User,X-MedSyntis-User-Name,X-MedSyntis-Proxy-Secret,X-Request-ID,traceparent,tracestate,Accept,Origin,X-Requested-With",
         description="Comma-separated HTTP request headers allowed for CORS (APP_API_CORS_ALLOW_HEADERS).",
     )
     cors_expose_headers: str = Field(
-        default="X-MedSyntis-Domain,X-Request-ID,Content-Disposition",
+        default="X-MedSyntis-Domain,X-Request-ID,X-Trace-Id,Content-Disposition",
         description="Comma-separated response headers exposed to browser scripts via CORS (APP_API_CORS_EXPOSE_HEADERS).",
     )
     cors_max_age: int = Field(
@@ -579,6 +579,84 @@ class ApiSecuritySettings(BaseSettings):
         return hosts or ["*"]
 
 
+class OTelSettings(BaseSettings):
+    """
+    OpenTelemetry observability settings driven by official `OTEL_*` environment variables.
+
+    Safe default: `OTEL_SDK_DISABLED=true`, `OTEL_TRACES_EXPORTER=none`, `OTEL_METRICS_EXPORTER=none`,
+    `OTEL_LOGS_EXPORTER=none` (zero overhead, logs strictly written to `stdout`).
+    """
+
+    model_config = SettingsConfigDict(env_prefix="OTEL_", extra="ignore")
+
+    sdk_disabled: bool = Field(
+        default=True,
+        description="Disable the OpenTelemetry SDK (OTEL_SDK_DISABLED). Safe default: True.",
+    )
+    service_name: str = Field(
+        default="medsyntis-api",
+        description="Logical OpenTelemetry service.name (OTEL_SERVICE_NAME).",
+    )
+    resource_attributes: str = Field(
+        default="",
+        description="Comma-separated key=value OpenTelemetry resource attributes (OTEL_RESOURCE_ATTRIBUTES).",
+    )
+    traces_exporter: str = Field(
+        default="none",
+        description="Trace exporter: none, console, or otlp (OTEL_TRACES_EXPORTER).",
+    )
+    metrics_exporter: str = Field(
+        default="none",
+        description="Metrics exporter: none, console, or otlp (OTEL_METRICS_EXPORTER).",
+    )
+    logs_exporter: str = Field(
+        default="none",
+        description="Logs exporter: none, console, or otlp (OTEL_LOGS_EXPORTER). Application logs always emit to stdout.",
+    )
+    exporter_otlp_endpoint: str = Field(
+        default="",
+        description="Base OTLP collector or MLflow endpoint (OTEL_EXPORTER_OTLP_ENDPOINT).",
+    )
+    exporter_otlp_traces_endpoint: str = Field(
+        default="",
+        description="Signal-specific OTLP traces endpoint, e.g. http://mlflow:5000/v1/traces (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).",
+    )
+    exporter_otlp_metrics_endpoint: str = Field(
+        default="",
+        description="Signal-specific OTLP metrics endpoint (OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).",
+    )
+    exporter_otlp_protocol: str = Field(
+        default="http/protobuf",
+        description="OTLP transport protocol: http/protobuf or grpc (OTEL_EXPORTER_OTLP_PROTOCOL).",
+    )
+    exporter_otlp_headers: str = Field(
+        default="",
+        description="Comma-separated OTLP request headers, e.g. x-mlflow-experiment-id=0 (OTEL_EXPORTER_OTLP_HEADERS).",
+    )
+    exporter_otlp_timeout: int = Field(
+        default=10_000,
+        description="OTLP export timeout in milliseconds (OTEL_EXPORTER_OTLP_TIMEOUT).",
+    )
+    metric_export_interval: int = Field(
+        default=60_000,
+        description="Periodic metric export interval in milliseconds (OTEL_METRIC_EXPORT_INTERVAL).",
+    )
+    traces_sampler: str = Field(
+        default="parentbased_traceidratio",
+        description="OpenTelemetry sampler strategy (OTEL_TRACES_SAMPLER).",
+    )
+    traces_sampler_arg: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Sampler ratio argument between 0.0 and 1.0 (OTEL_TRACES_SAMPLER_ARG).",
+    )
+    propagators: str = Field(
+        default="tracecontext,baggage",
+        description="Comma-separated W3C context propagators (OTEL_PROPAGATORS).",
+    )
+
+
 class RCPSettings(BaseSettings):
     """
     Configuration for the RCP (Réunion de Concertation Pluridisciplinaire) pipeline.
@@ -686,13 +764,31 @@ class _JsonFormatter(logging.Formatter):
             | self.default_context
             | {k: getattr(record, k, None) for k in self.context_keys},
         }
+        trace_id = getattr(record, "trace_id", None)
+        span_id = getattr(record, "span_id", None)
+        if trace_id:
+            payload["trace_id"] = trace_id
+        if span_id:
+            payload["span_id"] = span_id
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, default=str, ensure_ascii=False)
 
 
+class _TraceAwareTextFormatter(logging.Formatter):
+    """Human-readable text formatter appending `[trace_id=... span_id=...]` when an OTel span is active."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        rendered = super().format(record)
+        trace_id = getattr(record, "trace_id", None)
+        span_id = getattr(record, "span_id", None)
+        if trace_id and span_id:
+            return f"{rendered} [trace_id={trace_id} span_id={span_id}]"
+        return rendered
+
+
 class _RuntimeServiceFilter(logging.Filter):
-    """Injects `record.service` and `record.service_upper` from `LogSettings.service` (or runtime auto-detection)."""
+    """Injects `record.service`, `record.service_upper`, and active OpenTelemetry `trace_id`/`span_id`."""
 
     def __init__(self, log_settings: LogSettings) -> None:
         super().__init__()
@@ -707,6 +803,14 @@ class _RuntimeServiceFilter(logging.Filter):
             self.log_settings.service = svc
         record.service = svc
         record.service_upper = svc.upper()
+        try:
+            from src.infrastructure.observability.otel import get_active_trace_ids
+
+            trace_id, span_id = get_active_trace_ids()
+        except Exception:
+            trace_id, span_id = None, None
+        record.trace_id = trace_id
+        record.span_id = span_id
         return True
 
 
@@ -862,6 +966,10 @@ class AppConfig(BaseSettings):
         default_factory=ApiSecuritySettings,
         description="FastAPI server runtime, CORS, Trusted Hosts, HTTP Security Headers, and rate limiting settings.",
     )
+    otel: OTelSettings = Field(
+        default_factory=OTelSettings,
+        description="OpenTelemetry observability settings driven by official OTEL_* environment variables.",
+    )
 
     def model_post_init(self, __context) -> None:
         super().model_post_init(__context)
@@ -891,13 +999,30 @@ class AppConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_local_llm(self) -> "AppConfig":
-        """Refuse to send patient data to non-local LLM endpoints unless explicitly allowed."""
+        """Refuse to send patient data or telemetry to non-local endpoints unless explicitly allowed."""
         if not self.allow_remote_llm and not is_local_host(self.llm.url):
             raise ValueError(
                 f"LLM endpoint '{self.llm.url}' is not a local/private host. Patient data "
                 "must stay local: use a local endpoint or set APP_ALLOW_REMOTE_LLM=true "
                 "explicitly (test deployments only)."
             )
+        if not self.allow_remote_llm and not self.otel.sdk_disabled:
+            exporters = {
+                (self.otel.traces_exporter or "").strip().lower(),
+                (self.otel.metrics_exporter or "").strip().lower(),
+                (self.otel.logs_exporter or "").strip().lower(),
+            }
+            if "otlp" in exporters:
+                for ep in (
+                    self.otel.exporter_otlp_endpoint,
+                    self.otel.exporter_otlp_traces_endpoint,
+                    self.otel.exporter_otlp_metrics_endpoint,
+                ):
+                    if ep and ep.strip() and not is_local_host(ep):
+                        raise ValueError(
+                            f"OTLP endpoint '{ep}' is not a local/private host. Telemetry "
+                            "must stay on-premise when APP_ALLOW_REMOTE_LLM=false."
+                        )
         if (
             not self.dev_mode
             and self.api.cors_enabled
@@ -993,6 +1118,7 @@ class AppConfig(BaseSettings):
             milvus=milvus_copy,
             queue=self.queue.model_copy(deep=True),
             api=self.api.model_copy(deep=True),
+            otel=self.otel.model_copy(deep=True),
         )
 
     @property
@@ -1041,7 +1167,7 @@ class AppConfig(BaseSettings):
                 formatlog = f"{formatlog} - {k}: {v}"
             for k in context:
                 formatlog = f"{formatlog} - {k}: %({k})s"
-            formatter: logging.Formatter = logging.Formatter(
+            formatter: logging.Formatter = _TraceAwareTextFormatter(
                 f"{formatlog} - %(message)s"
             )
         elif self.logs.type == "json":

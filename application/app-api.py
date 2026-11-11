@@ -10,6 +10,11 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from src.application.config import AppConfig
 from src.infrastructure.documents.mongodb import close_all_mongo_clients
+from src.infrastructure.observability import (
+    configure_observability,
+    instrument_fastapi_app,
+    shutdown_observability,
+)
 from src.infrastructure.queue import get_global_queue_manager
 from src.models.queue import HealthResponse
 from src.models.rcp import MeResponse, PatientListItemResponse
@@ -31,6 +36,7 @@ from src.routers.queue import router as queue_router
 from src.routers.resources import router as resources_router
 
 app_conf = get_base_config()
+configure_observability(app_conf)
 logger = app_conf.set_logger("medsyntis.api")
 
 if app_conf.api_token is None:
@@ -94,6 +100,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error unloading active models during shutdown: {e}")
     close_all_mongo_clients()
+    shutdown_observability()
 
 
 def configure_security_middlewares(target_app: FastAPI, conf: AppConfig) -> None:
@@ -144,6 +151,7 @@ app = FastAPI(
 )
 
 configure_security_middlewares(app, app_conf)
+instrument_fastapi_app(app)
 
 
 @app.get("/health", tags=["system"], response_model=HealthResponse)

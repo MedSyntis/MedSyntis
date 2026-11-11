@@ -44,6 +44,22 @@ export const EnvConfigSchema = z.object({
   APP_THEME: optionalTrimmedString,
   WEB_FAKE_API_FALLBACK: optionalTrimmedString,
   APP_USE_FAKE_ONLY: optionalTrimmedString,
+  APP_ALLOW_REMOTE_LLM: optionalTrimmedString,
+  OTEL_SDK_DISABLED: optionalTrimmedString,
+  OTEL_SERVICE_NAME: optionalTrimmedString,
+  OTEL_RESOURCE_ATTRIBUTES: optionalTrimmedString,
+  OTEL_TRACES_EXPORTER: optionalTrimmedString,
+  OTEL_METRICS_EXPORTER: optionalTrimmedString,
+  OTEL_LOGS_EXPORTER: optionalTrimmedString,
+  OTEL_EXPORTER_OTLP_ENDPOINT: optionalTrimmedString,
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: optionalTrimmedString,
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: optionalTrimmedString,
+  OTEL_EXPORTER_OTLP_PROTOCOL: optionalTrimmedString,
+  OTEL_EXPORTER_OTLP_HEADERS: optionalTrimmedString,
+  OTEL_METRIC_EXPORT_INTERVAL: optionalTrimmedString,
+  OTEL_TRACES_SAMPLER: optionalTrimmedString,
+  OTEL_TRACES_SAMPLER_ARG: optionalTrimmedString,
+  OTEL_PROPAGATORS: optionalTrimmedString,
 });
 
 /**

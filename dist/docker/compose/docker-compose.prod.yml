@@ -44,6 +44,20 @@ x-ui-env: &ui-env
   APP_ADMIN_USERS: ${APP_ADMIN_USERS:-}
   APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
   APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+  OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+  OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
+  OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+  OTEL_LOGS_EXPORTER: ${OTEL_LOGS_EXPORTER:-none}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: ${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-60000}
+  OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+  OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
 
 x-ui-common: &ui-common
   image: ${MEDSYNTIS_IMAGE:-ghcr.io/medsyntis/medsyntis}:${MEDSYNTIS_TAG:-latest}
@@ -349,6 +363,7 @@ services:
       APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
       APP_QUEUE_API_URL: ""
       APP_LOG_FILE: "/var/log/medsyntis/medsyntis-api.log"
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_API:-medsyntis-api}
       APP_ADMIN_USERS: ${APP_ADMIN_USERS:-}
       APP_ALLOW_REMOTE_LLM: ${APP_ALLOW_REMOTE_LLM:-false}
       APP_API_HOST: ${APP_API_HOST:-0.0.0.0}
@@ -364,8 +379,8 @@ services:
       APP_API_CORS_ORIGIN_REGEX: ${APP_API_CORS_ORIGIN_REGEX:-}
       APP_API_CORS_ALLOW_CREDENTIALS: ${APP_API_CORS_ALLOW_CREDENTIALS:-true}
       APP_API_CORS_ALLOW_METHODS: ${APP_API_CORS_ALLOW_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
-      APP_API_CORS_ALLOW_HEADERS: ${APP_API_CORS_ALLOW_HEADERS:-Authorization,Content-Type,X-API-Key,X-MedSyntis-Domain,X-MedSyntis-User,X-MedSyntis-User-Name,X-MedSyntis-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With}
-      APP_API_CORS_EXPOSE_HEADERS: ${APP_API_CORS_EXPOSE_HEADERS:-X-MedSyntis-Domain,X-Request-ID,Content-Disposition}
+      APP_API_CORS_ALLOW_HEADERS: ${APP_API_CORS_ALLOW_HEADERS:-Authorization,Content-Type,X-API-Key,X-MedSyntis-Domain,X-MedSyntis-User,X-MedSyntis-User-Name,X-MedSyntis-Proxy-Secret,X-Request-ID,traceparent,tracestate,Accept,Origin,X-Requested-With}
+      APP_API_CORS_EXPOSE_HEADERS: ${APP_API_CORS_EXPOSE_HEADERS:-X-MedSyntis-Domain,X-Request-ID,X-Trace-Id,Content-Disposition}
       APP_API_CORS_MAX_AGE: ${APP_API_CORS_MAX_AGE:-600}
       APP_API_TRUSTED_HOSTS: ${APP_API_TRUSTED_HOSTS:-127.0.0.1,localhost,medsyntis-api,*.${PROD_BASE_DOMAIN:-medsyntis.fr}}
       APP_API_FORCE_HTTPS: ${APP_API_FORCE_HTTPS:-false}
@@ -424,13 +439,74 @@ services:
       APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
       APP_LANGUAGE: ${APP_LANGUAGE:-french}
       APP_ADMIN_USERS: ${APP_ADMIN_USERS:-}
+      APP_ALLOW_REMOTE_LLM: ${APP_ALLOW_REMOTE_LLM:-false}
       APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
       APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_WEB:-medsyntis-web}
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+      OTEL_LOGS_EXPORTER: ${OTEL_LOGS_EXPORTER:-none}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: ${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-60000}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
     depends_on:
       - medsyntis-api
     networks:
       - ingress_net
       - backend_internal
+
+  # ─── Optional Local MLflow OTLP Tracing Server (--profile mlflow) ───────────
+  mlflow:
+    image: ${MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.1.1}
+    container_name: medsyntis-mlflow
+    restart: unless-stopped
+    logging: *default-logging
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${MLFLOW_PORT:-5000}:5000"
+    environment:
+      <<: *telemetry-off
+      MLFLOW_DISABLE_TELEMETRY: "true"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/mlflow:/mlflow
+    command:
+      - "mlflow"
+      - "server"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "5000"
+      - "--backend-store-uri"
+      - "sqlite:////mlflow/mlflow.db"
+      - "--default-artifact-root"
+      - "/mlflow/artifacts"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - backend_internal
+    profiles:
+      - "mlflow"
 
   # ─── OAuth2 Proxy (Zero-Trust SSO across *.medsyntis.fr: OIDC / Pro Sante Connect / GitHub) ──
   oauth2-proxy:

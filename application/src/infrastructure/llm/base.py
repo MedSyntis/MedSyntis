@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, Tuple, Type
 
 from langchain_core.embeddings import Embeddings
+from opentelemetry.trace import SpanKind
 from tenacity import (
     RetryError,
     Retrying,
@@ -15,6 +16,7 @@ from tenacity import (
 )
 
 from src.application.config import AppConfig
+from src.infrastructure.observability import get_metrics, start_span
 
 
 class LLMConnectionError(ConnectionError):
@@ -186,7 +188,16 @@ class CachedEmbeddingsProxy(Embeddings):
         self, texts: list[str], *args: Any, **kwargs: Any
     ) -> list[list[float]]:
         """Delegate document batch embedding directly to the underlying embeddings model."""
-        return self._underlying.embed_documents(texts, *args, **kwargs)
+        with start_span(
+            "gen_ai.embeddings",
+            kind=SpanKind.CLIENT,
+            attributes={
+                "gen_ai.operation.name": "embeddings",
+                "gen_ai.request.model": self._model_key or "default",
+                "medsyntis.batch_size": len(texts) if isinstance(texts, list) else 0,
+            },
+        ):
+            return self._underlying.embed_documents(texts, *args, **kwargs)
 
     def embed_query(self, text: str, *args: Any, **kwargs: Any) -> list[float]:
         """Compute or retrieve a cached embedding vector for a single query string."""
@@ -201,9 +212,20 @@ class CachedEmbeddingsProxy(Embeddings):
             if cached is not None:
                 self._cache.move_to_end(key)
                 self._hits += 1
+                get_metrics().record_embedding_cache(model=self._model_key, hit=True)
                 return list(cached)
 
-        vector = list(self._underlying.embed_query(normalized_query))
+        get_metrics().record_embedding_cache(model=self._model_key, hit=False)
+        with start_span(
+            "gen_ai.embeddings",
+            kind=SpanKind.CLIENT,
+            attributes={
+                "gen_ai.operation.name": "embeddings",
+                "gen_ai.request.model": self._model_key or "default",
+                "medsyntis.batch_size": 1,
+            },
+        ):
+            vector = list(self._underlying.embed_query(normalized_query))
 
         with self._lock:
             self._misses += 1

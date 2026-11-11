@@ -3,11 +3,13 @@ import os
 import queue
 import socket
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
 import httpx
+from opentelemetry.trace import SpanKind
 
 from src.application.config import AppConfig
 from src.domain.patient_mdt_form import NonPatientMDTFormError
@@ -18,6 +20,12 @@ from src.domain.worker import (
     JobType,
     QueueJob,
     RCPProcessingStatus,
+)
+from src.infrastructure.observability import (
+    extract_trace_context,
+    get_metrics,
+    inject_trace_context,
+    start_span,
 )
 
 # Execution slot (GPU lease) time-to-live. A running job refreshes its lease from a
@@ -74,6 +82,7 @@ class InMemoryQueueManager:
         # whenever a job is pushed, a lease is released or the manager shuts down.
         self._cond = threading.Condition(self._lock)
         self._jobs: dict[str, dict[str, Any]] = {}
+        self._job_trace_contexts: dict[str, dict[str, str]] = {}
         self._active_leases: dict[str, dict[str, Any]] = {}
         self._cancelled_job_ids: set[str] = set()
         self._cancelled_history: list[str] = []
@@ -205,6 +214,7 @@ class InMemoryQueueManager:
             for stale in terminal_jobs[:excess]:
                 jid = stale["job_id"]
                 self._jobs.pop(jid, None)
+                self._job_trace_contexts.pop(jid, None)
                 self._cancelled_job_ids.discard(jid)
 
         if len(self._cancelled_job_ids) > cap:
@@ -353,6 +363,23 @@ class InMemoryQueueManager:
             summary_job["status"] = JobStatus.PENDING.value
 
             self._jobs[summary_job["job_id"]] = summary_job
+            with start_span(
+                "medsyntis.queue.enqueue",
+                kind=SpanKind.PRODUCER,
+                attributes={
+                    "medsyntis.domain": target_domain,
+                    "medsyntis.job_type": JobType.PATIENT_SUMMARY.value,
+                    "medsyntis.patient_id": patient_id,
+                },
+            ):
+                carrier = inject_trace_context()
+                if carrier:
+                    self._job_trace_contexts[summary_job["job_id"]] = carrier
+                get_metrics().record_queue_enqueue(
+                    domain=target_domain,
+                    job_type=JobType.PATIENT_SUMMARY.value,
+                    count=1,
+                )
             self._push_to_pq(summary_job)
             cloned = self._clone_job(summary_job)
 
@@ -463,6 +490,25 @@ class InMemoryQueueManager:
                 self._jobs[wave3_job["job_id"]] = wave3_job
                 created_jobs.append(self._clone_job(wave3_job))
 
+            with start_span(
+                "medsyntis.queue.enqueue",
+                kind=SpanKind.PRODUCER,
+                attributes={
+                    "medsyntis.domain": target_domain,
+                    "medsyntis.doc_id": filename,
+                    "medsyntis.job_count": len(created_jobs),
+                },
+            ):
+                carrier = inject_trace_context()
+                for created in created_jobs:
+                    if carrier:
+                        self._job_trace_contexts[created["job_id"]] = dict(carrier)
+                    get_metrics().record_queue_enqueue(
+                        domain=target_domain,
+                        job_type=str(created["job_type"]),
+                        count=1,
+                    )
+
         self._set_rcp_processing_status(
             target_domain,
             filename,
@@ -559,6 +605,24 @@ class InMemoryQueueManager:
                 single_job["job_type"] = JobType.SINGLE_MODEL.value
                 single_job["status"] = JobStatus.PENDING.value
                 self._jobs[single_job["job_id"]] = single_job
+                with start_span(
+                    "medsyntis.queue.enqueue",
+                    kind=SpanKind.PRODUCER,
+                    attributes={
+                        "medsyntis.domain": target_domain,
+                        "medsyntis.job_type": JobType.SINGLE_MODEL.value,
+                        "medsyntis.section": model_name,
+                        "medsyntis.doc_id": filename,
+                    },
+                ):
+                    carrier = inject_trace_context()
+                    if carrier:
+                        self._job_trace_contexts[single_job["job_id"]] = carrier
+                    get_metrics().record_queue_enqueue(
+                        domain=target_domain,
+                        job_type=JobType.SINGLE_MODEL.value,
+                        count=1,
+                    )
                 self._push_to_pq(single_job)
                 return {
                     "already_queued": False,
@@ -662,6 +726,25 @@ class InMemoryQueueManager:
                 wave3_job["status"] = JobStatus.PENDING.value
                 self._jobs[wave3_job["job_id"]] = wave3_job
                 created_jobs.append(self._clone_job(wave3_job))
+
+            with start_span(
+                "medsyntis.queue.enqueue",
+                kind=SpanKind.PRODUCER,
+                attributes={
+                    "medsyntis.domain": target_domain,
+                    "medsyntis.doc_id": filename,
+                    "medsyntis.job_count": len(created_jobs),
+                },
+            ):
+                carrier = inject_trace_context()
+                for created in created_jobs:
+                    if carrier:
+                        self._job_trace_contexts[created["job_id"]] = dict(carrier)
+                    get_metrics().record_queue_enqueue(
+                        domain=target_domain,
+                        job_type=str(created["job_type"]),
+                        count=1,
+                    )
 
         self._set_rcp_processing_status(
             target_domain,
@@ -1603,8 +1686,21 @@ class InMemoryQueueManager:
     def execute_claimed_job(self, job: dict[str, Any], lease_id: str) -> None:
         job_id = job["job_id"]
         run_id = job.get("run_id")
-        job_type = job.get("job_type")
+        job_type = str(job.get("job_type") or "unknown")
+        domain = str(job.get("domain") or "oncology")
         hb_stop = threading.Event()
+
+        created_at = job.get("created_at")
+        started_at = job.get("started_at")
+        wait_ms = 0.0
+        if isinstance(created_at, datetime) and isinstance(started_at, datetime):
+            wait_ms = max(0.0, (started_at - created_at).total_seconds() * 1000.0)
+
+        with self._lock:
+            carrier = self._job_trace_contexts.get(job_id)
+        parent_ctx = extract_trace_context(carrier)
+        exec_start_ns = time.perf_counter_ns()
+        outcome_status = "completed"
 
         def _heartbeat() -> None:
             while not hb_stop.wait(LEASE_HEARTBEAT_SECONDS):
@@ -1618,34 +1714,50 @@ class InMemoryQueueManager:
         )
         hb_thread.start()
         try:
-            resolved_pid = job.get("resolved_patient_id")
-            if job_type == JobType.WAVE1_ADMIN.value:
-                resolved_pid = self._execute_wave1_admin(job, lease_id)
-            elif job_type == JobType.WAVE2_CLINICAL.value:
-                self._execute_wave2_clinical(job, lease_id)
-            elif job_type == JobType.WAVE3_EXPERTS.value:
-                self._execute_wave3_experts(job, lease_id)
-            elif job_type == JobType.SINGLE_MODEL.value:
-                self._execute_single_model(job, lease_id)
-            elif job_type == JobType.PATIENT_SUMMARY.value:
-                self._execute_patient_record_summary(job, lease_id)
-            else:
-                raise ValueError(f"Unsupported job_type: {job_type}")
+            with start_span(
+                "medsyntis.queue.process_job",
+                kind=SpanKind.CONSUMER,
+                context=parent_ctx,
+                attributes={
+                    "medsyntis.domain": domain,
+                    "medsyntis.job_type": job_type,
+                    "medsyntis.job_id": job_id,
+                    "medsyntis.batch_id": job.get("batch_id"),
+                    "medsyntis.doc_id": job.get("filename"),
+                    "medsyntis.hardware_profile": self.base_config.queue.hardware_profile,
+                    "medsyntis.queue.wait_ms": round(wait_ms, 2),
+                },
+            ):
+                resolved_pid = job.get("resolved_patient_id")
+                if job_type == JobType.WAVE1_ADMIN.value:
+                    resolved_pid = self._execute_wave1_admin(job, lease_id)
+                elif job_type == JobType.WAVE2_CLINICAL.value:
+                    self._execute_wave2_clinical(job, lease_id)
+                elif job_type == JobType.WAVE3_EXPERTS.value:
+                    self._execute_wave3_experts(job, lease_id)
+                elif job_type == JobType.SINGLE_MODEL.value:
+                    self._execute_single_model(job, lease_id)
+                elif job_type == JobType.PATIENT_SUMMARY.value:
+                    self._execute_patient_record_summary(job, lease_id)
+                else:
+                    raise ValueError(f"Unsupported job_type: {job_type}")
 
-            if self._is_job_aborted(job_id, run_id=run_id, lease_id=lease_id):
-                self.release_gpu_lease(lease_id=lease_id)
-                return
+                if self._is_job_aborted(job_id, run_id=run_id, lease_id=lease_id):
+                    outcome_status = "cancelled"
+                    self.release_gpu_lease(lease_id=lease_id)
+                    return
 
-            self.complete_job(
-                job_id=job_id,
-                lease_id=lease_id,
-                resolved_patient_id=resolved_pid,
-                current_step="Dossier prêt",
-                run_id=run_id,
-            )
+                self.complete_job(
+                    job_id=job_id,
+                    lease_id=lease_id,
+                    resolved_patient_id=resolved_pid,
+                    current_step="Dossier prêt",
+                    run_id=run_id,
+                )
         except Exception as exc:
             is_non_mdt_form = isinstance(exc, NonPatientMDTFormError)
             is_patient_summary = job_type == JobType.PATIENT_SUMMARY.value
+            outcome_status = "rejected_non_mdt" if is_non_mdt_form else "failed"
             if is_non_mdt_form:
                 self.logger.warning(
                     "Job %s rejected (non-PatientMDTForm): %s", job_id, exc
@@ -1662,6 +1774,14 @@ class InMemoryQueueManager:
             )
         finally:
             hb_stop.set()
+            duration_ms = (time.perf_counter_ns() - exec_start_ns) / 1_000_000.0
+            get_metrics().record_queue_job(
+                domain=domain,
+                job_type=job_type,
+                status=outcome_status,
+                wait_ms=wait_ms,
+                duration_ms=duration_ms,
+            )
             self._maybe_unload_models_if_idle()
 
     def _maybe_unload_models_if_idle(self) -> None:

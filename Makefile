@@ -48,7 +48,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st stop-prod restart-prod prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st start-prod-mlflow stop-prod restart-prod restart-prod-mlflow prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
 
 ## Show available Makefile targets
 help:
@@ -77,8 +77,10 @@ help:
 	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Download Ornith-1.5-35B-A3B-IQ4_XS.gguf and bge-m3-Q4_K_M.gguf into $(MODELS_DIR)"
 	@echo -e "  $(YELLOW)make start-prod$(RESET)          Start prod stack (Milvus, Mongo, L4 LLM, M3 Web UI oncology/sma, OAuth2 Proxy, Caddy)"
 	@echo -e "  $(YELLOW)make start-prod-st$(RESET)       Start prod stack + optional legacy Streamlit services (oncologic-st/sma-st)"
+	@echo -e "  $(YELLOW)make start-prod-mlflow$(RESET)   Start prod stack + optional local MLflow OpenTelemetry server (127.0.0.1:5000)"
 	@echo -e "  $(YELLOW)make stop-prod$(RESET)           Stop all production containers (preserving persistent data volumes)"
 	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Restart Web M3, API, LiteLLM, OAuth2 Proxy, and Caddy without unloading GPU VRAM"
+	@echo -e "  $(YELLOW)make restart-prod-mlflow$(RESET) Restart Web M3, API, and local MLflow OTLP server without unloading GPU VRAM"
 	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + update Milvus & app images + hot-recreate containers while keeping LLM in VRAM"
 	@echo -e "  $(YELLOW)make prod-update-all$(RESET)     Full update of the entire production Docker stack (including LLM & infra)"
 	@echo -e "  $(YELLOW)make backup-prod$(RESET)         Create encrypted-ready compressed backup of MongoDB (mongodump) and Milvus/domain volumes"
@@ -551,10 +553,10 @@ init-prod:
 		echo -e "  [$(YELLOW)WARNING$(RESET)] nvidia-smi not found. Verify NVIDIA drivers and nvidia-container-toolkit."; \
 	fi
 	@echo -e "$(CYAN)--> Creating persistent volume and clinical domain directories (least-privilege permissions)...$(RESET)"
-	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,mlflow,caddy_data,caddy_config} 2>/dev/null || true
 	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
 	@mkdir -p application/ressources/PatientMDTForm/{oncology,sma} application/ressources/documents/{oncology,sma}
-	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue} 2>/dev/null || true
+	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,mlflow} 2>/dev/null || true
 	@chmod 700 "$(DOCKER_VOLUME_DIRECTORY)"/{caddy_data,caddy_config} 2>/dev/null || true
 	@chmod 750 /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
 	@if [ ! -f "$(ENV_PROD)" ]; then \
@@ -671,7 +673,7 @@ build-prod:
 	fi
 	@echo -e "$(GREEN)--> Production Docker images built successfully.$(RESET)"
 
-## Start production Docker containers (API + M3 Web UI oncology & sma; set WITH_STREAMLIT=1 for optional Streamlit *-st)
+## Start production Docker containers (API + M3 Web UI oncology & sma; set WITH_STREAMLIT=1 for optional Streamlit *-st, WITH_MLFLOW=1 for local MLflow OTLP)
 docker-up-prod:
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "  [$(RED)ERROR$(RESET)] Missing $(ENV_PROD). Run 'make init-prod' and configure SSO secrets first."; \
@@ -681,23 +683,33 @@ docker-up-prod:
 		echo -e "  [$(RED)ERROR$(RESET)] Unconfigured placeholder secrets remain in $(ENV_PROD) (check OAUTH2_PROXY_* and APP_MONGODB_PASSWORD)."; \
 		exit 1; \
 	fi
-	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,mlflow,caddy_data,caddy_config} 2>/dev/null || true
 	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
-	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue} 2>/dev/null || true
+	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,mlflow} 2>/dev/null || true
 	@chmod 700 "$(DOCKER_VOLUME_DIRECTORY)"/{caddy_data,caddy_config} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Starting Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Starting MedSyntis production stack (L4 GPU + API + M3 Web UI + OAuth2 Proxy + Caddy)...$(RESET)"
-	@if [ "$(WITH_STREAMLIT)" = "1" ]; then \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-build; \
-	else \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-build; \
-	fi
+	@COMPOSE_PROFILES=""; \
+	if [ "$(WITH_STREAMLIT)" = "1" ]; then COMPOSE_PROFILES="$$COMPOSE_PROFILES --profile streamlit"; fi; \
+	if [ "$(WITH_MLFLOW)" = "1" ]; then \
+		COMPOSE_PROFILES="$$COMPOSE_PROFILES --profile mlflow"; \
+		export OTEL_SDK_DISABLED=$${OTEL_SDK_DISABLED:-false}; \
+		export OTEL_TRACES_EXPORTER=$${OTEL_TRACES_EXPORTER:-otlp}; \
+		export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=$${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://mlflow:5000/v1/traces}; \
+		export OTEL_EXPORTER_OTLP_PROTOCOL=$${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}; \
+		export OTEL_EXPORTER_OTLP_HEADERS=$${OTEL_EXPORTER_OTLP_HEADERS:-x-mlflow-experiment-id=0}; \
+	fi; \
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) $$COMPOSE_PROFILES up -d --no-build
 	@docker exec medsyntis-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
 
 ## Start production stack including optional legacy Streamlit services (oncologic-st & sma-st)
 start-prod-st:
 	@$(MAKE) start-prod WITH_STREAMLIT=1
+
+## Start production stack including optional local MLflow OpenTelemetry tracing server (127.0.0.1:5000)
+start-prod-mlflow:
+	@$(MAKE) start-prod WITH_MLFLOW=1
 
 ## Start full production stack and wait for local LLM readiness
 start-prod: docker-up-prod
@@ -729,12 +741,15 @@ start-prod: docker-up-prod
 		echo -e "     • Oncology (Legacy Streamlit) : $(CYAN)https://oncologic-st.$${BASE_DOM}$(RESET)"; \
 		echo -e "     • SMA (Legacy Streamlit)      : $(CYAN)https://sma-st.$${BASE_DOM}$(RESET)"; \
 	fi; \
+	if docker ps --format '{{.Names}}' | grep -q '^medsyntis-mlflow$$'; then \
+		echo -e "     • MLflow OTLP Tracing (Local) : $(CYAN)http://127.0.0.1:5000$(RESET) (SSH tunnel only)"; \
+	fi; \
 	echo -e "$(GREEN)======================================================================$(RESET)"
 
 ## Stop all production containers (preserving persistent data volumes)
 stop-prod:
 	@echo -e "$(YELLOW)--> Stopping MedSyntis production stack...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit down --remove-orphans
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit --profile mlflow down --remove-orphans
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) down --remove-orphans
 	@echo -e "$(GREEN)--> Production stack stopped.$(RESET)"
 
@@ -751,7 +766,23 @@ restart-prod:
 	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit restart medsyntis-ui-oncology medsyntis-ui-sma; \
 	fi
+	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-mlflow$$'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile mlflow restart mlflow; \
+	fi
 	@echo -e "$(GREEN)--> Application services restarted.$(RESET)"
+
+## Restart application services with local MLflow OTLP tracing enabled (preserving GPU VRAM)
+restart-prod-mlflow:
+	@echo -e "$(CYAN)--> Recreating MLflow + application services with OpenTelemetry OTLP tracing enabled (preserving GPU VRAM)...$(RESET)"
+	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)/mlflow" 2>/dev/null || true
+	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)/mlflow" 2>/dev/null || true
+	OTEL_SDK_DISABLED=$${OTEL_SDK_DISABLED:-false} \
+	OTEL_TRACES_EXPORTER=$${OTEL_TRACES_EXPORTER:-otlp} \
+	OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=$${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://mlflow:5000/v1/traces} \
+	OTEL_EXPORTER_OTLP_PROTOCOL=$${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf} \
+	OTEL_EXPORTER_OTLP_HEADERS=$${OTEL_EXPORTER_OTLP_HEADERS:-x-mlflow-experiment-id=0} \
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile mlflow up -d --no-deps --no-build mlflow medsyntis-api medsyntis-web
+	@echo -e "$(GREEN)--> MLflow OTLP tracing active on 127.0.0.1:5000.$(RESET)"
 
 ## Pull latest Git changes, Milvus v3.0, and app Docker images without unloading LLM weights from GPU VRAM
 prod-update:
@@ -858,6 +889,8 @@ status-prod:
 	@ss -tlnp 2>/dev/null | grep -q ":19530 " && echo -e "$(GREEN)ACTIVE$(RESET)" || echo -e "$(RED)INACTIVE$(RESET)"
 	@echo -n "MongoDB ReplicaSet (27017)        : "
 	@docker ps --format '{{.Names}}' | grep -q '^medsyntis-mongod$$' && echo -e "$(GREEN)ACTIVE$(RESET)" || echo -e "$(RED)INACTIVE$(RESET)"
+	@echo -n "MLflow OTLP Tracing (port 5000)   : "
+	@docker ps --format '{{.Names}}' | grep -q '^medsyntis-mlflow$$' && echo -e "$(GREEN)ACTIVE$(RESET)" || echo -e "$(YELLOW)OPTIONAL (INACTIVE)$(RESET)"
 	@if command -v nvidia-smi >/dev/null 2>&1; then \
 		echo ""; \
 		echo -e "$(CYAN)=== NVIDIA L4 GPU Utilization ===$(RESET)"; \

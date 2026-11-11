@@ -29,10 +29,12 @@ print(answer)
 import hashlib
 import os
 import threading
+import time
 
 from langchain_docling.loader import MetaExtractor
 
 from src.application.config import AppConfig
+from src.infrastructure.observability import get_metrics, start_span
 from src.application.paths import safe_path
 from src.application.tools import timed
 
@@ -471,63 +473,98 @@ class DocumentReader:
         avoids re-running Docling and re-indexing.
         """
         self.logger.debug(f"Start reading document {self.document_path}")
+        t0 = time.perf_counter_ns()
+        domain = self.config.domain or "oncology"
+        parser_name = self.default_loader or "docling"
+        cache_hit = False
 
-        cached_entry = None if force_reload else self._get_cached_document()
-
-        # Cache HIT:
-        if cached_entry is not None and cached_entry.get("markdown"):
-            self._restore_from_cache(cached_entry)
-
-            is_vecdb_indexed = False
+        with start_span(
+            "medsyntis.document.parse_and_index",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.parser": parser_name,
+                "medsyntis.doc_id": self.document,
+                "medsyntis.document_type": self.document_type,
+            },
+        ) as span:
             try:
-                is_vecdb_indexed = self.is_indexed()
-            except Exception as e:
-                self.logger.warning("Error checking if vecdb is indexed: %s", e)
+                cached_entry = None if force_reload else self._get_cached_document()
 
-            if is_vecdb_indexed and not force_reload:
+                # Cache HIT:
+                if cached_entry is not None and cached_entry.get("markdown"):
+                    self._restore_from_cache(cached_entry)
+
+                    is_vecdb_indexed = False
+                    try:
+                        is_vecdb_indexed = self.is_indexed()
+                    except Exception as e:
+                        self.logger.warning("Error checking if vecdb is indexed: %s", e)
+
+                    if is_vecdb_indexed and not force_reload:
+                        cache_hit = True
+                        if span.is_recording():
+                            span.set_attribute("cache.hit", True)
+                        self.logger.info(
+                            "Vector DB already indexed for %s, skipping Docling & re-indexing.",
+                            self.document,
+                        )
+                        self.current_model = self.config.llm.embeddings
+                        return
+
+                    self.logger.info(
+                        "Vector DB not indexed for %s, parsing chunks to index vector store...",
+                        self.document,
+                    )
+
+                # Cache MISS or Vector DB needs indexing:
                 self.logger.info(
-                    "Vector DB already indexed for %s, skipping Docling & re-indexing.",
+                    "Running document loader for %s (doc_type: %s)...",
                     self.document,
+                    self.default_loader,
+                )
+                self.chunked_documents = self._load_document(self.document_path)
+                if not self.markdown_exporter and self.chunked_documents:
+                    self.markdown_exporter = [
+                        Document(
+                            page_content="\n\n".join(
+                                doc.page_content
+                                for doc in self.chunked_documents
+                                if doc.page_content
+                            ),
+                            metadata={
+                                "source": self.document_path,
+                                "file": self.document,
+                            },
+                        )
+                    ]
+
+                if span.is_recording():
+                    span.set_attribute("cache.hit", False)
+                    span.set_attribute(
+                        "medsyntis.chunk_count", len(self.chunked_documents)
+                    )
+
+                # pyrefly: ignore [missing-attribute]
+                self.vecdb.add_chunked_to_collection(
+                    self.chunked_documents, flush_before=True
                 )
                 self.current_model = self.config.llm.embeddings
-                return
 
-            self.logger.info(
-                "Vector DB not indexed for %s, parsing chunks to index vector store...",
-                self.document,
-            )
+                # Save to cache if markdown was produced
+                markdown_content = ""
+                if (
+                    hasattr(self, "markdown_exporter")
+                    and self.markdown_exporter
+                    and len(self.markdown_exporter) > 0
+                ):
+                    markdown_content = self.markdown_exporter[0].page_content
 
-        # Cache MISS or Vector DB needs indexing:
-        self.logger.info(
-            "Running document loader for %s (doc_type: %s)...",
-            self.document,
-            self.default_loader,
-        )
-        self.chunked_documents = self._load_document(self.document_path)
-        if not self.markdown_exporter and self.chunked_documents:
-            self.markdown_exporter = [
-                Document(
-                    page_content="\n\n".join(
-                        doc.page_content
-                        for doc in self.chunked_documents
-                        if doc.page_content
-                    ),
-                    metadata={"source": self.document_path, "file": self.document},
+                if markdown_content:
+                    self._save_to_cache(markdown_content)
+            finally:
+                get_metrics().record_document_parse(
+                    domain=domain,
+                    parser=parser_name,
+                    cache_hit=cache_hit,
+                    duration_ms=(time.perf_counter_ns() - t0) / 1_000_000.0,
                 )
-            ]
-
-        # pyrefly: ignore [missing-attribute]
-        self.vecdb.add_chunked_to_collection(self.chunked_documents, flush_before=True)
-        self.current_model = self.config.llm.embeddings
-
-        # Save to cache if markdown was produced
-        markdown_content = ""
-        if (
-            hasattr(self, "markdown_exporter")
-            and self.markdown_exporter
-            and len(self.markdown_exporter) > 0
-        ):
-            markdown_content = self.markdown_exporter[0].page_content
-
-        if markdown_content:
-            self._save_to_cache(markdown_content)

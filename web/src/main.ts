@@ -3,6 +3,10 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, type WebAppConfig } from "./config.js";
 import { HttpMedsyntisApiAdapter } from "./infrastructure/api/http-medsyntis-api.adapter.js";
 import { InMemoryMedsyntisApiFake } from "./infrastructure/api/in-memory-medsyntis-api.fake.js";
+import {
+  configureWebObservability,
+  shutdownWebObservability,
+} from "./infrastructure/observability/otel.js";
 import { buildServer } from "./ui/server.js";
 
 export function validateStartupConfig(config: WebAppConfig): void {
@@ -23,6 +27,7 @@ export function validateStartupConfig(config: WebAppConfig): void {
 async function main() {
   const config = loadConfig(process.env);
   validateStartupConfig(config);
+  configureWebObservability(config.otel);
 
   const fakeFallback = config.useFakeApiFallback ? new InMemoryMedsyntisApiFake() : undefined;
   const api =
@@ -36,6 +41,17 @@ async function main() {
         });
 
   const app = await buildServer({ config, api });
+  const gracefulShutdown = async () => {
+    try {
+      await app.close();
+    } finally {
+      await shutdownWebObservability();
+    }
+    process.exit(0);
+  };
+  process.once("SIGTERM", () => void gracefulShutdown());
+  process.once("SIGINT", () => void gracefulShutdown());
+
   await app.listen({ port: config.port, host: config.host });
   process.stdout.write(
     `[MedSyntis Web] Server listening on http://${config.host}:${config.port} (API: ${config.apiUrl})\n`,
