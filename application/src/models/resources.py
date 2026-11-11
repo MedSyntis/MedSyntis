@@ -4,10 +4,12 @@ from pydantic import BaseModel, Field
 
 
 class ResourceChatRequest(BaseModel):
-    message: str = Field(description="Question sur le document de référence")
+    message: str = Field(
+        description="Question regarding the reference guideline document"
+    )
     language: Optional[Literal["french", "english"]] = Field(
         default=None,
-        description="Langue de réponse souhaitée pour l'agent ('french' ou 'english')",
+        description="Preferred response language for the agent ('french' or 'english')",
     )
 
 

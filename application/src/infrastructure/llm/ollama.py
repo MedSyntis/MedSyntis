@@ -48,13 +48,17 @@ class OllamaConnect(LLMConnect):
         if output is not None and not tools:
             fmt = output.model_json_schema()
 
+        effective_num_predict = (
+            max(4096, int(reasoning_budget or 0) + 2048) if reasoning else 2048
+        )
+
         model = ChatOllama(
             base_url=f"{self.config.llm.url}:{self.config.llm.port}",
             format=fmt,
             model=model,
             tools=tools,
             reasoning=reasoning,
-            num_predict=2048,
+            num_predict=effective_num_predict,
             temperature=(
                 temperature if temperature is not None else self.config.llm.temp
             ),

@@ -2,6 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Marked, type Tokens } from "marked";
+import type { Language } from "../../domain/types.js";
+
+export const ASSET_VERSION = "39";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ICONS_SVG_PATH = path.resolve(__dirname, "../../../public/img/icons.svg");
@@ -232,16 +235,19 @@ export function extractDobFromPatientId(id: string | null | undefined): string |
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-export function formatPatientSubtitle(id: string, rcpCount: number): string {
-  const rcpLabel = `${rcpCount} ${rcpCount > 1 ? "séances RCP" : "séance RCP"}`;
+export function formatPatientSubtitle(id: string, rcpCount: number, lang: Language = "fr"): string {
+  const sessionLabel =
+    lang === "fr"
+      ? `${rcpCount} ${rcpCount > 1 ? "séances RCP" : "séance RCP"}`
+      : `${rcpCount} ${rcpCount > 1 ? "MDT sessions" : "MDT session"}`;
   const dob = extractDobFromPatientId(id);
   if (dob) {
-    return `Né(e) le ${dob} · ${rcpLabel}`;
+    return lang === "fr" ? `Né(e) le ${dob} · ${sessionLabel}` : `Born ${dob} · ${sessionLabel}`;
   }
   if (id && !id.includes("_") && !id.toLowerCase().endsWith(".pdf")) {
-    return `Dossier ${id} · ${rcpLabel}`;
+    return lang === "fr" ? `Dossier ${id} · ${sessionLabel}` : `Record ${id} · ${sessionLabel}`;
   }
-  return rcpLabel;
+  return sessionLabel;
 }
 
 export function stripDomainQuery(input: string): string {

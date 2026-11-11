@@ -1,21 +1,28 @@
-import { loadConfig } from "./config.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadConfig, type WebAppConfig } from "./config.js";
 import { HttpMedsyntisApiAdapter } from "./infrastructure/api/http-medsyntis-api.adapter.js";
 import { InMemoryMedsyntisApiFake } from "./infrastructure/api/in-memory-medsyntis-api.fake.js";
 import { buildServer } from "./ui/server.js";
 
-async function main() {
-  const config = loadConfig(process.env);
-
+export function validateStartupConfig(config: WebAppConfig): void {
   if (!config.devMode) {
     if (!config.apiToken) {
       throw new Error(
         "APP_API_TOKEN is mandatory when running outside development mode (APP_DEV_MODE=false).",
       );
     }
-    if (config.authMode === "oauth_proxy" && !config.proxySecret) {
-      throw new Error("APP_PROXY_SECRET is mandatory when APP_AUTH_MODE=oauth_proxy.");
+    if (!config.proxySecret) {
+      throw new Error(
+        "APP_PROXY_SECRET is mandatory when running outside development mode (APP_DEV_MODE=false).",
+      );
     }
   }
+}
+
+async function main() {
+  const config = loadConfig(process.env);
+  validateStartupConfig(config);
 
   const fakeFallback = config.useFakeApiFallback ? new InMemoryMedsyntisApiFake() : undefined;
   const api =
@@ -35,7 +42,13 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  process.stderr.write(`Fatal startup error: ${String(err)}\n`);
-  process.exit(1);
-});
+const entryArg = process.argv[1];
+const isEntrypoint =
+  typeof entryArg === "string" && path.resolve(entryArg) === fileURLToPath(import.meta.url);
+
+if (isEntrypoint) {
+  main().catch((err) => {
+    process.stderr.write(`Fatal startup error: ${String(err)}\n`);
+    process.exit(1);
+  });
+}

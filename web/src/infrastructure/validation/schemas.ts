@@ -2,6 +2,7 @@ import { z } from "zod";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   ClinicalDomain,
+  ContrastMode,
   Language,
   MdtAgendaSortStrategy,
   ThemeMode,
@@ -48,8 +49,20 @@ export const EnvConfigSchema = z.object({
 /**
  * 2. Fastify BFF Route Query & Body Schemas (`server.ts`)
  */
+export const ContrastModeSchema = z.enum(["auto", "standard", "medium", "high"]);
+
+export function resolveContrastMode(
+  raw: string | undefined,
+  fallback: ContrastMode = "auto",
+): ContrastMode {
+  if (!raw) return fallback;
+  const parsed = ContrastModeSchema.safeParse(raw.trim().toLowerCase());
+  return parsed.success ? parsed.data : fallback;
+}
+
 export const PreferencesBodySchema = z.object({
   theme: z.enum(["auto", "light", "dark"]).optional().catch(undefined),
+  contrast: ContrastModeSchema.optional().catch(undefined),
   language: z.enum(["fr", "en"]).optional().catch(undefined),
   domain: z.enum(["oncology", "sma"]).optional().catch(undefined),
   expertMode: z.enum(["true", "false"]).optional().catch(undefined),
@@ -57,7 +70,7 @@ export const PreferencesBodySchema = z.object({
 
 export const WorklistQuerySchema = z.object({
   q: optionalTrimmedString,
-  completeness: z.enum(["all", "complete", "incomplete"]).catch("all"),
+  completeness: z.enum(["all", "complete", "partial", "incomplete"]).catch("all"),
   priority: z.enum(["all", "high", "medium", "low"]).catch("all"),
   orientation: z.enum(["all", "adapt", "standard", "pending"]).catch("all"),
   viewMode: z.enum(["patients", "rcp"]).catch("patients"),
@@ -161,16 +174,28 @@ export const AgendaMoveBodySchema = z.object({
     .catch(undefined),
 });
 
-export const MissingItemsBodySchema = z.object({
-  toggle_item: optionalTrimmedString,
-  hide_missing_items: z
-    .preprocess(
-      (v) => (v === "true" ? true : v === "false" ? false : undefined),
-      z.boolean().optional(),
-    )
-    .catch(undefined),
-  restore_all: z.preprocess((v) => v === "true" || v === true, z.boolean()).catch(false),
-});
+export const MissingItemsBodySchema = z
+  .object({
+    toggle_item: optionalTrimmedString,
+    hide_missing_items: z
+      .preprocess(
+        (v) => (v === "true" ? true : v === "false" ? false : undefined),
+        z.boolean().optional(),
+      )
+      .catch(undefined),
+    hidden: z
+      .preprocess(
+        (v) => (v === "true" ? true : v === "false" ? false : undefined),
+        z.boolean().optional(),
+      )
+      .catch(undefined),
+    restore_all: z.preprocess((v) => v === "true" || v === true, z.boolean()).catch(false),
+  })
+  .transform((val) => ({
+    toggle_item: val.toggle_item,
+    hide_missing_items: val.hide_missing_items ?? val.hidden,
+    restore_all: val.restore_all,
+  }));
 
 export const ChatBodySchema = z.object({
   question: trimmedString.catch(""),

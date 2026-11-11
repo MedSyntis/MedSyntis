@@ -15,7 +15,7 @@ uv run python app-api.py
 uv run uvicorn app-api:app --reload --host 127.0.0.1 --port 8000
 ```
 
-When `APP_API_DOCS_ENABLED=true` (default), interactive documentation is available at:
+When `APP_API_DOCS_ENABLED=true` (default in local dev), interactive documentation is available at:
 * **Swagger UI**: `http://127.0.0.1:8000/docs`
 * **ReDoc**: `http://127.0.0.1:8000/redoc`
 * **OpenAPI 3.1 JSON Schema**: `GET /api/v1/openapi.json`
@@ -65,7 +65,7 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 | :--- | :--- | :--- | :--- |
 | `GET` | `/health` | Public | Returns API liveness (`status: "ok"`), `allowed_domains`, and live `PriorityQueue` stats (`HealthResponse`). |
 | `GET` | `/api/v1/me` | `APP_API_TOKEN` | Returns `{username, display_name, is_admin}` resolved from `X-MedSyntis-User` and `X-MedSyntis-Proxy-Secret` (`MeResponse`). |
-| `GET` | `/api/v1/patients` | `APP_API_TOKEN` | Returns the raw list of `Patient` records for the active domain (`list[PatientListItemResponse]`). Query param: `identified_only: bool = false`. |
+| `GET` | `/api/v1/patients` | `APP_API_TOKEN` | Returns the raw list of `Patient` records for the active domain (`list[PatientListItemResponse]`). Query param: `identified_only: bool = false` (excludes temporary `patient_*` / `Inconnu` records when `true`). |
 
 ---
 
@@ -78,8 +78,11 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 | `GET` | `/api/v1/patientmdtform` | List all `PatientMDTForm` cards (`list[RCPCardResponse]`) for the active domain. |
 | `GET` | `/api/v1/patientmdtform/patients` | List longitudinal patient summary cards (`list[PatientCardResponse]`) synthesized from each patient's latest analyzed MDT form. |
 | `GET` | `/api/v1/patientmdtform/patients/{patient_id}` | Get full patient dossier details (`patient`, `latest_file`, and chronological `rcps` list) (`PatientDetailResponse`). |
-| `DELETE` | `/api/v1/patientmdtform/patients/{patient_id}` | Delete a patient dossier and all its associated MDT forms and PDF files (`require_admin`). |
-| `POST` | `/api/v1/patientmdtform/patients/{patient_id}/chat` | Chat with a specialist agent across the **entire longitudinal patient dossier** (`PatientContext`). |
+| `GET` | `/api/v1/patientmdtform/patients/{patient_id}/dashboard` | Return the longitudinal `PatientRecord` dashboard with multi-year raw clinical metric series and global summary state (`PatientDashboardResponse`). |
+| `GET` | `/api/v1/patientmdtform/patients/{patient_id}/summary` | Return the global longitudinal summary state and obsolescence flags for `{patient_id}` (`PatientRecordSummaryStateResponse`). |
+| `POST` | `/api/v1/patientmdtform/patients/{patient_id}/summary` | Enqueue an on-demand global `PatientRecord` longitudinal summary synthesis job (`{force: bool = false}` -> `PatientSummaryTriggerResponse`). |
+| `DELETE` | `/api/v1/patientmdtform/patients/{patient_id}` | Delete a patient dossier and all its associated MDT forms and PDF files (`require_admin`, `MessageResponse`). |
+| `POST` | `/api/v1/patientmdtform/patients/{patient_id}/chat` | Chat with a specialist agent across the **entire longitudinal patient dossier** (`ChatRequest` -> `ChatResponse`). |
 | `GET` | `/api/v1/patientmdtform/schema` | Return the domain's `PatientMDTForm` schema (clinical sections, editability, specialist agents, and enums) (`DomainFormSchemaResponse`). |
 | `GET` | `/api/v1/patientmdtform/resolve` | Resolve a `PatientRecord`, its enriched chronological `rcps`, `selected_file`, and `latest_file` by `?patient_id=...` and/or `?file=...` (`PatientResolveResponse`). |
 | `GET` | `/api/v1/patientmdtform/batches/{batch_id}` | Get per-file processing status and progress percentage for an upload `batch_id` (`BatchStatusResponse`). |
@@ -89,7 +92,7 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 | `GET` | `/api/v1/patientmdtform/{filename}/pdf` | Download or stream inline (`?inline=true`) the source PDF or its bounding-box highlighted variant (`?variant=bbox`). |
 | `POST` | `/api/v1/patientmdtform/upload` | Upload a PDF (`multipart/form-data`), check SHA-256 duplicates, and enqueue 3-wave extraction (`UploadResponse`). |
 | `POST` | `/api/v1/patientmdtform/{filename}/process` | Enqueue or run full-form or single-section (`model_name`) AI extraction while respecting `preserve_manual_edits` (`ProcessResponse`). |
-| `POST` | `/api/v1/patientmdtform/{filename}/chat` | Chat with a specialist agent scoped to a single `PatientMDTForm` document (`ChatResponse`). |
+| `POST` | `/api/v1/patientmdtform/{filename}/chat` | Chat with a specialist agent scoped to a single `PatientMDTForm` document (`ChatRequest` -> `ChatResponse`). |
 | `PATCH` | `/api/v1/patientmdtform/{filename}/sections/{section_name}` | Save a human-in-the-loop manual edit (`manual_edits`) on a clinical, completeness, or orientation section (`PatientMDTFormDetailResponse`). |
 | `POST` | `/api/v1/patientmdtform/{filename}/sections/{section_name}/rollback` | Rollback a manually edited section back to its original AI extraction (`PatientMDTFormDetailResponse`). |
 | `PATCH` | `/api/v1/patientmdtform/{filename}/missing-items` | Toggle visibility of individual missing items (`toggle_item`) or hide/restore all missing items (`PatientMDTFormDetailResponse`). |
@@ -106,6 +109,13 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
   * `patient_id` *(optional)*: Target patient ID (if omitted, Wave 1 administrative extraction automatically links or creates the patient).
   * `run_full_ai` *(optional, default `true`)*: Run all 3 extraction waves (`true`) or Wave 1 identification only (`false`).
   * `batch_id` *(optional)*: Client or batch correlation identifier.
+
+#### Trigger Longitudinal Patient Summary (`POST /api/v1/patientmdtform/patients/{patient_id}/summary`)
+```json
+{
+  "force": false
+}
+```
 
 #### Trigger Full or Single-Section Reprocessing (`POST /api/v1/patientmdtform/{filename}/process`)
 ```json
@@ -166,7 +176,8 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 | :--- | :--- | :--- |
 | `GET` | `/api/v1/agents` | List all configured specialist agents for the active domain (`name`, `system_prompt`, `models`, `resources`) (`list[AgentDetailResponse]`). |
 | `GET` | `/api/v1/agents/{agent_name}` | Retrieve full metadata and system prompt for a specific agent (`AgentDetailResponse`). |
-| `POST` | `/api/v1/agents/chat` / `/api/v1/patientmdtform/{filename}/chat` / `/api/v1/patientmdtform/patients/{patient_id}/chat` | Interactive chat with a specialist agent (`agent_name`, `message`, optional `language`) scoped to a single MDT form or an entire longitudinal patient dossier (`ChatResponse`). |
+
+*(Note: Interactive specialist agent chat is scoped strictly to a document or patient context via `POST /api/v1/patientmdtform/{filename}/chat`, `POST /api/v1/patientmdtform/patients/{patient_id}/chat`, or `POST /api/v1/resources/{filename}/chat`.)*
 
 ---
 
@@ -177,10 +188,9 @@ Used to manage, view, index, and query national scientific guidelines (**TNCD** 
 | Method | Path | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/v1/resources` | List all guideline PDFs in the domain's resources directory with `is_indexed`, `size_bytes`, and `updated_at` (`list[ResourceIndexResponse]`). |
-| `GET` | `/api/v1/resources/{filename}/chunks` | Inspect vector-indexed text chunks and metadata for a guideline resource. |
 | `GET` | `/api/v1/resources/{filename}/file` | Serve a clinical guideline PDF (or dynamically resolved citation target, with optional `?form_file=...` fallback) inline (`application/pdf`). |
 | `POST` | `/api/v1/resources/upload` | Upload a new scientific reference PDF (`multipart/form-data`, max 50 MB) into the domain's resources directory (`ResourceIndexResponse`). |
-| `POST` | `/api/v1/resources/ingest` / `/api/v1/resources/{filename}/index` | Parse, chunk, and index a clinical reference PDF into the domain's Milvus/Chroma vector store (`ResourceIndexedResponse`). |
+| `POST` | `/api/v1/resources/{filename}/index` | Parse, chunk, and index a clinical reference PDF into the domain's Milvus/Chroma vector store (`ResourceIndexedResponse`). |
 | `POST` | `/api/v1/resources/{filename}/chat` | Query an indexed clinical guideline via the `Ressource Assistant` RAG agent (`ResourceChatRequest` -> `ChatResponse`). |
 | `DELETE` | `/api/v1/resources/{filename}` | Delete a clinical reference PDF from the domain's resources directory (`ResourceDeleteResponse`). |
 
@@ -224,7 +234,7 @@ Coordinates multi-domain 3-wave extraction jobs across shared GPU hardware and s
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/v1/queue/status` & `GET /api/v1/queue/stats` | Retrieve `PriorityQueue` metrics (`pending`, `running`, `completed`, `failed`, `active_leases`, `batch_size`, `hardware_profile`) (`QueueStatsResponse`). Optional `?domain=...`. |
+| `GET` | `/api/v1/queue/stats` | Retrieve `PriorityQueue` metrics (`pending`, `processing`, `completed`, `failed`, `cancelled`, `active_locks`, `batch_size`, `hardware_profile`, `allowed_domains`) (`QueueStatsResponse`). Optional `?domain=...`. |
 | `GET` | `/api/v1/queue/domains` | Return `{default_domain, allowed_domains}` configured on the Cross-Domain Queue (`QueueDomainsResponse`). |
 | `GET` | `/api/v1/queue/jobs` | List queue jobs filterable by `?domain=...`, `?status=...`, `?batch_id=...`, `?filename=...`, and `?limit=100` (`list[QueueJobResponse]`). |
 | `GET` | `/api/v1/queue/jobs/{job_id}` | Retrieve details of a specific queue job (`QueueJobResponse`). |
@@ -236,7 +246,7 @@ Coordinates multi-domain 3-wave extraction jobs across shared GPU hardware and s
 | `POST` | `/api/v1/queue/rerun` | Enqueue a full-form or single-section (`model_name`) rerun while preserving `manual_edits` (`EnqueueResponse`). |
 | `POST` | `/api/v1/queue/jobs/retry` & `POST /api/v1/queue/jobs/{job_id}/retry` | Re-enqueue a failed or cancelled job by `?job_id=...` or path `{job_id}` (`require_admin`, `QueueJobResponse`). |
 | `DELETE` | `/api/v1/queue/jobs` & `DELETE /api/v1/queue/jobs/{job_id}` | Cancel or delete a job by `?job_id=...` or path `{job_id}` and release its GPU lease (`require_admin`, `JobDeletedResponse`). |
-| `POST` | `/api/v1/queue/clean` | Clean queue jobs according to `mode` (`"finished"`, `"failed"`, `"completed"`, `"cancelled"`, or `"all"`) (`require_admin`, `QueueCleanResponse`). |
+| `POST` | `/api/v1/queue/clean` | Clean queue jobs according to `QueueCleanMode` (`"completed"`, `"failed"`, `"reset_stuck"`, `"retry_failed"`, `"pending"`, or `"all"`) (`require_admin`, `QueueCleanResponse`). |
 | `GET` | `/api/v1/queue/locks` | List active GPU hardware execution leases (`list[GpuLeaseResponse]`). |
 | `DELETE` | `/api/v1/queue/locks` | Force-release GPU leases by `?lease_id=...`, `?job_id=...`, `?domain=...`, or `?force_all=true` (`require_admin`, `ReleaseLocksResponse`). |
 

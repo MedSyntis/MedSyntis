@@ -79,8 +79,8 @@ class TestDDDArchitecturalBoundaries:
     ):
         """
         Ensure that `src/domain/`, `src/infrastructure/documents/repositories.py`,
-        and `src/application/use_cases/` use `PatientMDTForm` and `PatientRecord`
-        instead of French `rcp_form` or `dossier` in class and method names.
+        `src/application/use_cases/`, and `src/routers/` use `PatientMDTForm` and
+        `PatientRecord` instead of French `rcp_form`, `_rcp_`, or `dossier`.
         """
         src_root = Path(__file__).resolve().parent.parent / "src"
         checked_files = (
@@ -92,7 +92,9 @@ class TestDDDArchitecturalBoundaries:
         for py_file in checked_files:
             tree = ast.parse(py_file.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
-                if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                if isinstance(
+                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+                ):
                     lower_name = node.name.lower()
                     if "dossier" in lower_name:
                         violations.append(
@@ -101,6 +103,20 @@ class TestDDDArchitecturalBoundaries:
                     if "rcp_form" in lower_name or "rcpextraction" in lower_name:
                         violations.append(
                             f"{py_file.name}: symbol '{node.name}' uses 'rcp' instead of 'patient_mdt_form'"
+                        )
+
+        for router_file in (src_root / "routers").rglob("*.py"):
+            tree = ast.parse(router_file.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    lower_name = node.name.lower()
+                    if "dossier" in lower_name:
+                        violations.append(
+                            f"routers/{router_file.name}: function '{node.name}' contains French 'dossier'"
+                        )
+                    if "_rcp_" in lower_name or lower_name.endswith("_rcp"):
+                        violations.append(
+                            f"routers/{router_file.name}: function '{node.name}' uses '_rcp_' instead of '_mdt_form_'"
                         )
         assert violations == [], f"Ubiquitous language violations: {violations}"
 
@@ -145,7 +161,12 @@ class TestPureDomainEntitiesAndValueObjects:
         )
         assert identity.full_name == "Jean-Pierre D'Hérémont"
         assert identity.name_key == "d_heremont_jean_pierre"
-        assert identity.build_patient_id() == "d_heremont_jean_pierre_1958_03_14"
+        pid = identity.build_patient_id()
+        assert pid.startswith("pat_")
+        assert len(pid) == 20
+        assert "heremont" not in pid
+        assert Patient.is_pseudonymized_id(pid)
+        assert not Patient.is_pseudonymized_id("d_heremont_jean_pierre_1958_03_14")
         assert "14-03-1958" in identity.display_label
 
         with pytest.raises(Exception):
@@ -162,7 +183,10 @@ class TestPureDomainEntitiesAndValueObjects:
             gender=Gender.female,
         )
         patient = Patient.from_administrative(admin, filename="rcp_1.pdf")
-        assert patient.patient_id == "martin_claire_1962_07_21"
+        assert patient.patient_id == Patient.build_id(
+            "Claire", "Martin", datetime(1962, 7, 21)
+        )
+        assert patient.patient_id.startswith("pat_")
         assert patient.files == ["rcp_1.pdf"]
 
         assert patient.attach_file("rcp_2.pdf") is True
@@ -253,8 +277,10 @@ class TestPureDomainEntitiesAndValueObjects:
             "**Pancréas** : Surveillance standard post-opératoire"
         ]
         assert "Hors périmètre" not in metrics_non_rel["urgency_reason"]
-        # Without MTDCompleted section evaluated by AI, is_complete must be False
+        # Without MTDCompleted section evaluated by AI, is_complete must be False and status is "pending"
         assert metrics["is_complete"] is False
+        assert metrics["completeness_status"] == "pending"
+        assert metrics["completeness_tone"] == "neutral"
 
         # Once MTDCompleted is present and processing_status is COMPLETED with no missing items, is_complete is True
         raw_doc["MTDCompleted"] = {
@@ -280,7 +306,8 @@ class TestPureDomainEntitiesAndValueObjects:
         assert metrics_opt["completeness_label"] == "Oui"
         assert metrics_opt["completeness_tone"] == "green"
         assert (
-            metrics_opt["completeness_summary"] == "2 élément(s) facultatif manquant(s)"
+            metrics_opt["completeness_summary"]
+            == "2 élément(s) facultatif(s) manquant(s)"
         )
 
         # If is_mtd_complete is "partial" ("Partiel"), tone is orange and is_complete is False
@@ -311,10 +338,25 @@ class TestPureDomainEntitiesAndValueObjects:
         assert metrics_no["completeness_tone"] == "red"
         assert metrics_no["completeness_summary"] == "2 élément(s) manquant(s)"
 
-        # If processing_status is not COMPLETED (e.g. PENDING_EXPERTS), is_complete must remain False
+        # Hiding missing items in the UI MUST NOT flip completeness_status to "yes":
+        # only an explicit practitioner change on is_mtd_complete changes completeness
+        raw_doc_hidden = {
+            **raw_doc,
+            "hidden_missing_items": ["Anatomopathologie", "TDM TAP"],
+            "hide_missing_items": True,
+        }
+        metrics_hidden = PatientMDTOncologicForm.extract_card_metrics(raw_doc_hidden)
+        assert metrics_hidden["missing"] == []
+        assert metrics_hidden["is_complete"] is False
+        assert metrics_hidden["completeness_status"] == "no"
+        assert metrics_hidden["completeness_tone"] == "red"
+
+        # If processing_status is not COMPLETED (e.g. PENDING_EXPERTS) and not manually edited, status is "pending"
         raw_doc["processing_status"] = RCPProcessingStatus.PENDING_EXPERTS.value
         metrics_pending = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
         assert metrics_pending["is_complete"] is False
+        assert metrics_pending["completeness_status"] == "pending"
+        assert metrics_pending["completeness_tone"] == "neutral"
 
     def test_cross_domain_care_orientation_proposal_collaborative_schema_and_metrics(
         self,
@@ -460,8 +502,11 @@ class TestRepositoriesAndApplicationUseCases:
                 "gender": "Female",
             },
         )
+        expected_pid = Patient.build_id("Marion", "Roussel", datetime(1970, 5, 12))
+        assert expected_pid.startswith("pat_")
+        assert "roussel" not in expected_pid
         assert p1 is not None
-        assert p1.patient_id == "roussel_marion_1970_05_12"
+        assert p1.patient_id == expected_pid
 
         # Sync second PatientMDTForm for the same patient with clinical urgency
         p2, _ = service.synchronize_patient_from_admin(
@@ -494,14 +539,14 @@ class TestRepositoriesAndApplicationUseCases:
         # Build patient cards -> 1 card for Marion Roussel, pointing to rcp_new.pdf
         p_cards = service.list_patient_cards()
         assert len(p_cards) == 1
-        assert p_cards[0]["patient_id"] == "roussel_marion_1970_05_12"
+        assert p_cards[0]["patient_id"] == expected_pid
         assert p_cards[0]["file"] == file_new
         assert p_cards[0]["rcp_count"] == 2
         assert p_cards[0]["urgency"] == "Urgent"
 
         # Resolve PatientRecord by patient_id
         resolved_patient, rcps, selected_file = service.resolve_patient_record(
-            patient_id_param="roussel_marion_1970_05_12"
+            patient_id_param=expected_pid
         )
         assert resolved_patient is not None
         assert len(rcps) == 2
@@ -510,14 +555,14 @@ class TestRepositoriesAndApplicationUseCases:
         # Delete single PatientMDTForm document -> patient keeps remaining file
         service.delete_patient_mdt_form_document(file_old, delete_file=True)
         assert not (tmp_path / file_old).exists()
-        updated_p = patient_repo.get_by_id("roussel_marion_1970_05_12")
+        updated_p = patient_repo.get_by_id(expected_pid)
         assert updated_p is not None
         assert updated_p.files == [file_new]
 
         # Delete entire PatientRecord -> removes remaining file, forms, and patient
-        assert service.delete_patient_record("roussel_marion_1970_05_12") is True
+        assert service.delete_patient_record(expected_pid) is True
         assert not (tmp_path / file_new).exists()
-        assert patient_repo.get_by_id("roussel_marion_1970_05_12") is None
+        assert patient_repo.get_by_id(expected_pid) is None
         assert mdt_form_repo.get_by_filename(file_new) is None
 
     def test_patient_mdt_form_extraction_service_rejects_non_mdt_form_and_cleans_up(

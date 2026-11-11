@@ -93,6 +93,7 @@ class MDTAgendaCandidateSnapshot(BaseModel):
     urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral = "low"
     is_complete: bool = True
+    completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int = 0
     missing_items: list[str] = Field(default_factory=list)
     care_adaptation_suggested: Optional[bool] = None
@@ -119,6 +120,7 @@ class MDTAgendaScheduledItem(BaseModel):
     urgency_reasons: list[str] = Field(default_factory=list)
     priority_level: PriorityLevelLiteral
     is_complete: bool
+    completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int
     missing_items: list[str] = Field(default_factory=list)
     care_adaptation_suggested: Optional[bool] = None
@@ -502,6 +504,7 @@ class MDTAgendaScheduler:
                     urgency_reasons=list(snap.urgency_reasons),
                     priority_level=snap.priority_level,
                     is_complete=snap.is_complete,
+                    completeness_status=snap.completeness_status,
                     missing_count=snap.missing_count,
                     missing_items=list(snap.missing_items),
                     care_adaptation_suggested=snap.care_adaptation_suggested,

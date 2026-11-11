@@ -25,7 +25,14 @@ from src.infrastructure.vectorial.database import VectorialDataBase  # noqa: E40
 from src.application.config import AppConfig  # noqa: E402
 
 
-from pymilvus import MilvusClient, MilvusException, connections, db, utility  # noqa: E402
+from pymilvus import (  # noqa: E402
+    Collection,
+    MilvusClient,
+    MilvusException,
+    connections,
+    db,
+    utility,
+)
 
 import logging  # noqa: E402
 
@@ -88,6 +95,8 @@ Milvus.drop = patched_drop
 
 
 class MilvusDB(VectorialDataBase):
+    _alias: str = "medsyntis_default"
+
     def init_client(self, config: AppConfig):
         self.uri = urlunsplit(
             (
@@ -100,24 +109,27 @@ class MilvusDB(VectorialDataBase):
         )  # NOSONAR
         self.token = config.milvus.token
         self.database = config.milvus.database
+        self._alias = f"medsyntis_{self.database}"
         retry = 3
         last_error: Exception | None = None
         for r in range(retry):
             try:
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", message=".*ORM-style.*")
-                    connections.connect(
-                        host=config.milvus.host,
-                        port=config.milvus.port,
-                        token=config.milvus.token,
-                    )
+                    if r > 0 or connections.has_connection(self._alias) is not True:
+                        connections.connect(
+                            alias=self._alias,
+                            host=config.milvus.host,
+                            port=config.milvus.port,
+                            token=config.milvus.token,
+                        )
 
                     try:
-                        existing_databases = db.list_database()
+                        existing_databases = db.list_database(using=self._alias)
                         if config.milvus.database not in existing_databases:
-                            db.create_database(self.database)
+                            db.create_database(self.database, using=self._alias)
                         try:
-                            db.using_database(self.database, using="default")
+                            db.using_database(self.database, using=self._alias)
                         except Exception:
                             pass
                         last_error = None
@@ -142,15 +154,14 @@ class MilvusDB(VectorialDataBase):
         self,
         flush=False,
     ):
-
         if flush:
             # Drop the collection manually before recreating the client
             # to avoid a race condition where the Milvus() constructor
             # tries to load_collection before the server has stabilized
             # after dropping.
             try:
-                if utility.has_collection(self.coll_name):
-                    utility.drop_collection(self.coll_name)
+                if utility.has_collection(self.coll_name, using=self._alias):
+                    utility.drop_collection(self.coll_name, using=self._alias)
                     self.logger.info(
                         "Dropped collection '%s'. Waiting for Milvus to stabilize...",
                         self.coll_name,
@@ -170,17 +181,31 @@ class MilvusDB(VectorialDataBase):
                 "uri": self.uri,
                 "token": self.token,
                 "db_name": self.database,
+                "alias": self._alias,
             },
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",
             drop_old=False,  # We handle drop manually above to avoid race conditions
             enable_dynamic_field=True,
         )
+        self.collection = self.clientdb
+
+    def delete_collection(self) -> None:
+        """Drop the underlying Milvus collection using the database-scoped alias."""
+        try:
+            if utility.has_collection(self.coll_name, using=self._alias):
+                utility.drop_collection(self.coll_name, using=self._alias)
+        except Exception as e:
+            self.logger.warning(
+                "Failed to drop Milvus collection '%s': %s",
+                self.coll_name,
+                e,
+            )
 
     def get_version(self):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message=".*ORM-style.*")
-            return utility.get_server_version()
+            return utility.get_server_version(using=self._alias)
 
     def is_indexed(self) -> bool:
         try:
@@ -210,11 +235,47 @@ class MilvusDB(VectorialDataBase):
                             return stats.get("row_count", 0) > 0
                         except Exception:
                             pass
-            if utility.has_collection(self.coll_name):
+            if utility.has_collection(self.coll_name, using=self._alias):
+                try:
+                    col = Collection(self.coll_name, using=self._alias)
+                    num_entities = getattr(col, "num_entities", None)
+                    if isinstance(num_entities, int):
+                        return num_entities > 0
+                except Exception:
+                    pass
                 return True
             return False
         except Exception:
             return False
+
+    def _add_documents_batch(self, batch: list[Document]) -> None:
+        """Insert a batch of documents into Milvus with retry on transient segment/partition errors."""
+        if not batch:
+            return
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                self.clientdb.add_documents(
+                    ids=[str(uuid.uuid4()) for _ in batch],
+                    documents=batch,
+                )
+                break
+            except MilvusException as e:
+                if attempt < max_retries - 1 and (
+                    "partition not found" in str(e).lower()
+                    or "segment" in str(e).lower()
+                    or "unrecoverable" in str(e).lower()
+                ):
+                    self.logger.warning(
+                        f"Milvus batch insertion failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                        "Waiting for metadata synchronization before retrying..."
+                    )
+                    time.sleep(2.0)
+                else:
+                    self.logger.error(
+                        f"Failed to insert document batch after {max_retries} attempts: {e}"
+                    )
+                    raise
 
     def add_to_collection(self, doc, flush_before=False):
         """

@@ -36,11 +36,35 @@ logger = app_conf.set_logger("medsyntis.api")
 if app_conf.api_token is None:
     if not app_conf.dev_mode:
         raise RuntimeError(
-            "APP_API_TOKEN est obligatoire hors mode développement (APP_DEV_MODE=false)."
+            "APP_API_TOKEN is required outside development mode (APP_DEV_MODE=false)."
         )
     logger.warning(
-        "APP_API_TOKEN non défini : l'API est accessible sans authentification (dev mode)."
+        "APP_API_TOKEN is not set: the API is accessible without authentication (dev mode)."
     )
+
+
+class SSEBypassGZipMiddleware(GZipMiddleware):
+    """GZip middleware that bypasses compression on Server-Sent Events (`/thinking/stream`)."""
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") == "http" and str(scope.get("path", "")).endswith(
+            "/thinking/stream"
+        ):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
+def resolve_uvicorn_workers(conf: AppConfig) -> int:
+    """Enforce a single Uvicorn worker when the in-memory PriorityQueue is enabled."""
+    if conf.queue.enabled:
+        if conf.api.workers > 1:
+            logger.warning(
+                "Forcing uvicorn workers=1 because in-memory PriorityQueue is enabled (configured workers=%d).",
+                conf.api.workers,
+            )
+        return 1
+    return conf.api.workers
 
 
 @asynccontextmanager
@@ -54,7 +78,7 @@ async def lifespan(app: FastAPI):
         recovered = queue_manager.recover_unfinished_from_mongodb()
         if recovered:
             logger.info(
-                f"Recovered {recovered} unfinished RCP file(s) into the PriorityQueue."
+                f"Recovered {recovered} unfinished PatientMDTForm file(s) into the PriorityQueue."
             )
     except Exception as exc:
         logger.warning(f"Startup queue recovery skipped: {exc}")
@@ -79,7 +103,7 @@ def configure_security_middlewares(target_app: FastAPI, conf: AppConfig) -> None
 
     if conf.api.gzip_enabled:
         target_app.add_middleware(
-            GZipMiddleware,
+            SSEBypassGZipMiddleware,
             minimum_size=conf.api.gzip_minimum_size,
         )
 
@@ -108,14 +132,14 @@ def configure_security_middlewares(target_app: FastAPI, conf: AppConfig) -> None
 app = FastAPI(
     title="MedSyntis Cross-Domain API",
     description=(
-        "API REST multi-domaines versionnée pour la gestion des RCP (Oncologie, SMA...) "
-        "et de la file de traitement `queue.PriorityQueue` intégrée."
+        "Versioned multi-domain REST API for PatientMDTForm management (Oncology, SMA...) "
+        "and integrated `queue.PriorityQueue` processing."
     ),
     version="1.1.0",
     lifespan=lifespan,
     docs_url="/docs" if app_conf.api.docs_enabled else None,
     redoc_url="/redoc" if app_conf.api.docs_enabled else None,
-    # Spécification OpenAPI versionnée (utilisée aussi par /docs et /redoc)
+    # Versioned OpenAPI specification (also used by /docs and /redoc)
     openapi_url="/api/v1/openapi.json" if app_conf.api.docs_enabled else None,
 )
 
@@ -182,7 +206,7 @@ if __name__ == "__main__":
         app,
         host=app_conf.api.host,
         port=app_conf.api.port,
-        workers=app_conf.api.workers,
+        workers=resolve_uvicorn_workers(app_conf),
         timeout_keep_alive=app_conf.api.timeout_keep_alive,
         proxy_headers=app_conf.api.proxy_headers,
         forwarded_allow_ips=app_conf.api.forwarded_allow_ips,

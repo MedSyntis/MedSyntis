@@ -14,6 +14,7 @@ from src.application.use_cases import (
     PatientMDTFormExtractionService,
     PatientRecordService,
 )
+from src.domain.patient import Patient
 from src.domain.patient_mdt_form import get_domain_mdt_form_cls
 from src.domain.worker.queue_job import JobStatus, JobType
 from src.infrastructure.documents.repositories import (
@@ -99,13 +100,14 @@ def test_rcp_and_patient_card_responses_include_processing_and_care_fields(
 
     api_app.dependency_overrides[get_record_service] = lambda: service
 
+    expected_pid = Patient.build_id("Jean", "Dupont", "1970-05-10")
     rcps_resp = client.get("/api/v1/patientmdtform")
     assert rcps_resp.status_code == 200
     rcps = rcps_resp.json()
     assert len(rcps) == 1
     rcp_card = rcps[0]
     assert rcp_card["file"] == "case1.pdf"
-    assert rcp_card["link"] == "datas?patient_id=dupont_jean_1970_05_10&file=case1.pdf"
+    assert rcp_card["link"] == f"datas?patient_id={expected_pid}&file=case1.pdf"
     assert rcp_card["processing_status"] == "RUNNING"
     assert rcp_card["processing_step"] == "WAVE_2_CLINICAL"
     assert rcp_card["processing_progress_pct"] == 65.0
@@ -118,7 +120,7 @@ def test_rcp_and_patient_card_responses_include_processing_and_care_fields(
     assert len(p_cards) == 1
     p_card = p_cards[0]
     assert p_card["file"] == "case1.pdf"
-    assert p_card["link"] == "datas?patient_id=dupont_jean_1970_05_10&file=case1.pdf"
+    assert p_card["link"] == f"datas?patient_id={expected_pid}&file=case1.pdf"
     assert p_card["processing_status"] == "RUNNING"
     assert p_card["processing_step"] == "WAVE_2_CLINICAL"
     assert p_card["processing_progress_pct"] == 65.0
@@ -168,11 +170,13 @@ def test_get_patientmdtform_schema_returns_pure_domain_sections_and_enums(
         assert "pole" not in sec
         assert isinstance(sec["json_schema"], dict)
 
-    # Check editable matches domain policy
+    # Check editable matches domain policy (CareOrientationProposal editable, ExpertAnswer non-editable)
     care_sec = next(
         s for s in body["sections"] if s["name"] == "CareOrientationProposal"
     )
-    assert care_sec["editable"] is False
+    assert care_sec["editable"] is True
+    exp_sec = next(s for s in body["sections"] if s["name"] == "ExpertAnswer")
+    assert exp_sec["editable"] is False
     mtd_sec = next(s for s in body["sections"] if s["name"] == "MTDCompleted")
     assert mtd_sec["editable"] is True
 
@@ -304,7 +308,7 @@ def test_per_form_metrics_and_mdt_date_in_detail_and_patient_endpoints(
     assert form_resp.status_code == 200
     form_body = form_resp.json()
     assert "metrics" in form_body and form_body["metrics"] is not None
-    assert form_body["metrics"]["urgency_score"] == 0
+    assert form_body["metrics"]["urgency_score"] == 2
     assert form_body["metrics"]["last_name"] == "Curie"
     assert form_body["mdt_date"] is not None
     assert form_body["mdt_date"].startswith("2026-03-15")
@@ -315,7 +319,7 @@ def test_per_form_metrics_and_mdt_date_in_detail_and_patient_endpoints(
     assert len(p_body["rcps"]) == 1
     rcp_entry = p_body["rcps"][0]
     assert "metrics" in rcp_entry and rcp_entry["metrics"] is not None
-    assert rcp_entry["metrics"]["urgency_score"] == 0
+    assert rcp_entry["metrics"]["urgency_score"] == 2
     assert rcp_entry["mdt_date"].startswith("2026-03-15")
 
 
@@ -582,7 +586,7 @@ def test_list_raw_patients_and_identified_only_filter(api_app, client, tmp_path)
     identified = id_resp.json()
     assert len(identified) == 1
     p = identified[0]
-    assert p["patient_id"] == "moreau_claire_1982_09_20"
+    assert p["patient_id"] == Patient.build_id("Claire", "Moreau", "1982-09-20")
     assert p["born_name"] == "Petit"
     assert p["gender"] == "Female"
     assert p["files"] == ["identified.pdf"]
@@ -885,14 +889,14 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
         == 200
     )
 
-    # 7. Internal service call (no X-MedSyntis-User header) remains allowed, even when X-MedSyntis-Proxy-Secret is sent
-    assert client.post("/api/v1/queue/clean").status_code == 200
+    # 7. Missing X-MedSyntis-User header is rejected (403) when admin_users is configured
+    assert client.post("/api/v1/queue/clean").status_code == 403
     assert (
         client.post(
             "/api/v1/queue/clean",
             headers={"X-MedSyntis-Proxy-Secret": "top-secret-proxy"},
         ).status_code
-        == 200
+        == 403
     )
 
     # 8. Dev mode (proxy_secret=None): user headers are accepted as-is without proxy secret
@@ -1002,7 +1006,7 @@ def test_get_patient_detail_by_pdf_filename_resolves_or_synthesizes_patient(
 # 15. PATCH /api/v1/patientmdtform/{filename}/missing-items
 # ---------------------------------------------------------------------------
 def test_patch_missing_items_visibility_and_completeness_metrics(
-    api_app, client, tmp_path
+    api_app, client, tmp_path, monkeypatch
 ):
     """Verify PATCH /patientmdtform/{filename}/missing-items toggles, hides, and updates what_missing."""
     patient_repo = InMemoryPatientRepository()
@@ -1033,7 +1037,13 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
         config=conf,
     )
     api_app.dependency_overrides[get_record_service] = lambda: service
+    api_app.dependency_overrides[get_mdt_form_repo] = lambda: mdt_repo
+    api_app.dependency_overrides[api_deps.require_db] = lambda: SimpleNamespace()
     api_app.dependency_overrides[get_domain_config] = lambda: conf
+    monkeypatch.setattr(
+        "src.routers.patientmdtform._build_record_service",
+        lambda *_a, **_kw: service,
+    )
 
     # 1. Toggle one item -> hidden_missing_items=["TEP-TDM"], missing=["CA 19-9"], is_complete=False
     resp1 = client.patch(
@@ -1047,7 +1057,7 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
     assert b1["metrics"]["missing"] == ["CA 19-9"]
     assert b1["metrics"]["is_complete"] is False
 
-    # 2. Toggle second item -> all items hidden -> is_complete=True
+    # 2. Toggle second item -> all items hidden visually, but is_complete stays False until practitioner explicitly updates MTDCompleted
     resp2 = client.patch(
         "/api/v1/patientmdtform/missing_case.pdf/missing-items",
         json={"toggle_item": "CA 19-9"},
@@ -1056,9 +1066,10 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
     b2 = resp2.json()
     assert set(b2["metrics"]["hidden_missing_items"]) == {"TEP-TDM", "CA 19-9"}
     assert b2["metrics"]["missing"] == []
-    assert b2["metrics"]["is_complete"] is True
+    assert b2["metrics"]["is_complete"] is False
+    assert b2["metrics"]["completeness_status"] == "no"
 
-    # 3. Replace what_missing and set hide_missing_items=True
+    # 3. Replace what_missing and set hide_missing_items=True -> still preserves explicit is_mtd_complete=False
     resp3 = client.patch(
         "/api/v1/patientmdtform/missing_case.pdf/missing-items",
         json={
@@ -1072,7 +1083,29 @@ def test_patch_missing_items_visibility_and_completeness_metrics(
     assert b3["metrics"]["all_missing_items"] == ["IRM hépatique"]
     assert b3["metrics"]["hide_missing_items"] is True
     assert b3["metrics"]["missing"] == []
-    assert b3["metrics"]["is_complete"] is True
+    assert b3["metrics"]["is_complete"] is False
+    assert b3["metrics"]["completeness_status"] == "no"
+
+    # 4. Explicit practitioner update on MTDCompleted changes completeness_status to "yes" (with optional item)
+    resp4 = client.patch(
+        "/api/v1/patientmdtform/missing_case.pdf/sections/MTDCompleted",
+        json={
+            "section_data": {
+                "mtd_complete": {
+                    "is_mtd_complete": True,
+                    "what_missing": ["IRM hépatique"],
+                    "references": [],
+                }
+            },
+            "edited_by": "dr_martin",
+        },
+    )
+    assert resp4.status_code == 200
+    resp_det = client.get("/api/v1/patientmdtform/missing_case.pdf")
+    assert resp_det.status_code == 200
+    b4 = resp_det.json()
+    assert b4["metrics"]["is_complete"] is True
+    assert b4["metrics"]["completeness_status"] == "yes"
 
 
 # ---------------------------------------------------------------------------

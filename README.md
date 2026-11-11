@@ -19,7 +19,7 @@
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-%3E%3D%203.13-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Version" /></a>
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/Managed%20by-uv-DE5FE9?style=flat-square&logo=astral&logoColor=white" alt="uv Package Manager" /></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Web%20UI-Node.js%2026%20%2B%20Fastify%20M3-386B66?style=flat-square&logo=fastify&logoColor=white" alt="Fastify Material Design 3 Web UI" /></a>
-  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Dashboard-Streamlit%201.66+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit 1.66+" /></a>
+  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Legacy%20UI-Streamlit%20(Deprecated)-94a3b8?style=flat-square&logo=streamlit&logoColor=white" alt="Legacy Streamlit (Deprecated)" /></a>
   <a href="https://www.langchain.com/"><img src="https://img.shields.io/badge/Orchestration-LangChain-1C3C3C?style=flat-square&logo=chainlink&logoColor=white" alt="LangChain" /></a>
   <a href="https://milvus.io/"><img src="https://img.shields.io/badge/Vector%20DB-Milvus%20Standalone-00b4d8?style=flat-square&logo=vector-store&logoColor=white" alt="Milvus" /></a>
   <a href="https://www.mongodb.com/"><img src="https://img.shields.io/badge/Metadata%20DB-MongoDB%20Cache-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="MongoDB" /></a>
@@ -75,7 +75,10 @@
 
 ## 🖥️ User Interface Overview
 
-MedSyntis provides a hospital-grade **Material Design 3 Web UI** engineered for zero-glare readability in dark projection rooms as well as clinician workstations and tablets (**WCAG 2.2 AA** compliant with **Light, Dark, and Auto** themes, available in French and English):
+MedSyntis provides a hospital-grade **Material Design 3 Web UI (`web/`)** as its **primary clinical interface**, engineered for zero-glare readability in dark projection rooms as well as clinician workstations and tablets (**WCAG 2.2 AA** compliant with **Light, Dark, and Auto** themes, available in French and English).
+
+> [!NOTE]
+> The earlier Streamlit interface (`application/src/ui/`, `application/app-ui.py`) is **deprecated / legacy** and retained only as an optional compatibility profile (`--profile streamlit`). All active clinical UX development targets `web/`.
 
 * **MDT Worklist (`/worklist`)**: High-density clinical table and card views with clickable KPI filters (Total Dossiers, High Urgency, Incomplete Files, Suggested Care Adaptations), multi-column sorting, and quick actions.
 * **Longitudinal Patient Dossier (`/patients/:id`)**: Unified synoptic patient banner, longitudinal clinical delta indicators, collapsible MDT session timeline, side-by-side native PDF viewer (with bounding-box highlights), structured clinical sections with protected manual editing, interactive missing-record checklist, and floating **AI Co-Pilot Side Sheet** for querying either the current MDT form or the full longitudinal patient history.

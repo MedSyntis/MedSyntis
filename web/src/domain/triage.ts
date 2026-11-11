@@ -39,6 +39,7 @@ export function normalizePriorityLevel(raw: unknown): PriorityLevel {
   if (
     str === "high" ||
     str === "urgent" ||
+    str.includes("high-priority") ||
     str.includes("urgent") ||
     str.includes("haute") ||
     str.includes("quickly")
@@ -172,6 +173,8 @@ export function deriveOrientationInfo(
 export function deriveCompletenessInfo(
   input: {
     is_complete?: boolean;
+    completeness_status?: "yes" | "partial" | "no" | "pending" | string | null;
+    is_manually_edited?: boolean;
     missing_count?: number;
     missing_items?: string[];
     processing_status?: string | null;
@@ -181,7 +184,9 @@ export function deriveCompletenessInfo(
   status: CompletenessStatus;
   icon: string;
   badgeClass: string;
+  tone: "green" | "orange" | "red" | "neutral";
   label: string;
+  isOptionalMissing: boolean;
   missingCount: number;
   missingItems: string[];
 } {
@@ -192,16 +197,40 @@ export function deriveCompletenessInfo(
     .trim()
     .toUpperCase();
   const isAiCompleted = statusUpper === "COMPLETED";
-  if (isAiCompleted && input.is_complete === true) {
+  const isEvaluated = isAiCompleted || Boolean(input.is_manually_edited);
+  const rawStatus = input.completeness_status
+    ? String(input.completeness_status).trim().toLowerCase()
+    : null;
+
+  if (
+    !isEvaluated ||
+    rawStatus === "pending" ||
+    (rawStatus === null && input.is_complete !== true && missingCount === 0)
+  ) {
+    return {
+      status: "pending",
+      icon: "ic-clock",
+      badgeClass: "ds-badge--neutral",
+      tone: "neutral",
+      label: t("completeness.pending", lang),
+      isOptionalMissing: false,
+      missingCount: 0,
+      missingItems: [],
+    };
+  }
+
+  if (rawStatus === "yes" || (rawStatus === null && input.is_complete === true)) {
     if (missingCount > 0) {
       return {
         status: "complete",
         icon: "ic-check-circle",
         badgeClass: "ds-badge--complete",
+        tone: "green",
         label:
           lang === "fr"
-            ? `${missingCount} élément(s) facultatif manquant(s)`
+            ? `${missingCount} élément(s) facultatif(s) manquant(s)`
             : `${missingCount} optional missing item(s)`,
+        isOptionalMissing: true,
         missingCount,
         missingItems,
       };
@@ -210,27 +239,48 @@ export function deriveCompletenessInfo(
       status: "complete",
       icon: "ic-check-circle",
       badgeClass: "ds-badge--complete",
+      tone: "green",
       label: t("completeness.complete", lang),
+      isOptionalMissing: false,
       missingCount: 0,
       missingItems: [],
     };
   }
-  if (missingCount === 0) {
+
+  if (rawStatus === "partial") {
     return {
-      status: "incomplete",
-      icon: "ic-clock",
-      badgeClass: "ds-badge--neutral",
-      label: t("completeness.pending", lang),
-      missingCount: 0,
-      missingItems: [],
+      status: "partial",
+      icon: "ic-warning",
+      badgeClass: "ds-badge--incomplete",
+      tone: "orange",
+      label:
+        missingCount > 0
+          ? lang === "fr"
+            ? `Partiel · ${missingCount} manquante${missingCount > 1 ? "s" : ""}`
+            : `Partial · ${missingCount} missing`
+          : lang === "fr"
+            ? "Dossier partiel"
+            : "Partial record",
+      isOptionalMissing: false,
+      missingCount,
+      missingItems,
     };
   }
-  const suffix = t("completeness.incomplete.short", lang);
+
   return {
     status: "incomplete",
-    icon: "ic-warning",
-    badgeClass: "ds-badge--incomplete",
-    label: `${missingCount} ${suffix}`,
+    icon: "ic-error",
+    badgeClass: "ds-badge--urgency-high",
+    tone: "red",
+    label:
+      missingCount > 0
+        ? lang === "fr"
+          ? `Incomplet · ${missingCount} manquante${missingCount > 1 ? "s" : ""}`
+          : `Incomplete · ${missingCount} missing`
+        : lang === "fr"
+          ? "Dossier incomplet"
+          : "Incomplete record",
+    isOptionalMissing: false,
     missingCount,
     missingItems,
   };
@@ -253,7 +303,7 @@ export function computeWorklistKpis(cards: MdtFormCard[]): WorklistKpis {
     if (card.priorityLevel === "high") {
       highPriorityCount += 1;
     }
-    if (!isAiCompleted || !card.isComplete || card.missingCount > 0) {
+    if (!isAiCompleted || !card.isComplete) {
       incompleteCount += 1;
     }
     if (card.careAdaptationSuggested === true) {
@@ -282,14 +332,14 @@ export function filterAndSortCards(
   const sortDir = filter.sortDir ?? "asc";
 
   const filtered = cards.filter((card) => {
-    const isCardComplete =
+    const isAiCompleted =
       String(card.processingStatus ?? "COMPLETED")
         .trim()
-        .toUpperCase() === "COMPLETED" &&
-      card.isComplete &&
-      card.missingCount === 0;
+        .toUpperCase() === "COMPLETED";
+    const isCardComplete = isAiCompleted && card.isComplete;
     if (domain !== "all" && card.domain !== domain) return false;
     if (completeness === "complete" && !isCardComplete) return false;
+    if (completeness === "partial" && card.completenessStatus !== "partial") return false;
     if (completeness === "incomplete" && isCardComplete) return false;
     if (priority !== "all" && card.priorityLevel !== priority) return false;
     if (orientation === "adapt" && card.careAdaptationSuggested !== true) return false;
@@ -313,6 +363,17 @@ export function filterAndSortCards(
     return true;
   });
 
+  const completenessSeverity = (card: MdtFormCard): number => {
+    const isAiCompleted =
+      String(card.processingStatus ?? "COMPLETED")
+        .trim()
+        .toUpperCase() === "COMPLETED";
+    if (!isAiCompleted || card.completenessStatus === "pending") return 2;
+    if (card.isComplete || card.completenessStatus === "yes") return 3;
+    if (card.completenessStatus === "partial") return 1;
+    return 0;
+  };
+
   const dir = sortDir === "desc" ? -1 : 1;
   return [...filtered].sort((a, b) => {
     if (sortBy === "patient") {
@@ -322,6 +383,8 @@ export function filterAndSortCards(
       return (b.mdtDate ?? "").localeCompare(a.mdtDate ?? "") * dir;
     }
     if (sortBy === "completeness") {
+      const sevDiff = (completenessSeverity(a) - completenessSeverity(b)) * dir;
+      if (sevDiff !== 0) return sevDiff;
       const compDiff = (b.missingCount - a.missingCount) * dir;
       if (compDiff !== 0) return compDiff;
       return a.patientName.localeCompare(b.patientName, "fr");

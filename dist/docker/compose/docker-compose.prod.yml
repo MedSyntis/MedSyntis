@@ -5,7 +5,17 @@ x-logging: &default-logging
     max-file: "${DOCKER_LOG_MAX_FILE:-5}"
     compress: "true"
 
+x-telemetry-off: &telemetry-off
+  LITELLM_TELEMETRY: "False"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  ANONYMIZED_TELEMETRY: "False"
+  SCARF_NO_ANALYTICS: "true"
+  DO_NOT_TRACK: "1"
+
 x-ui-env: &ui-env
+  <<: *telemetry-off
+  STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
   APP_DEV_MODE: "false"
   APP_AUTH_MODE: "oauth_proxy"
   APP_LANGUAGE: ${APP_LANGUAGE:-french}
@@ -23,7 +33,7 @@ x-ui-env: &ui-env
   APP_MONGODB_HOST: "mongod"
   APP_MONGODB_PORT: "27017"
   APP_MONGODB_USER: ${APP_MONGODB_USER:-root}
-  APP_MONGODB_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+  APP_MONGODB_PASSWORD: ${APP_MONGODB_PASSWORD:?APP_MONGODB_PASSWORD must be set in .env.prod}
   APP_MILVUSDB_HOST: "milvus-standalone"
   APP_MILVUSDB_PORT: "19530"
   APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
@@ -31,6 +41,7 @@ x-ui-env: &ui-env
   APP_QUEUE_HARDWARE_PROFILE: ${APP_QUEUE_HARDWARE_PROFILE:-l4_24gb}
   APP_QUEUE_BATCH_SIZE: ${APP_QUEUE_BATCH_SIZE:-1}
   APP_QUEUE_API_URL: ${APP_QUEUE_API_URL:-http://medsyntis-api:8000}
+  APP_ADMIN_USERS: ${APP_ADMIN_USERS:-}
   APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
   APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
 
@@ -51,7 +62,8 @@ x-ui-common: &ui-common
     litellm:
       condition: service_started
   networks:
-    - search-community
+    - ingress_net
+    - backend_internal
     - milvus
 
 services:
@@ -59,9 +71,19 @@ services:
   mongod:
     image: mongodb/mongodb-community-server:9.0-ubuntu2204
     container_name: medsyntis-mongod
-    oom_score_adj: 200
+    oom_score_adj: -500
     restart: unless-stopped
     logging: *default-logging
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
     entrypoint:
       - python3
       - -c
@@ -72,11 +94,12 @@ services:
     ports:
       - "127.0.0.1:27017:27017"
     environment:
+      <<: *telemetry-off
       HOME: "/tmp"
       MONGO_INITDB_ROOT_USERNAME: ${APP_MONGODB_USER:-root}
-      MONGO_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:?APP_MONGODB_PASSWORD must be set in .env.prod}
       MONGODB_INITDB_ROOT_USERNAME: ${APP_MONGODB_USER:-root}
-      MONGODB_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+      MONGODB_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:?APP_MONGODB_PASSWORD must be set in .env.prod}
       GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/mongodb:/data/db
@@ -87,31 +110,31 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
-      - search-community
+      - backend_internal
 
-  # ─── LLM Raisonnement sur GPU NVIDIA L4 (24 Go VRAM) ─────────────────────────
-  # Modèle : Ornith-1.5-35B-A3B-IQ4_XS (~19.3 Go poids + ~1.5 Go KV cache q4_0)
+  # ─── Local Reasoning LLM on NVIDIA L4 GPU (24 GB VRAM) ──────────────────────
+  # Model: Ornith-1.5-35B-A3B-IQ4_XS (~19.3 GB weights + ~1.5 GB q4_0 KV cache)
   llama-cpp-chat:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda12
     container_name: llama-cpp-chat-server
     restart: unless-stopped
     logging: *default-logging
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - GGML_CUDA_PDL=0
-      - GGML_CUDA_DISABLE_GRAPHS=0
+      <<: *telemetry-off
+      NVIDIA_VISIBLE_DEVICES: "all"
+      GGML_CUDA_PDL: "0"
+      GGML_CUDA_DISABLE_GRAPHS: "0"
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/models:/models
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/models:/models:ro
       - ./model-config:/models-config:ro
     ipc: host
-    # devices:
-    #   - nvidia.com/gpu=all
     deploy:
       resources:
         reservations:
@@ -129,7 +152,9 @@ services:
         if [ -f "/models/Ornith-1.5-35B-A3B-IQ4_XS.gguf" ]; then
           MODEL_ARGS="-m /models/Ornith-1.5-35B-A3B-IQ4_XS.gguf"
         else
-          MODEL_ARGS="-hf bartowski/Ornith-1.5-35B-A3B-GGUF:IQ4_XS"
+          echo "ERROR: Missing local reasoning GGUF weights (/models/Ornith-1.5-35B-A3B-IQ4_XS.gguf)." >&2
+          echo "Runtime HuggingFace downloads are forbidden in production. Run 'make pull-models-prod' first." >&2
+          exit 1
         fi
         exec $$SERVER_BIN $$MODEL_ARGS "$$@"
       - --
@@ -190,19 +215,24 @@ services:
       retries: 40
       start_period: 60s
     networks:
-      - search-community
+      - backend_internal
 
-  # ─── Serveur d'Embeddings (bge-m3 sur CPU pour préserver les 24 Go VRAM L4) ──
+  # ─── Local Embeddings Server (bge-m3 on CPU to preserve L4 24 GB VRAM) ──────
   llama-cpp-embeddings:
     image: ghcr.io/ggml-org/llama.cpp:server
     container_name: llama-cpp-embeddings-server
     restart: unless-stopped
     logging: *default-logging
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      <<: *telemetry-off
     ports:
       - "127.0.0.1:8081:8080"
     volumes:
-      - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/models:/models
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/models:/models:ro
     ipc: host
     entrypoint:
       - /bin/sh
@@ -210,12 +240,16 @@ services:
       - |
         SERVER_BIN="/app/llama-server"
         [ -x "$$SERVER_BIN" ] || SERVER_BIN="llama-server"
-        if [ -f "/models/bge-m3-F16.gguf" ]; then
+        if [ -f "/models/bge-m3-Q4_K_M.gguf" ]; then
+          MODEL_ARGS="-m /models/bge-m3-Q4_K_M.gguf"
+        elif [ -f "/models/bge-m3-F16.gguf" ]; then
           MODEL_ARGS="-m /models/bge-m3-F16.gguf"
         elif [ -f "/models/bge-m3-FP16.gguf" ]; then
           MODEL_ARGS="-m /models/bge-m3-FP16.gguf"
         else
-          MODEL_ARGS="--hf-repo gpustack/bge-m3-GGUF --hf-file bge-m3-FP16.gguf"
+          echo "ERROR: Missing local embedding GGUF weights in /models (expected bge-m3-Q4_K_M.gguf, bge-m3-F16.gguf, or bge-m3-FP16.gguf)." >&2
+          echo "Runtime HuggingFace downloads are forbidden in production. Run 'make pull-models-prod' first." >&2
+          exit 1
         fi
         exec $$SERVER_BIN $$MODEL_ARGS "$$@"
       - --
@@ -242,15 +276,20 @@ services:
       retries: 20
       start_period: 20s
     networks:
-      - search-community
+      - backend_internal
 
-  # ─── Proxy LiteLLM unifié (Chat + Embeddings) ───────────────────────────────
+  # ─── Unified LiteLLM Gateway (Chat + Embeddings, zero external telemetry) ───
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:v1.108.4
     container_name: litellm-proxy
     restart: unless-stopped
     logging: *default-logging
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
+      <<: *telemetry-off
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env.prod}
       LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY: "false"
     ports:
@@ -262,9 +301,9 @@ services:
       - llama-cpp-chat
       - llama-cpp-embeddings
     networks:
-      - search-community
+      - backend_internal
 
-  # ─── Applications MedSyntis Streamlit UI (Déploiement optionnel : --profile streamlit) ──
+  # ─── Legacy MedSyntis Streamlit UI (Optional deployment: --profile streamlit) ──
   medsyntis-ui-oncology:
     <<: *ui-common
     container_name: medsyntis-ui-oncology
@@ -275,7 +314,7 @@ services:
       APP_DOMAIN: "oncology"
       APP_LOG_FILE: "/var/log/medsyntis/medsyntis-oncology.log"
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis}/logs:/var/log/medsyntis
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/logs:/var/log/medsyntis
       - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
       - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/documents:/app/application/ressources/documents/oncology
     profiles:
@@ -291,13 +330,13 @@ services:
       APP_DOMAIN: "sma"
       APP_LOG_FILE: "/var/log/medsyntis/medsyntis-sma.log"
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis}/logs:/var/log/medsyntis
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/logs:/var/log/medsyntis
       - ${HOST_SMA_DIR:-/data/medsyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
       - ${HOST_SMA_DIR:-/data/medsyntis/sma}/documents:/app/application/ressources/documents/sma
     profiles:
       - "streamlit"
 
-  # ─── API Cross-Domains & File de Traitement intégrée (queue.PriorityQueue) ──
+  # ─── Cross-Domain FastAPI Backend & Integrated GPU PriorityQueue ────────────
   medsyntis-api:
     <<: *ui-common
     image: ${MEDSYNTIS_API_IMAGE:-ghcr.io/medsyntis/medsyntis-api}:${MEDSYNTIS_TAG:-latest}
@@ -348,13 +387,16 @@ services:
       APP_API_RATE_LIMIT_REQUESTS: ${APP_API_RATE_LIMIT_REQUESTS:-1200}
       APP_API_RATE_LIMIT_WINDOW_SECONDS: ${APP_API_RATE_LIMIT_WINDOW_SECONDS:-60}
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis}/logs:/var/log/medsyntis
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/logs:/var/log/medsyntis
       - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
       - ${HOST_ONCOLOGIC_DIR:-/data/medsyntis/oncologic}/documents:/app/application/ressources/documents/oncology
       - ${HOST_SMA_DIR:-/data/medsyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
       - ${HOST_SMA_DIR:-/data/medsyntis/sma}/documents:/app/application/ressources/documents/sma
+    networks:
+      - backend_internal
+      - milvus
 
-  # ─── Interface Web Material Design 3 (Fastify BFF Multi-Domaines) ───────────
+  # ─── Material Design 3 Web UI (Primary Multi-Domain Fastify BFF) ────────────
   medsyntis-web:
     image: ${MEDSYNTIS_WEB_IMAGE:-ghcr.io/medsyntis/medsyntis-web}:${MEDSYNTIS_TAG:-latest}
     container_name: medsyntis-web
@@ -371,6 +413,7 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
+      <<: *telemetry-off
       NODE_ENV: "production"
       APP_DEV_MODE: "false"
       APP_AUTH_MODE: "oauth_proxy"
@@ -380,31 +423,38 @@ services:
       APP_API_URL: ${APP_QUEUE_API_URL:-http://medsyntis-api:8000}
       APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
       APP_LANGUAGE: ${APP_LANGUAGE:-french}
+      APP_ADMIN_USERS: ${APP_ADMIN_USERS:-}
       APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
       APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
     depends_on:
       - medsyntis-api
     networks:
-      - search-community
+      - ingress_net
+      - backend_internal
 
-  # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.medsyntis.fr)
+  # ─── OAuth2 Proxy (Zero-Trust SSO across *.medsyntis.fr: OIDC / Pro Sante Connect / GitHub) ──
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
     container_name: medsyntis-oauth2-proxy
     restart: unless-stopped
     logging: *default-logging
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "127.0.0.1:4180:4180"
     environment:
-      OAUTH2_PROXY_PROVIDER: "github"
+      OAUTH2_PROXY_PROVIDER: ${OAUTH2_PROXY_PROVIDER:-github}
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OAUTH2_PROXY_OIDC_ISSUER_URL:-}
       OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
       OAUTH2_PROXY_UPSTREAMS: "static://202"
       OAUTH2_PROXY_REDIRECT_URL: "${OAUTH2_PROXY_REDIRECT_URL:-https://sso.medsyntis.fr/oauth2/callback}"
       OAUTH2_PROXY_COOKIE_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.fr}"
       OAUTH2_PROXY_WHITELIST_DOMAINS: ".${PROD_BASE_DOMAIN:-medsyntis.fr}"
-      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID}
-      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
-      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:?OAUTH2_PROXY_CLIENT_ID must be set in .env.prod}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?OAUTH2_PROXY_CLIENT_SECRET must be set in .env.prod}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?OAUTH2_PROXY_COOKIE_SECRET must be set in .env.prod}
       OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_PROXY_EMAIL_DOMAINS:-*}
       OAUTH2_PROXY_GITHUB_ORG: ${OAUTH2_PROXY_GITHUB_ORG:-}
       OAUTH2_PROXY_GITHUB_TEAM: ${OAUTH2_PROXY_GITHUB_TEAM:-}
@@ -419,14 +469,20 @@ services:
     depends_on:
       - medsyntis-web
     networks:
-      - search-community
+      - ingress_net
 
-  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic.*, sma.* et optionnellement *-st.*)
+  # ─── TLS Reverse Proxy (Caddy — Automatic TLS + Zero-Trust Header Injection) ──
   caddy:
     image: caddy:2.11.7-alpine
     container_name: medsyntis-caddy
     restart: unless-stopped
     logging: *default-logging
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "80:80"
       - "443:443"
@@ -442,11 +498,14 @@ services:
       - oauth2-proxy
       - medsyntis-web
     networks:
-      - search-community
+      - ingress_net
 
 networks:
-  search-community:
-    name: search-community
+  ingress_net:
+    name: medsyntis-ingress
+  backend_internal:
+    name: medsyntis-backend-internal
+    internal: true
   milvus:
     name: milvus
     external: true

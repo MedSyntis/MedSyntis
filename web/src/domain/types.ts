@@ -1,9 +1,11 @@
 export type ClinicalDomain = "oncology" | "sma";
 export type PriorityLevel = "high" | "medium" | "low" | "none";
-export type CompletenessStatus = "complete" | "incomplete";
+export type CompletenessStatus = "complete" | "partial" | "incomplete" | "pending";
+export type RawCompletenessStatus = "yes" | "partial" | "no" | "pending";
 export type OrientationStatus = "adapt" | "standard" | "pending";
 export type Language = "fr" | "en";
 export type ThemeMode = "auto" | "light" | "dark";
+export type ContrastMode = "auto" | "standard" | "medium" | "high";
 
 export interface UserSession {
   userId: string;
@@ -14,6 +16,7 @@ export interface UserSession {
   allowedDomains: ClinicalDomain[];
   language: Language;
   theme: ThemeMode;
+  contrast?: ContrastMode;
   expertMode: boolean;
 }
 
@@ -33,6 +36,7 @@ export interface MdtFormCard {
   priorityReason?: string | null;
   priorityReasons?: string[];
   isComplete: boolean;
+  completenessStatus?: RawCompletenessStatus;
   missingCount: number;
   missingItems: string[];
   careAdaptationSuggested: boolean | null;
@@ -63,9 +67,9 @@ export interface CardMetrics {
   urgency_reason?: string | null;
   urgency_reasons?: string[];
   is_complete?: boolean;
-  completeness_status?: "yes" | "partial" | "no";
+  completeness_status?: RawCompletenessStatus;
   completeness_label?: string;
-  completeness_tone?: "green" | "orange" | "red";
+  completeness_tone?: "green" | "orange" | "red" | "neutral";
   completeness_summary?: string;
   missing_count?: number;
   missing_items?: string[];
@@ -238,7 +242,7 @@ export interface BugReportItem {
 
 export interface WorklistFilter {
   query?: string;
-  completeness?: "all" | "complete" | "incomplete";
+  completeness?: "all" | "complete" | "partial" | "incomplete";
   priority?: "all" | "high" | "medium" | "low";
   orientation?: "all" | "adapt" | "standard" | "pending";
   domain?: "all" | ClinicalDomain;
@@ -272,6 +276,7 @@ export interface MdtAgendaItem {
   priorityReason?: string | null;
   priorityReasons?: string[];
   isComplete: boolean;
+  completenessStatus?: RawCompletenessStatus;
   missingCount: number;
   missingItems: string[];
   careAdaptationSuggested: boolean | null;
@@ -311,6 +316,7 @@ export interface MdtAgendaCandidate {
   priorityReason?: string | null;
   priorityReasons?: string[];
   isComplete: boolean;
+  completenessStatus?: RawCompletenessStatus;
   missingCount: number;
   missingItems: string[];
   careAdaptationSuggested: boolean | null;

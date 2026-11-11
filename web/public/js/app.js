@@ -1,11 +1,124 @@
-(function () {
+(() => {
   var root = document.documentElement;
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var m3SelectSeq = 0;
+
+  function cssEscape(val) {
+    var str = String(val == null ? "" : val);
+    if (typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function") {
+      return window.CSS.escape(str);
+    }
+    return str.replace(/(["'\\#.:[\]()>+~=|^$*])/g, "\\$1");
+  }
+
+  function createSpriteIconSvg(iconId, extraClass) {
+    var svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", extraClass ? "ds-icon " + extraClass : "ds-icon");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    var use = document.createElementNS(SVG_NS, "use");
+    use.setAttribute("href", "#" + String(iconId));
+    svg.appendChild(use);
+    return svg;
+  }
+
+  function createPathSvg(pathD, extraClass) {
+    var svg = document.createElementNS(SVG_NS, "svg");
+    if (extraClass) {
+      svg.setAttribute("class", extraClass);
+    }
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    var path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", pathD);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function getFocusableElements(container) {
+    if (!container) return [];
+    var nodes = container.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]):not(.ds-select--native-hidden), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+    );
+    return Array.prototype.slice.call(nodes).filter((el) => {
+      if (el.hasAttribute("hidden") || el.closest("[hidden]")) return false;
+      if (el.getAttribute("aria-hidden") === "true") return false;
+      return true;
+    });
+  }
+
+  function isEn() {
+    return (root.getAttribute("lang") || "").toLowerCase().indexOf("en") === 0;
+  }
+
+  function isDesktopCopilotViewport() {
+    return Boolean(window.matchMedia && window.matchMedia("(min-width: 68rem)").matches);
+  }
+
+  function syncMainBackgroundInert() {
+    var mainEl = document.getElementById("main");
+    if (!mainEl) return;
+    var mobileNavOpen = document.body.classList.contains("ds-shell--mobile-nav-open");
+    var chatDrawer = document.getElementById("ai-chat-drawer");
+    var chatOpen = Boolean(chatDrawer && chatDrawer.classList.contains("is-open"));
+    var shouldInert = mobileNavOpen || (chatOpen && !isDesktopCopilotViewport());
+    mainEl.inert = shouldInert;
+    if (shouldInert) {
+      mainEl.setAttribute("inert", "");
+    } else {
+      mainEl.removeAttribute("inert");
+    }
+  }
   var radioLight = document.getElementById("theme-light");
   var radioDark = document.getElementById("theme-dark");
   var osDarkMql =
     typeof window !== "undefined" && typeof window.matchMedia === "function"
       ? window.matchMedia("(prefers-color-scheme: dark)")
       : null;
+  var osContrastMql =
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-contrast: more)")
+      : null;
+
+  function normalizeContrastMode(mode) {
+    if (mode === "high" || mode === "medium" || mode === "standard") return mode;
+    return "auto";
+  }
+
+  function resolveEffectiveContrast(pref) {
+    if (pref === "high" || pref === "medium" || pref === "standard") return pref;
+    return osContrastMql && osContrastMql.matches ? "high" : "standard";
+  }
+
+  function applyContrastPreference(pref) {
+    var normalized = normalizeContrastMode(pref);
+    root.setAttribute("data-contrast-pref", normalized);
+    var effective = resolveEffectiveContrast(normalized);
+    root.setAttribute("data-contrast", effective);
+
+    var contrastMenuBtns = document.querySelectorAll("[data-menu-action='set-contrast']");
+    contrastMenuBtns.forEach((btn) => {
+      var val = btn.getAttribute("data-contrast-value");
+      var isSelected = val === normalized;
+      btn.setAttribute("aria-checked", isSelected ? "true" : "false");
+      btn.classList.toggle("ds-menu__item--active", isSelected);
+    });
+  }
+
+  function setContrast(mode) {
+    var normalized = normalizeContrastMode(mode);
+    applyContrastPreference(normalized);
+    try {
+      fetch("/preferences", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "HX-Request": "true",
+        },
+        body: "contrast=" + encodeURIComponent(normalized),
+      }).catch(() => {});
+    } catch (_e) {}
+  }
 
   function resolveEffectiveTheme(pref) {
     if (pref === "dark" || pref === "light") return pref;
@@ -22,7 +135,7 @@
       radioDark.checked = effective === "dark";
     }
     var themeMenuBtns = document.querySelectorAll("[data-menu-action='set-theme']");
-    themeMenuBtns.forEach(function (btn) {
+    themeMenuBtns.forEach((btn) => {
       var val = btn.getAttribute("data-theme-value");
       var isSelected = val === normalized;
       btn.setAttribute("aria-checked", isSelected ? "true" : "false");
@@ -41,16 +154,35 @@
           "HX-Request": "true",
         },
         body: "theme=" + encodeURIComponent(normalized),
-      }).catch(function () {});
+      }).catch(() => {});
     } catch (_e) {}
   }
 
   // Initialize effective theme immediately on load (especially when preference is "auto")
-  var initialPref = root.getAttribute("data-theme-pref") || root.getAttribute("data-theme") || "auto";
+  var initialPref =
+    root.getAttribute("data-theme-pref") || root.getAttribute("data-theme") || "auto";
   applyThemePreference(initialPref);
 
+  var initialContrastPref =
+    root.getAttribute("data-contrast-pref") || root.getAttribute("data-contrast") || "auto";
+  applyContrastPreference(initialContrastPref);
+
+  if (osContrastMql) {
+    var onOsContrastChange = () => {
+      var currentContrastPref = root.getAttribute("data-contrast-pref") || "auto";
+      if (currentContrastPref === "auto") {
+        applyContrastPreference("auto");
+      }
+    };
+    if (typeof osContrastMql.addEventListener === "function") {
+      osContrastMql.addEventListener("change", onOsContrastChange);
+    } else if (typeof osContrastMql.addListener === "function") {
+      osContrastMql.addListener(onOsContrastChange);
+    }
+  }
+
   if (osDarkMql) {
-    var onOsThemeChange = function () {
+    var onOsThemeChange = () => {
       var currentPref = root.getAttribute("data-theme-pref") || "auto";
       if (currentPref === "auto") {
         applyThemePreference("auto");
@@ -64,12 +196,12 @@
   }
 
   if (radioLight) {
-    radioLight.addEventListener("change", function () {
+    radioLight.addEventListener("change", () => {
       if (radioLight.checked) setTheme("light");
     });
   }
   if (radioDark) {
-    radioDark.addEventListener("change", function () {
+    radioDark.addEventListener("change", () => {
       if (radioDark.checked) setTheme("dark");
     });
   }
@@ -79,10 +211,21 @@
   var mobileNavBtn = document.getElementById("mobile-nav-toggle");
   var sbBackdrop = document.getElementById("sidebar-backdrop");
 
-  function setMobileNavOpen(open) {
+  function setMobileNavOpen(open, restoreFocus) {
+    var wasOpen = document.body.classList.contains("ds-shell--mobile-nav-open");
     document.body.classList.toggle("ds-shell--mobile-nav-open", open);
     if (mobileNavBtn) {
       mobileNavBtn.setAttribute("aria-expanded", String(open));
+    }
+    syncMainBackgroundInert();
+    if (open) {
+      var navAside = document.getElementById("sidebar-nav");
+      var focusables = getFocusableElements(navAside);
+      if (focusables[0]) {
+        focusables[0].focus();
+      }
+    } else if (wasOpen && restoreFocus && mobileNavBtn) {
+      mobileNavBtn.focus();
     }
   }
 
@@ -93,9 +236,9 @@
     }
   } catch (_e) {}
   if (sbBtn) {
-    sbBtn.addEventListener("click", function () {
+    sbBtn.addEventListener("click", () => {
       if (window.innerWidth <= 1024) {
-        setMobileNavOpen(false);
+        setMobileNavOpen(false, true);
         return;
       }
       var collapsed = document.body.classList.toggle("ds-shell--sidebar-collapsed");
@@ -108,19 +251,60 @@
     });
   }
   if (mobileNavBtn) {
-    mobileNavBtn.addEventListener("click", function () {
+    mobileNavBtn.addEventListener("click", () => {
       var isOpen = document.body.classList.contains("ds-shell--mobile-nav-open");
-      setMobileNavOpen(!isOpen);
+      setMobileNavOpen(!isOpen, isOpen);
     });
   }
   if (sbBackdrop) {
-    sbBackdrop.addEventListener("click", function () {
-      setMobileNavOpen(false);
+    sbBackdrop.addEventListener("click", () => {
+      setMobileNavOpen(false, true);
     });
   }
-  document.addEventListener("keydown", function (ev) {
+  var desktopCopilotMql =
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(min-width: 68rem)")
+      : null;
+  if (desktopCopilotMql) {
+    var onDesktopViewportChange = () => {
+      syncMainBackgroundInert();
+    };
+    if (typeof desktopCopilotMql.addEventListener === "function") {
+      desktopCopilotMql.addEventListener("change", onDesktopViewportChange);
+    } else if (typeof desktopCopilotMql.addListener === "function") {
+      desktopCopilotMql.addListener(onDesktopViewportChange);
+    }
+  }
+
+  document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && document.body.classList.contains("ds-shell--mobile-nav-open")) {
-      setMobileNavOpen(false);
+      setMobileNavOpen(false, true);
+      return;
+    }
+    if (ev.key === "Tab") {
+      var chatDrawerEl = document.getElementById("ai-chat-drawer");
+      var isChatOpen = chatDrawerEl && chatDrawerEl.classList.contains("is-open");
+      var trapRoot =
+        isChatOpen && !isDesktopCopilotViewport()
+          ? chatDrawerEl
+          : document.body.classList.contains("ds-shell--mobile-nav-open")
+            ? document.getElementById("sidebar-nav")
+            : null;
+      if (!trapRoot) return;
+      var focusables = getFocusableElements(trapRoot);
+      if (focusables.length === 0) return;
+      var first = focusables[0];
+      var last = focusables[focusables.length - 1];
+      var active = document.activeElement;
+      if (ev.shiftKey) {
+        if (active === first || !trapRoot.contains(active)) {
+          ev.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !trapRoot.contains(active)) {
+        ev.preventDefault();
+        first.focus();
+      }
     }
   });
 
@@ -138,7 +322,7 @@
       );
     } catch (_e) {}
 
-    document.querySelectorAll('details[data-mobile-collapsible="true"]').forEach(function (d) {
+    document.querySelectorAll('details[data-mobile-collapsible="true"]').forEach((d) => {
       if (!isMobile) {
         d.open = true;
       } else if (!d.hasAttribute("data-mobile-init")) {
@@ -174,26 +358,24 @@
 
   // Toggle all accordions, toggle PDF expand, quick prompt chips, M3 Contextual Menus (...), and M3 Exposed Dropdown Menus
   function closeAllMenus(exceptEl) {
-    document
-      .querySelectorAll("details.ds-menu[open], details.ds-popover[open]")
-      .forEach(function (m) {
-        if (m !== exceptEl) m.open = false;
-      });
-    document.querySelectorAll(".ds-m3-select.is-open").forEach(function (sel) {
+    document.querySelectorAll("details.ds-menu[open], details.ds-popover[open]").forEach((m) => {
+      if (m !== exceptEl) m.open = false;
+    });
+    document.querySelectorAll(".ds-m3-select.is-open").forEach((sel) => {
       if (sel !== exceptEl) {
         sel.classList.remove("is-open");
         var trig = sel.querySelector(".ds-m3-select__trigger");
         if (trig) trig.setAttribute("aria-expanded", "false");
       }
     });
-    document.querySelectorAll(".ds-split-btn.is-open").forEach(function (sb) {
+    document.querySelectorAll(".ds-split-btn.is-open").forEach((sb) => {
       if (sb !== exceptEl) {
         sb.classList.remove("is-open");
         var tBtn = sb.querySelector("[data-split-prompt-toggle]");
         if (tBtn) tBtn.setAttribute("aria-expanded", "false");
       }
     });
-    document.querySelectorAll(".ds-fab-menu.is-open").forEach(function (fm) {
+    document.querySelectorAll(".ds-fab-menu.is-open").forEach((fm) => {
       if (fm !== exceptEl) {
         fm.classList.remove("is-open");
         var fmTrig = fm.querySelector(".ds-fab-menu__trigger");
@@ -205,7 +387,7 @@
   // Upgrade native <select class="ds-select"> elements into Material Design 3 Exposed Dropdown Menus
   function initM3Selects(scopeRoot) {
     var scope = scopeRoot || document;
-    scope.querySelectorAll("select.ds-select").forEach(function (select) {
+    scope.querySelectorAll("select.ds-select").forEach((select) => {
       if (select.getAttribute("data-m3-upgraded") === "true") return;
       select.setAttribute("data-m3-upgraded", "true");
       select.classList.add("ds-select--native-hidden");
@@ -215,55 +397,69 @@
       wrapper.className =
         "ds-m3-select" + (select.classList.contains("ds-select--sm") ? " ds-m3-select--sm" : "");
 
+      var listboxId = select.id ? "m3-listbox-" + select.id : "m3-listbox-" + ++m3SelectSeq;
+
       var trigger = document.createElement("button");
       trigger.type = "button";
       trigger.className = "ds-m3-select__trigger";
       trigger.setAttribute("aria-haspopup", "listbox");
       trigger.setAttribute("aria-expanded", "false");
+      trigger.setAttribute("aria-controls", listboxId);
+
+      var explicitLabelledBy = select.getAttribute("aria-labelledby");
+      var assocLabel =
+        (select.id ? document.querySelector('label[for="' + cssEscape(select.id) + '"]') : null) ||
+        select.closest("label");
+      if (explicitLabelledBy) {
+        trigger.setAttribute("aria-labelledby", explicitLabelledBy);
+      } else if (assocLabel) {
+        if (!assocLabel.id) {
+          assocLabel.id = select.id ? "lbl-" + select.id : "lbl-m3-" + ++m3SelectSeq;
+        }
+        trigger.setAttribute("aria-labelledby", assocLabel.id);
+      } else if (select.getAttribute("aria-label")) {
+        trigger.setAttribute("aria-label", select.getAttribute("aria-label"));
+      }
 
       var valueSpan = document.createElement("span");
       valueSpan.className = "ds-m3-select__value";
       var arrowSpan = document.createElement("span");
       arrowSpan.className = "ds-m3-select__arrow";
       arrowSpan.setAttribute("aria-hidden", "true");
-      arrowSpan.innerHTML =
-        '<svg class="ds-icon ds-icon--md" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
+      arrowSpan.appendChild(createPathSvg("m6 9 6 6 6-6", "ds-icon ds-icon--md"));
 
       trigger.appendChild(valueSpan);
       trigger.appendChild(arrowSpan);
 
       var panel = document.createElement("ul");
+      panel.id = listboxId;
       panel.className = "ds-m3-select__panel";
       panel.setAttribute("role", "listbox");
-
-      function buildIconHtml(iconId) {
-        if (!iconId) return "";
-        return (
-          '<span class="ds-m3-select__icon" aria-hidden="true">' +
-          '<svg class="ds-icon ds-icon--xs" aria-hidden="true" focusable="false"><use href="#' +
-          iconId +
-          '"></use></svg></span>'
-        );
-      }
 
       function syncFromSelect() {
         var selectedOpt = select.options[select.selectedIndex] || select.options[0];
         var iconId = selectedOpt ? selectedOpt.getAttribute("data-icon") : "";
         var textLabel = selectedOpt ? selectedOpt.textContent || "" : "";
+        valueSpan.textContent = "";
         if (iconId) {
-          valueSpan.innerHTML = buildIconHtml(iconId) + "<span></span>";
-          var innerSpan = valueSpan.querySelector("span:last-child");
-          if (innerSpan) innerSpan.textContent = textLabel;
+          var selIconWrap = document.createElement("span");
+          selIconWrap.className = "ds-m3-select__icon";
+          selIconWrap.setAttribute("aria-hidden", "true");
+          selIconWrap.appendChild(createSpriteIconSvg(iconId, "ds-icon--xs"));
+          var innerSpan = document.createElement("span");
+          innerSpan.textContent = textLabel;
+          valueSpan.appendChild(selIconWrap);
+          valueSpan.appendChild(innerSpan);
         } else {
           valueSpan.textContent = textLabel;
         }
-        panel.querySelectorAll(".ds-m3-select__option").forEach(function (li) {
+        panel.querySelectorAll(".ds-m3-select__option").forEach((li) => {
           var isSel = li.getAttribute("data-value") === select.value;
           li.setAttribute("aria-selected", isSel ? "true" : "false");
         });
       }
 
-      Array.prototype.forEach.call(select.options, function (opt) {
+      Array.prototype.forEach.call(select.options, (opt) => {
         var li = document.createElement("li");
         li.className = "ds-m3-select__option";
         li.setAttribute("role", "option");
@@ -274,8 +470,7 @@
         var check = document.createElement("span");
         check.className = "ds-m3-select__check";
         check.setAttribute("aria-hidden", "true");
-        check.innerHTML =
-          '<svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+        check.appendChild(createPathSvg("m5 12.5 4.5 4.5L19 7.5", "ds-icon ds-icon--xs"));
 
         li.appendChild(check);
         var optIcon = opt.getAttribute("data-icon");
@@ -283,10 +478,7 @@
           var iconWrap = document.createElement("span");
           iconWrap.className = "ds-m3-select__icon";
           iconWrap.setAttribute("aria-hidden", "true");
-          iconWrap.innerHTML =
-            '<svg class="ds-icon ds-icon--xs" aria-hidden="true" focusable="false"><use href="#' +
-            optIcon +
-            '"></use></svg>';
+          iconWrap.appendChild(createSpriteIconSvg(optIcon, "ds-icon--xs"));
           li.appendChild(iconWrap);
         }
 
@@ -310,7 +502,7 @@
         }
 
         li.addEventListener("click", chooseOption);
-        li.addEventListener("keydown", function (ev) {
+        li.addEventListener("keydown", (ev) => {
           var optionsList = Array.prototype.slice.call(
             panel.querySelectorAll(".ds-m3-select__option"),
           );
@@ -361,13 +553,13 @@
         }
       }
 
-      trigger.addEventListener("click", function (ev) {
+      trigger.addEventListener("click", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
         openOrToggleM3Select(false);
       });
 
-      trigger.addEventListener("keydown", function (ev) {
+      trigger.addEventListener("keydown", (ev) => {
         if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
           ev.preventDefault();
           if (!wrapper.classList.contains("is-open")) {
@@ -413,8 +605,7 @@
           (activeEl.closest && activeEl.closest(".ds-copilot-drawer, .ds-chat"))) &&
         (activeEl.tagName === "TEXTAREA" || activeEl.tagName === "INPUT"),
     );
-    var keyboardLikelyOpen =
-      isMobile && (vvh < window.innerHeight * 0.82 || isChatInputFocused);
+    var keyboardLikelyOpen = isMobile && (vvh < window.innerHeight * 0.82 || isChatInputFocused);
 
     root.classList.toggle("is-keyboard-open", keyboardLikelyOpen);
     drawer.classList.toggle("is-keyboard-open", keyboardLikelyOpen);
@@ -435,7 +626,7 @@
     });
   }
   window.addEventListener("resize", syncVisualViewportForAiDrawer, { passive: true });
-  document.addEventListener("focusin", function (e) {
+  document.addEventListener("focusin", (e) => {
     var t = e.target;
     if (
       t instanceof HTMLElement &&
@@ -445,7 +636,7 @@
       window.setTimeout(syncVisualViewportForAiDrawer, 260);
     }
   });
-  document.addEventListener("focusout", function (e) {
+  document.addEventListener("focusout", (e) => {
     var t = e.target;
     if (
       t instanceof HTMLElement &&
@@ -456,12 +647,13 @@
   });
   syncVisualViewportForAiDrawer();
 
-  function setChatDrawerOpen(isOpen) {
+  function setChatDrawerOpen(isOpen, restoreFocus) {
     var drawer = document.getElementById("ai-chat-drawer");
     if (!drawer) return;
+    var wasOpen = drawer.classList.contains("is-open");
     drawer.classList.toggle("is-open", isOpen);
     drawer.setAttribute("aria-hidden", isOpen ? "false" : "true");
-    document.querySelectorAll("[data-action='toggle-chat-drawer']").forEach(function (btn) {
+    document.querySelectorAll("[data-action='toggle-chat-drawer']").forEach((btn) => {
       btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
     });
     var fab = document.getElementById("ai-chat-fab");
@@ -471,6 +663,7 @@
       if (fabTrig) fabTrig.setAttribute("aria-expanded", "false");
       fab.classList.toggle("is-hidden", isOpen);
     }
+    syncMainBackgroundInert();
     syncVisualViewportForAiDrawer();
     if (isOpen && typeof syncAllSegmentedPills === "function") {
       syncAllSegmentedPills();
@@ -478,9 +671,17 @@
     if (isOpen && window.innerWidth > 768) {
       var input = drawer.querySelector("textarea");
       if (input) {
-        window.setTimeout(function () {
+        window.setTimeout(() => {
           input.focus();
         }, 140);
+      }
+    } else if (!isOpen && wasOpen && restoreFocus) {
+      var restoreBtn =
+        document.getElementById("btn_fab_ai_chat") ||
+        document.querySelector('[data-testid="btn_fab_ai_chat"]') ||
+        document.querySelector("[data-action='toggle-chat-drawer']");
+      if (restoreBtn && typeof restoreBtn.focus === "function") {
+        restoreBtn.focus();
       }
     }
   }
@@ -492,17 +693,228 @@
       window.location.hash === "#panel-chat" ||
       window.location.hash === "#ai-chat-drawer"
     ) {
-      setChatDrawerOpen(true);
+      setChatDrawerOpen(true, false);
     }
   } catch (_e) {}
 
-  document.addEventListener("keydown", function (e) {
+  document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeAllMenus(null);
       var drawer = document.getElementById("ai-chat-drawer");
       if (drawer && drawer.classList.contains("is-open")) {
-        setChatDrawerOpen(false);
+        setChatDrawerOpen(false, true);
       }
+    }
+  });
+
+  // Desktop AI Co-Pilot width controller (1-click expand/shrink + drag-to-resize left border + keyboard)
+  function initCopilotWidthController() {
+    var drawer = document.getElementById("ai-chat-drawer");
+    if (!drawer) return;
+
+    var sizeBtn = drawer.querySelector('[data-action="toggle-chat-size"]');
+    var sizeLabel = drawer.querySelector("[data-chat-size-label]");
+    var resizer = drawer.querySelector("[data-copilot-resizer]");
+
+    function syncSizeButton(isExpanded) {
+      if (!sizeBtn) return;
+      sizeBtn.setAttribute("aria-pressed", isExpanded ? "true" : "false");
+      var nextText =
+        (isExpanded
+          ? sizeBtn.getAttribute("data-label-shrink")
+          : sizeBtn.getAttribute("data-label-expand")) ||
+        (isExpanded ? (isEn() ? "Shrink" : "Réduire") : isEn() ? "Expand" : "Agrandir");
+      if (sizeLabel) sizeLabel.textContent = nextText;
+      sizeBtn.setAttribute(
+        "aria-label",
+        isExpanded
+          ? isEn()
+            ? "Shrink AI Assistant panel"
+            : "Réduire le panneau Assistant IA"
+          : isEn()
+            ? "Expand AI Assistant panel"
+            : "Agrandir le panneau Assistant IA",
+      );
+    }
+
+    try {
+      if (window.localStorage) {
+        var savedWidth = window.localStorage.getItem("ds_copilot_width");
+        if (savedWidth && /^\d+px$/.test(savedWidth)) {
+          drawer.style.setProperty("--ds-copilot-width", savedWidth);
+        }
+        var savedExpanded = window.localStorage.getItem("ds_copilot_expanded") === "true";
+        if (savedExpanded) {
+          drawer.classList.add("is-expanded");
+          syncSizeButton(true);
+        }
+      }
+    } catch (_e) {}
+
+    if (sizeBtn) {
+      sizeBtn.addEventListener("click", () => {
+        var isNowExpanded = drawer.classList.toggle("is-expanded");
+        drawer.style.removeProperty("--ds-copilot-width");
+        try {
+          if (window.localStorage) {
+            window.localStorage.removeItem("ds_copilot_width");
+            window.localStorage.setItem("ds_copilot_expanded", String(isNowExpanded));
+          }
+        } catch (_e) {}
+        syncSizeButton(isNowExpanded);
+        if (typeof syncAllSegmentedPills === "function") syncAllSegmentedPills();
+      });
+    }
+
+    if (resizer) {
+      var isDragging = false;
+      var startX = 0;
+      var startWidth = 0;
+
+      function clampWidth(w) {
+        var maxW = Math.min(1024, Math.round(window.innerWidth * 0.78));
+        return Math.max(384, Math.min(maxW, Math.round(w)));
+      }
+
+      function onPointerMove(e) {
+        if (!isDragging) return;
+        var dx = startX - e.clientX;
+        var newWidth = clampWidth(startWidth + dx);
+        drawer.style.setProperty("--ds-copilot-width", newWidth + "px");
+      }
+
+      function onPointerUp() {
+        if (!isDragging) return;
+        isDragging = false;
+        drawer.classList.remove("is-resizing");
+        document.body.style.removeProperty("cursor");
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        try {
+          if (window.localStorage) {
+            var curWidth = drawer.style.getPropertyValue("--ds-copilot-width");
+            if (curWidth) {
+              window.localStorage.setItem("ds_copilot_width", curWidth);
+            }
+          }
+        } catch (_e) {}
+        if (typeof syncAllSegmentedPills === "function") syncAllSegmentedPills();
+      }
+
+      resizer.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || !isDesktopCopilotViewport()) return;
+        isDragging = true;
+        startX = e.clientX;
+        startWidth = drawer.getBoundingClientRect().width;
+        drawer.classList.add("is-resizing");
+        document.body.style.cursor = "ew-resize";
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
+        e.preventDefault();
+      });
+
+      resizer.addEventListener("dblclick", () => {
+        drawer.classList.remove("is-expanded");
+        drawer.style.removeProperty("--ds-copilot-width");
+        try {
+          if (window.localStorage) {
+            window.localStorage.removeItem("ds_copilot_width");
+            window.localStorage.setItem("ds_copilot_expanded", "false");
+          }
+        } catch (_e) {}
+        syncSizeButton(false);
+        if (typeof syncAllSegmentedPills === "function") syncAllSegmentedPills();
+      });
+
+      resizer.addEventListener("keydown", (e) => {
+        if (!isDesktopCopilotViewport()) return;
+        var currentW = drawer.getBoundingClientRect().width;
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          var wider = clampWidth(currentW + 32);
+          drawer.style.setProperty("--ds-copilot-width", wider + "px");
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          var narrower = clampWidth(currentW - 32);
+          drawer.style.setProperty("--ds-copilot-width", narrower + "px");
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          drawer.classList.remove("is-expanded");
+          drawer.style.removeProperty("--ds-copilot-width");
+          syncSizeButton(false);
+        } else if (e.key === "End") {
+          e.preventDefault();
+          drawer.classList.add("is-expanded");
+          drawer.style.removeProperty("--ds-copilot-width");
+          syncSizeButton(true);
+        }
+      });
+    }
+  }
+  initCopilotWidthController();
+
+  // Dossier PDF Citation Click Interceptor (navigates active side-by-side PDF viewer)
+  document.addEventListener("click", (e) => {
+    var citeLink = e.target.closest("a.ds-ref__link");
+    if (!citeLink) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+    var splitView = document.getElementById("dossier-split-view");
+    if (!splitView) return;
+
+    var pdfPane = splitView.querySelector("[data-pdf-pane]");
+    var pdfFrame = splitView.querySelector(".ds-pdf-frame");
+    if (!pdfPane || !pdfFrame) return;
+
+    var activeFormFile =
+      (splitView.getAttribute("data-form-file") || "").trim() ||
+      (pdfPane.getAttribute("data-form-file") || "").trim();
+    if (!activeFormFile) {
+      var srcMatch = (pdfFrame.getAttribute("src") || "").match(/\/files\/forms\/([^/?#]+)\/pdf/);
+      if (srcMatch && srcMatch[1]) {
+        activeFormFile = decodeURIComponent(srcMatch[1]);
+      }
+    }
+
+    var citeResource = (citeLink.getAttribute("data-cite-resource") || "").trim();
+    var citeForm = (citeLink.getAttribute("data-cite-form") || "").trim();
+    var citeHref = citeLink.getAttribute("href") || "";
+
+    var matchesActiveForm = false;
+    if (activeFormFile) {
+      var actLower = activeFormFile.toLowerCase();
+      if (citeForm && citeForm.toLowerCase() === actLower) {
+        matchesActiveForm = true;
+      } else if (citeResource && citeResource.toLowerCase() === actLower) {
+        matchesActiveForm = true;
+      } else if (
+        citeHref.indexOf("/files/forms/" + encodeURIComponent(activeFormFile) + "/pdf") !== -1
+      ) {
+        matchesActiveForm = true;
+      }
+    }
+
+    if (matchesActiveForm) {
+      e.preventDefault();
+      var pageAttr = citeLink.getAttribute("data-cite-page");
+      var pageNum = "1";
+      if (pageAttr && /^\d+$/.test(pageAttr.trim())) {
+        pageNum = pageAttr.trim();
+      } else {
+        var hashMatch = citeHref.match(/[#&]page=(\d+)/);
+        if (hashMatch && hashMatch[1]) pageNum = hashMatch[1];
+      }
+
+      var mobileToggle = document.querySelector('[data-action="toggle-mobile-pdf"]');
+      if (mobileToggle && !splitView.classList.contains("ds-dossier--pdf-active")) {
+        mobileToggle.click();
+      }
+
+      var baseSrc = (pdfFrame.getAttribute("src") || "").split("#")[0];
+      var newHash =
+        "#page=" + encodeURIComponent(pageNum) + "&navpanes=0&pagemode=none&view=FitH&toolbar=1";
+      pdfFrame.src = baseSrc + newHash;
+      pdfPane.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   });
 
@@ -532,7 +944,7 @@
   }
   document.addEventListener("click", handleDataHrefNavigation);
   document.addEventListener("dblclick", handleDataHrefNavigation);
-  document.addEventListener("keydown", function (e) {
+  document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.defaultPrevented) return;
     var active = document.activeElement;
     if (!active || !active.hasAttribute || !active.hasAttribute("data-href")) return;
@@ -555,7 +967,7 @@
 
   function initM3TextFields(rootScope) {
     var scope = rootScope || document;
-    scope.querySelectorAll(".ds-field").forEach(function (field) {
+    scope.querySelectorAll(".ds-field").forEach((field) => {
       var control = field.querySelector(
         "input.ds-input:not([type='date']):not([type='file']):not([type='hidden']), textarea.ds-textarea",
       );
@@ -567,22 +979,22 @@
       if (field.getAttribute("data-m3-field-bound") === "true") return;
       field.setAttribute("data-m3-field-bound", "true");
       if (typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(() => {
           field.classList.add("is-ready");
         });
       } else {
         field.classList.add("is-ready");
       }
 
-      control.addEventListener("input", function () {
+      control.addEventListener("input", () => {
         syncM3FieldState(field, control);
       });
-      control.addEventListener("change", function () {
+      control.addEventListener("change", () => {
         syncM3FieldState(field, control);
       });
       if (control.form) {
-        control.form.addEventListener("reset", function () {
-          window.setTimeout(function () {
+        control.form.addEventListener("reset", () => {
+          window.setTimeout(() => {
             syncM3FieldState(field, control);
           }, 0);
         });
@@ -599,10 +1011,13 @@
         clearBtn.className = "ds-field__clear";
         clearBtn.setAttribute("aria-label", "Effacer le champ");
         clearBtn.setAttribute("title", "Effacer");
-        clearBtn.setAttribute("data-testid", "btn_clear_" + (control.id || control.name || "field"));
+        clearBtn.setAttribute(
+          "data-testid",
+          "btn_clear_" + (control.id || control.name || "field"),
+        );
         clearBtn.innerHTML =
           '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
-        clearBtn.addEventListener("click", function (ev) {
+        clearBtn.addEventListener("click", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
           control.value = "";
@@ -617,7 +1032,7 @@
   }
   initM3TextFields(document);
 
-  document.addEventListener("click", function (e) {
+  document.addEventListener("click", (e) => {
     var parentMenu = e.target.closest(
       "details.ds-menu, details.ds-popover, .ds-m3-select, .ds-fab-menu",
     );
@@ -660,7 +1075,7 @@
       if (chatInputEl) {
         chatInputEl.value = promptText;
         autoResizeChatInput(chatInputEl);
-        window.setTimeout(function () {
+        window.setTimeout(() => {
           chatInputEl.focus();
         }, 160);
       }
@@ -686,25 +1101,34 @@
         setTheme(targetTheme);
         return;
       }
+      if (action === "set-contrast") {
+        var targetContrast = menuActionBtn.getAttribute("data-contrast-value") || "auto";
+        setContrast(targetContrast);
+        return;
+      }
       if (action === "toggle-theme") {
         var currentTheme = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
         setTheme(currentTheme);
         return;
       }
       if (action === "edit-section" && secName) {
-        var editEl = document.querySelector("[data-testid='btn_edit_section_" + secName + "']");
+        var editEl = document.querySelector(
+          '[data-testid="btn_edit_section_' + cssEscape(secName) + '"]',
+        );
         if (editEl) editEl.click();
         return;
       }
       if (action === "rerun-section" && secName) {
-        var rerunEl = document.querySelector("[data-testid='btn_rerun_section_" + secName + "']");
+        var rerunEl = document.querySelector(
+          '[data-testid="btn_rerun_section_' + cssEscape(secName) + '"]',
+        );
         if (rerunEl) rerunEl.click();
         return;
       }
       if (action === "toggle-reasoning" && secName) {
         var parentSec = document.getElementById("section-" + secName);
         if (parentSec && parentSec.tagName === "DETAILS") parentSec.open = true;
-        var reasEl = document.querySelector("[data-testid='reasoning-" + secName + "']");
+        var reasEl = document.querySelector('[data-testid="reasoning-' + cssEscape(secName) + '"]');
         if (reasEl) {
           reasEl.open = !reasEl.open;
         }
@@ -713,14 +1137,14 @@
       if (action === "copy-section" && secName) {
         var secEl = document.getElementById("section-" + secName);
         if (secEl && navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(secEl.innerText.trim()).catch(function () {});
+          navigator.clipboard.writeText(secEl.innerText.trim()).catch(() => {});
         }
         return;
       }
       if (action === "toggle-details") {
         var targetTestId = menuActionBtn.getAttribute("data-target-testid");
         var detailsEl = targetTestId
-          ? document.querySelector("[data-testid='" + targetTestId + "']")
+          ? document.querySelector('[data-testid="' + cssEscape(targetTestId) + '"]')
           : null;
         if (detailsEl) {
           var parentDetails = detailsEl.parentElement
@@ -734,7 +1158,7 @@
       if (action === "copy-text") {
         var copyText = menuActionBtn.getAttribute("data-copy-text") || "";
         if (copyText && navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(copyText).catch(function () {});
+          navigator.clipboard.writeText(copyText).catch(() => {});
         }
         return;
       }
@@ -746,7 +1170,7 @@
       var chatDrawer = document.getElementById("ai-chat-drawer");
       if (chatDrawer) {
         var nextOpen = !chatDrawer.classList.contains("is-open");
-        setChatDrawerOpen(nextOpen);
+        setChatDrawerOpen(nextOpen, !nextOpen);
       }
       return;
     }
@@ -754,7 +1178,7 @@
     var closeChatDrawerBtn = e.target.closest("[data-action='close-chat-drawer']");
     if (closeChatDrawerBtn) {
       closeAllMenus(null);
-      setChatDrawerOpen(false);
+      setChatDrawerOpen(false, true);
       return;
     }
 
@@ -766,10 +1190,10 @@
       if (panel) {
         var accordions = panel.querySelectorAll("details.ds-section, details.ds-opinion");
         var anyOpen = false;
-        accordions.forEach(function (d) {
+        accordions.forEach((d) => {
           if (d.open) anyOpen = true;
         });
-        accordions.forEach(function (d) {
+        accordions.forEach((d) => {
           d.open = !anyOpen;
         });
       }
@@ -875,14 +1299,34 @@
   });
 
   // Auto-submit selects
-  document.querySelectorAll("[data-autosubmit='true']").forEach(function (el) {
-    el.addEventListener("change", function () {
+  document.querySelectorAll("[data-autosubmit='true']").forEach((el) => {
+    el.addEventListener("change", () => {
       if (el.form) el.form.submit();
     });
   });
 
-  // Dialog openers & closers
-  document.addEventListener("click", function (e) {
+  // Dialog openers & closers + auto-open modal dialogs on DOMContentLoaded
+  function autoOpenModalDialogs() {
+    document.querySelectorAll('dialog[data-auto-open="true"]').forEach((dlg) => {
+      if (dlg.open) return;
+      if (typeof dlg.showModal === "function") {
+        try {
+          dlg.showModal();
+        } catch (_e) {
+          dlg.setAttribute("open", "");
+        }
+      } else {
+        dlg.setAttribute("open", "");
+      }
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", autoOpenModalDialogs);
+  } else {
+    autoOpenModalDialogs();
+  }
+
+  document.addEventListener("click", (e) => {
     var openBtn = e.target.closest("[data-open]");
     if (openBtn) {
       closeAllMenus(null);
@@ -890,7 +1334,7 @@
       if (dlg) {
         var patientName = openBtn.getAttribute("data-patient-name");
         if (patientName) {
-          dlg.querySelectorAll("[data-del-patient-name]").forEach(function (el) {
+          dlg.querySelectorAll("[data-del-patient-name]").forEach((el) => {
             el.textContent = patientName;
           });
         }
@@ -917,7 +1361,7 @@
   // Center horizontally scrollable RCP session timeline on the active session (mobile / narrow viewports)
   function centerActiveTimelineStep(scopeRoot) {
     var scope = scopeRoot || document;
-    scope.querySelectorAll(".ds-timeline").forEach(function (timeline) {
+    scope.querySelectorAll(".ds-timeline").forEach((timeline) => {
       if (timeline.scrollWidth <= timeline.clientWidth) return;
       var activeLink = timeline.querySelector('.ds-timeline__link[aria-current="step"]');
       var activeItem = activeLink ? activeLink.closest(".ds-timeline__item") || activeLink : null;
@@ -930,14 +1374,14 @@
   centerActiveTimelineStep(document);
   window.addEventListener(
     "resize",
-    function () {
+    () => {
       centerActiveTimelineStep(document);
     },
     { passive: true },
   );
   document.addEventListener(
     "toggle",
-    function (ev) {
+    (ev) => {
       if (
         ev.target &&
         ev.target.classList &&
@@ -953,7 +1397,7 @@
   // ARIA tabs navigation with dedicated M3 sliding bottom indicator (.ds-tabs__indicator — icons & labels stay fixed)
   function initM3Tabs(scopeRoot) {
     var scope = scopeRoot || document;
-    scope.querySelectorAll(".ds-tabs[role='tablist']").forEach(function (tablist) {
+    scope.querySelectorAll(".ds-tabs[role='tablist']").forEach((tablist) => {
       if (tablist.getAttribute("data-m3-tabs-bound") === "true") return;
       tablist.setAttribute("data-m3-tabs-bound", "true");
       var tabs = Array.prototype.slice.call(tablist.querySelectorAll("[role='tab']"));
@@ -980,7 +1424,7 @@
       }
 
       function selectTab(idx, focus) {
-        tabs.forEach(function (t, i) {
+        tabs.forEach((t, i) => {
           var on = i === idx;
           t.setAttribute("aria-selected", String(on));
           t.tabIndex = on ? 0 : -1;
@@ -1022,14 +1466,14 @@
             : null);
         if (requestedTab === "dashboard") requestedTab = "patient-dashboard";
         if (requestedTab) {
-          tabs.forEach(function (t, i) {
+          tabs.forEach((t, i) => {
             if (t.id === "tab-" + requestedTab) selectTab(i, false);
           });
         }
       } catch (_e) {}
 
       if (typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(() => {
           tablist.classList.add("is-ready");
         });
       } else {
@@ -1038,18 +1482,18 @@
 
       window.addEventListener(
         "resize",
-        function () {
+        () => {
           var cur = tablist.querySelector("[role='tab'][aria-selected='true']");
           if (cur) syncTabIndicator(cur);
         },
         { passive: true },
       );
 
-      tabs.forEach(function (tab, i) {
-        tab.addEventListener("click", function () {
+      tabs.forEach((tab, i) => {
+        tab.addEventListener("click", () => {
           selectTab(i, false);
         });
-        tab.addEventListener("keydown", function (ev) {
+        tab.addEventListener("keydown", (ev) => {
           if (ev.key === "ArrowRight") {
             ev.preventDefault();
             selectTab((i + 1) % tabs.length, true);
@@ -1082,7 +1526,9 @@
       var el = document.getElementById("section-" + candidates[i]);
       if (el) return el;
     }
-    var opinionEl = document.querySelector("[data-testid='opinion-" + sectionName + "']");
+    var opinionEl = document.querySelector(
+      '[data-testid="opinion-' + cssEscape(sectionName) + '"]',
+    );
     if (opinionEl) return opinionEl;
     if (sectionName === "ExpertAnswer" || sectionName === "CareOrientationProposal") {
       return (
@@ -1128,11 +1574,11 @@
 
     document
       .querySelectorAll(".ds-section.is-jump-target, .ds-opinion.is-jump-target")
-      .forEach(function (el) {
+      .forEach((el) => {
         el.classList.remove("is-jump-target");
       });
     targetDetails.classList.add("is-jump-target");
-    window.setTimeout(function () {
+    window.setTimeout(() => {
       targetDetails.classList.remove("is-jump-target");
     }, 2200);
 
@@ -1150,7 +1596,7 @@
     return true;
   }
 
-  document.addEventListener("click", function (e) {
+  document.addEventListener("click", (e) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (e.target.closest("a, button, input, select, textarea, form")) return;
     var jumpTrigger = e.target.closest("[data-jump-section]");
@@ -1162,7 +1608,7 @@
     }
   });
 
-  document.addEventListener("keydown", function (e) {
+  document.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || (e.key !== "Enter" && e.key !== " ")) return;
     var active = document.activeElement;
     if (!active || !active.hasAttribute || !active.hasAttribute("data-jump-section")) return;
@@ -1188,7 +1634,7 @@
 
   // M3 Segmented Button background pill slider (.ds-segmented__pill — only the colored background moves)
   function syncAllSegmentedPills() {
-    document.querySelectorAll(".ds-segmented").forEach(function (seg) {
+    document.querySelectorAll(".ds-segmented").forEach((seg) => {
       var pill = seg.querySelector(".ds-segmented__pill");
       var checkedLabel = seg.querySelector("input:checked + label");
       if (!checkedLabel || !pill || checkedLabel.offsetWidth === 0) return;
@@ -1197,7 +1643,7 @@
     });
   }
 
-  document.querySelectorAll(".ds-segmented").forEach(function (seg) {
+  document.querySelectorAll(".ds-segmented").forEach((seg) => {
     var pill = seg.querySelector(".ds-segmented__pill");
     if (!pill) {
       pill = document.createElement("span");
@@ -1211,7 +1657,7 @@
       pill.style.transform = "translate3d(" + checkedLabel.offsetLeft + "px, 0, 0)";
     }
     if (typeof window.requestAnimationFrame === "function") {
-      window.requestAnimationFrame(function () {
+      window.requestAnimationFrame(() => {
         seg.classList.add("is-ready");
       });
     } else {
@@ -1231,10 +1677,7 @@
       var raw = window.sessionStorage.getItem(NAV_BG_STORAGE_KEY);
       if (!raw) return;
       window.sessionStorage.removeItem(NAV_BG_STORAGE_KEY);
-      if (
-        window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ) {
+      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         return;
       }
       var prev = JSON.parse(raw);
@@ -1264,10 +1707,7 @@
 
         // Strictly horizontal movement (dy = 0) from the previous mobile button to the new one
         targetBg.animate(
-          [
-            { transform: "translate3d(" + dx + "px, 0, 0)" },
-            { transform: "translate3d(0, 0, 0)" },
-          ],
+          [{ transform: "translate3d(" + dx + "px, 0, 0)" }, { transform: "translate3d(0, 0, 0)" }],
           {
             duration: 250,
             easing: "cubic-bezier(0.2, 0, 0, 1)",
@@ -1295,10 +1735,7 @@
 
         // Strictly vertical movement (dx = 0) from the previous sidebar button to the new one
         sideTargetBg.animate(
-          [
-            { transform: "translate3d(0, " + dy + "px, 0)" },
-            { transform: "translate3d(0, 0, 0)" },
-          ],
+          [{ transform: "translate3d(0, " + dy + "px, 0)" }, { transform: "translate3d(0, 0, 0)" }],
           {
             duration: 250,
             easing: "cubic-bezier(0.2, 0, 0, 1)",
@@ -1308,7 +1745,7 @@
     } catch (_err) {}
   })();
 
-  document.addEventListener("click", function (e) {
+  document.addEventListener("click", (e) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     var bottomLink = e.target.closest(".ds-bottom-nav__item");
     if (bottomLink) {
@@ -1367,8 +1804,83 @@
     }
   });
 
-  // Inline section edit link (progressive enhancement)
-  document.addEventListener("click", function (e) {
+  function buildDynamicRowHeader(titleText) {
+    var header = document.createElement("div");
+    header.className = "ds-subcard__header";
+    header.style.marginBottom = "var(--ds-space-2)";
+    var titleSpan = document.createElement("span");
+    titleSpan.className = "ds-subcard__title";
+    titleSpan.textContent = titleText;
+    var delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "ds-btn ds-btn--danger-soft ds-btn--sm";
+    delBtn.setAttribute("data-remove-dynamic-row", "");
+    delBtn.setAttribute("aria-label", "Supprimer cette ligne");
+    delBtn.appendChild(createSpriteIconSvg("ic-delete", "ds-icon--xs"));
+    delBtn.appendChild(document.createTextNode(" Supprimer"));
+    header.appendChild(titleSpan);
+    header.appendChild(delBtn);
+    return header;
+  }
+
+  function buildDynamicInputField(id, labelText, name, type, placeholder, fieldType) {
+    var field = document.createElement("div");
+    field.className = "ds-field";
+    var label = document.createElement("label");
+    label.className = "ds-label";
+    label.setAttribute("for", id);
+    label.textContent = labelText;
+    var input = document.createElement("input");
+    input.className = "ds-input";
+    input.type = type;
+    input.id = id;
+    input.name = name;
+    input.value = "";
+    input.setAttribute("data-field-type", fieldType);
+    if (placeholder) {
+      input.setAttribute("placeholder", placeholder);
+    }
+    field.appendChild(label);
+    field.appendChild(input);
+    return field;
+  }
+
+  function buildDynamicSelectField(id, labelText, name, optionsList) {
+    var field = document.createElement("div");
+    field.className = "ds-field";
+    var label = document.createElement("label");
+    label.className = "ds-label";
+    label.setAttribute("for", id);
+    label.textContent = labelText;
+    var select = document.createElement("select");
+    select.className = "ds-select";
+    select.id = id;
+    select.name = name;
+    select.setAttribute("data-field-type", "select");
+    optionsList.forEach((optDef, idx) => {
+      var opt = document.createElement("option");
+      opt.value = optDef.value;
+      opt.textContent = optDef.label;
+      if (idx === 0) opt.selected = true;
+      select.appendChild(opt);
+    });
+    field.appendChild(label);
+    field.appendChild(select);
+    return field;
+  }
+
+  // Inline section edit link & dynamic row builders (progressive enhancement)
+  document.addEventListener("click", (e) => {
+    var removeRowBtn = e.target.closest("[data-remove-dynamic-row]");
+    if (removeRowBtn) {
+      e.preventDefault();
+      var targetRow = removeRowBtn.closest("[data-exam-row], [data-chemo-row]");
+      if (targetRow && targetRow.parentNode) {
+        targetRow.parentNode.removeChild(targetRow);
+      }
+      return;
+    }
+
     var addExamBtn = e.target.closest("[data-add-exam-row]");
     if (addExamBtn) {
       e.preventDefault();
@@ -1382,30 +1894,59 @@
         rowEl.className = "ds-subcard";
         rowEl.setAttribute("data-exam-row", String(idx));
         rowEl.style.marginBottom = "var(--ds-space-2)";
-        rowEl.innerHTML =
-          '<div class="ds-kv-grid">' +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + inputId + "-name-" + idx + '">Nom de l\'examen #' + (idx + 1) + "</label>" +
-          '<input class="ds-input" type="text" id="' + inputId + "-name-" + idx + '" name="exam_name_' + idx + '" value="" data-field-type="text" placeholder="Ex : Scanner TAP injecté">' +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + inputId + "-type-" + idx + '">Modalité (Type)</label>' +
-          '<select class="ds-select" id="' + inputId + "-type-" + idx + '" name="exam_type_' + idx + '" data-field-type="select">' +
-          '<option value="CT" selected>CT — Scanner (TDM)</option>' +
-          '<option value="MRI">MRI — IRM</option>' +
-          '<option value="PET">PET — TEP-TDM</option>' +
-          '<option value="EUS">EUS — Écho-endoscopie</option>' +
-          "</select>" +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + inputId + "-date-" + idx + '">Date de l\'examen</label>' +
-          '<input class="ds-input" type="date" id="' + inputId + "-date-" + idx + '" name="exam_date_' + idx + '" value="" data-field-type="date">' +
-          "</div>" +
-          "</div>" +
-          '<div class="ds-field" style="margin-top:var(--ds-space-2)">' +
-          '<label class="ds-label" for="' + inputId + "-res-" + idx + '">Conclusion / Résultat</label>' +
-          '<textarea class="ds-textarea" rows="2" id="' + inputId + "-res-" + idx + '" name="exam_result_' + idx + '" data-field-type="textarea" placeholder="Résumé des conclusions radiologiques"></textarea>' +
-          "</div>";
+
+        rowEl.appendChild(buildDynamicRowHeader("Examen #" + (idx + 1)));
+
+        var kvGrid = document.createElement("div");
+        kvGrid.className = "ds-kv-grid";
+        kvGrid.appendChild(
+          buildDynamicInputField(
+            inputId + "-name-" + idx,
+            "Nom de l'examen #" + (idx + 1),
+            "exam_name_" + idx,
+            "text",
+            "Ex : Scanner TAP injecté",
+            "text",
+          ),
+        );
+        kvGrid.appendChild(
+          buildDynamicSelectField(inputId + "-type-" + idx, "Modalité (Type)", "exam_type_" + idx, [
+            { value: "CT", label: "CT — Scanner (TDM)" },
+            { value: "MRI", label: "MRI — IRM" },
+            { value: "PET", label: "PET — TEP-TDM" },
+            { value: "EUS", label: "EUS — Écho-endoscopie" },
+          ]),
+        );
+        kvGrid.appendChild(
+          buildDynamicInputField(
+            inputId + "-date-" + idx,
+            "Date de l'examen",
+            "exam_date_" + idx,
+            "date",
+            "",
+            "date",
+          ),
+        );
+        rowEl.appendChild(kvGrid);
+
+        var resField = document.createElement("div");
+        resField.className = "ds-field";
+        resField.style.marginTop = "var(--ds-space-2)";
+        var resLabel = document.createElement("label");
+        resLabel.className = "ds-label";
+        resLabel.setAttribute("for", inputId + "-res-" + idx);
+        resLabel.textContent = "Conclusion / Résultat";
+        var resArea = document.createElement("textarea");
+        resArea.className = "ds-textarea";
+        resArea.rows = 2;
+        resArea.id = inputId + "-res-" + idx;
+        resArea.name = "exam_result_" + idx;
+        resArea.setAttribute("data-field-type", "textarea");
+        resArea.setAttribute("placeholder", "Résumé des conclusions radiologiques");
+        resField.appendChild(resLabel);
+        resField.appendChild(resArea);
+        rowEl.appendChild(resField);
+
         rowsHost.appendChild(rowEl);
         initM3TextFields(rowEl);
         initM3Selects(rowEl);
@@ -1426,29 +1967,55 @@
         cRowEl.className = "ds-subcard";
         cRowEl.setAttribute("data-chemo-row", String(cIdx));
         cRowEl.style.marginBottom = "var(--ds-space-2)";
-        cRowEl.innerHTML =
-          '<div class="ds-kv-grid">' +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-name-" + cIdx + '">Protocole / Molécule #' + (cIdx + 1) + "</label>" +
-          '<input class="ds-input" type="text" id="' + cInputId + "-name-" + cIdx + '" name="chemotherapy_name_' + cIdx + '" value="" data-field-type="text" placeholder="Ex : FOLFIRINOX">' +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-tol-" + cIdx + '">Tolérance</label>' +
-          '<select class="ds-select" id="' + cInputId + "-tol-" + cIdx + '" name="chemotherapy_tolerance_' + cIdx + '" data-field-type="select">' +
-          '<option value="Good" selected>Bonne (Good)</option>' +
-          '<option value="Medium">Moyenne / Modérée (Medium)</option>' +
-          '<option value="Poor">Mauvaise / Toxicité (Poor)</option>' +
-          "</select>" +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-start-" + cIdx + '">Date de début</label>' +
-          '<input class="ds-input" type="date" id="' + cInputId + "-start-" + cIdx + '" name="chemotherapy_start_date_' + cIdx + '" value="" data-field-type="date">' +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-end-" + cIdx + '">Date de fin</label>' +
-          '<input class="ds-input" type="date" id="' + cInputId + "-end-" + cIdx + '" name="chemotherapy_end_date_' + cIdx + '" value="" data-field-type="date">' +
-          "</div>" +
-          "</div>";
+
+        cRowEl.appendChild(buildDynamicRowHeader("Ligne #" + (cIdx + 1)));
+
+        var cGrid = document.createElement("div");
+        cGrid.className = "ds-kv-grid";
+        cGrid.appendChild(
+          buildDynamicInputField(
+            cInputId + "-name-" + cIdx,
+            "Protocole / Molécule #" + (cIdx + 1),
+            "chemotherapy_name_" + cIdx,
+            "text",
+            "Ex : FOLFIRINOX",
+            "text",
+          ),
+        );
+        cGrid.appendChild(
+          buildDynamicSelectField(
+            cInputId + "-tol-" + cIdx,
+            "Tolérance",
+            "chemotherapy_tolerance_" + cIdx,
+            [
+              { value: "Good", label: "Bonne (Good)" },
+              { value: "Medium", label: "Moyenne / Modérée (Medium)" },
+              { value: "Poor", label: "Mauvaise / Toxicité (Poor)" },
+            ],
+          ),
+        );
+        cGrid.appendChild(
+          buildDynamicInputField(
+            cInputId + "-start-" + cIdx,
+            "Date de début",
+            "chemotherapy_start_date_" + cIdx,
+            "date",
+            "",
+            "date",
+          ),
+        );
+        cGrid.appendChild(
+          buildDynamicInputField(
+            cInputId + "-end-" + cIdx,
+            "Date de fin",
+            "chemotherapy_end_date_" + cIdx,
+            "date",
+            "",
+            "date",
+          ),
+        );
+        cRowEl.appendChild(cGrid);
+
         chemoRowsHost.appendChild(cRowEl);
         initM3TextFields(cRowEl);
         initM3Selects(cRowEl);
@@ -1463,11 +2030,11 @@
     if (!targetId || !href) return;
     e.preventDefault();
     fetch(href, { headers: { "HX-Request": "true" } })
-      .then(function (r) {
+      .then((r) => {
         if (!r.ok) return null;
         return r.text();
       })
-      .then(function (html) {
+      .then((html) => {
         if (!html) return;
         var host = document.getElementById(targetId);
         if (host) {
@@ -1476,7 +2043,7 @@
           initM3Selects(document);
         }
       })
-      .catch(function () {});
+      .catch(() => {});
   });
 
   // Auto-grow AI Chat textarea on newline / multi-line input
@@ -1489,7 +2056,7 @@
     el.style.overflowY = el.scrollHeight > maxH ? "auto" : "hidden";
   }
 
-  document.addEventListener("input", function (e) {
+  document.addEventListener("input", (e) => {
     var target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
     if (
@@ -1502,7 +2069,7 @@
   });
 
   // Enter to send, Shift+Enter for newline inside AI Chat textareas
-  document.addEventListener("keydown", function (e) {
+  document.addEventListener("keydown", (e) => {
     var target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
     if (
@@ -1525,7 +2092,7 @@
   });
 
   // Inline section save & inline chat (progressive enhancement + M3 AI Reflection Module)
-  document.addEventListener("submit", function (e) {
+  document.addEventListener("submit", (e) => {
     var form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
 
@@ -1543,20 +2110,69 @@
     var secId = form.getAttribute("data-ajax-section");
     if (secId) {
       e.preventDefault();
+      var showSectionSaveError = (errMsg) => {
+        var hostEl = document.getElementById(secId);
+        var containerEl = form.classList.contains("ds-section__body")
+          ? form
+          : (hostEl && hostEl.querySelector(".ds-section__body")) || form;
+        var existingBanner = containerEl.querySelector("[data-section-save-error]");
+        if (existingBanner && existingBanner.parentNode) {
+          existingBanner.parentNode.removeChild(existingBanner);
+        }
+        var alertEl = document.createElement("div");
+        alertEl.className = "ds-alert ds-alert--danger";
+        alertEl.setAttribute("role", "alert");
+        alertEl.setAttribute("data-testid", "section-save-error-banner");
+        alertEl.setAttribute("data-section-save-error", "true");
+        alertEl.style.marginBottom = "var(--ds-space-3)";
+        var iconSpan = document.createElement("span");
+        iconSpan.className = "ds-alert__icon";
+        iconSpan.appendChild(createSpriteIconSvg("ic-error"));
+        var contentDiv = document.createElement("div");
+        contentDiv.className = "ds-alert__content";
+        var titleSpan = document.createElement("span");
+        titleSpan.className = "ds-alert__title";
+        titleSpan.textContent = "Enregistrement refusé";
+        var msgSpan = document.createElement("span");
+        msgSpan.textContent =
+          errMsg || "Impossible d'enregistrer les modifications de la rubrique.";
+        contentDiv.appendChild(titleSpan);
+        contentDiv.appendChild(msgSpan);
+        alertEl.appendChild(iconSpan);
+        alertEl.appendChild(contentDiv);
+        containerEl.insertBefore(alertEl, containerEl.firstChild);
+      };
+
       var body = new URLSearchParams(new FormData(form)).toString();
+      var shouldRefreshHeader = false;
       fetch(form.action, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           "HX-Request": "true",
+          "X-Requested-With": "fetch",
         },
         body: body,
       })
-        .then(function (r) {
-          if (!r.ok) return null;
+        .then((r) => {
+          if (!r.ok) {
+            return r
+              .json()
+              .catch(() => null)
+              .then((errJson) => {
+                var errMsg =
+                  (errJson && errJson.error) ||
+                  "Impossible d'enregistrer les modifications de la rubrique (HTTP " +
+                    r.status +
+                    ").";
+                showSectionSaveError(errMsg);
+                return null;
+              });
+          }
+          shouldRefreshHeader = r.headers.get("X-Refresh-Dossier") === "true";
           return r.text();
         })
-        .then(function (html) {
+        .then((html) => {
           if (!html) return;
           var host = document.getElementById(secId);
           if (host) {
@@ -1564,8 +2180,30 @@
             initM3TextFields(document);
             initM3Selects(document);
           }
+          if (shouldRefreshHeader) {
+            fetch(window.location.href, {
+              headers: { "X-Requested-With": "fetch" },
+            })
+              .then((hr) => (hr.ok ? hr.text() : null))
+              .then((fullHtml) => {
+                if (!fullHtml) return;
+                var parsed = new DOMParser().parseFromString(fullHtml, "text/html");
+                var nextSynoptic = parsed.querySelector('[data-testid="synoptic-card"]');
+                var curSynoptic = document.querySelector('[data-testid="synoptic-card"]');
+                if (nextSynoptic && curSynoptic) {
+                  var prevView = curSynoptic.getAttribute("data-patient-view");
+                  if (prevView) {
+                    nextSynoptic.setAttribute("data-patient-view", prevView);
+                  }
+                  curSynoptic.outerHTML = nextSynoptic.outerHTML;
+                }
+              })
+              .catch(() => {});
+          }
         })
-        .catch(function () {});
+        .catch(() => {
+          showSectionSaveError("Erreur réseau lors de l'enregistrement de la rubrique.");
+        });
       return;
     }
 
@@ -1634,7 +2272,7 @@
 
         // 3. Live elapsed timer (minutes & seconds) & step progression while waiting for LLM / RAG
         var startedAt = Date.now();
-        timerInterval = window.setInterval(function () {
+        timerInterval = window.setInterval(() => {
           var elapsedSec = (Date.now() - startedAt) / 1000;
           var timerEl = log.querySelector("[data-thinking-timer]");
           if (timerEl) {
@@ -1645,7 +2283,7 @@
           }
           var stepIdx = elapsedSec < 1.8 ? 0 : elapsedSec < 4.0 ? 1 : 2;
           var steps = log.querySelectorAll("[data-thinking-step]");
-          steps.forEach(function (st, idx) {
+          steps.forEach((st, idx) => {
             st.classList.toggle("is-active", idx === stepIdx);
             st.classList.toggle("is-done", idx < stepIdx);
           });
@@ -1660,7 +2298,7 @@
         },
         body: chatBody,
       })
-        .then(function (r) {
+        .then((r) => {
           if (!r.ok) {
             var err = new Error("HTTP " + r.status);
             err.status = r.status;
@@ -1668,20 +2306,20 @@
           }
           return r.text();
         })
-        .then(function (html) {
+        .then((html) => {
           if (timerInterval) window.clearInterval(timerInterval);
           if (log) {
-            log.querySelectorAll("[data-chat-temp='true']").forEach(function (el) {
+            log.querySelectorAll("[data-chat-temp='true']").forEach((el) => {
               el.remove();
             });
             log.insertAdjacentHTML("beforeend", html);
             log.scrollTop = log.scrollHeight;
           }
         })
-        .catch(function (err) {
+        .catch((err) => {
           if (timerInterval) window.clearInterval(timerInterval);
           if (log) {
-            log.querySelectorAll("[data-chat-temp='true']").forEach(function (el) {
+            log.querySelectorAll("[data-chat-temp='true']").forEach((el) => {
               el.remove();
             });
             var errUserLi = document.createElement("li");
@@ -1715,7 +2353,7 @@
             log.scrollTop = log.scrollHeight;
           }
         })
-        .finally(function () {
+        .finally(() => {
           form.removeAttribute("data-chat-busy");
           if (submitBtn) submitBtn.removeAttribute("disabled");
           if (textarea) textarea.focus();
@@ -1727,7 +2365,7 @@
   var fileInput = document.getElementById("ingest-files");
   var previewList = document.getElementById("ingest-preview-list");
   if (fileInput && previewList) {
-    fileInput.addEventListener("change", function () {
+    fileInput.addEventListener("change", () => {
       previewList.innerHTML = "";
       var files = fileInput.files || [];
       for (var i = 0; i < files.length; i++) {
@@ -1752,8 +2390,7 @@
     var rect = el.getBoundingClientRect();
     if (el.classList.contains("ds-hovercard")) {
       el.classList.toggle("ds-hovercard--flip", rect.top < 220);
-      var alignRight =
-        rect.left + 320 > window.innerWidth && rect.left > window.innerWidth * 0.4;
+      var alignRight = rect.left + 320 > window.innerWidth && rect.left > window.innerWidth * 0.4;
       el.classList.toggle("ds-hovercard--align-right", alignRight);
     }
     if (el.hasAttribute("data-tooltip")) {
@@ -1766,7 +2403,7 @@
   }
   document.addEventListener(
     "mouseover",
-    function (e) {
+    (e) => {
       var hc = e.target.closest(".ds-hovercard");
       if (hc && (!e.relatedTarget || !hc.contains(e.relatedTarget))) {
         adjustFloatingOverlay(hc);
@@ -1778,7 +2415,7 @@
     },
     { passive: true },
   );
-  document.addEventListener("focusin", function (e) {
+  document.addEventListener("focusin", (e) => {
     var hc = e.target.closest(".ds-hovercard");
     if (hc) adjustFloatingOverlay(hc);
     var tt = e.target.closest("[data-tooltip]");
@@ -1786,7 +2423,7 @@
   });
 
   // Client-side worklist column sorting on <table id="worklist">
-  document.addEventListener("click", function (e) {
+  document.addEventListener("click", (e) => {
     var sortTrigger = e.target.closest("[data-sort-trigger]");
     if (!sortTrigger) return;
     var th = sortTrigger.closest("th");
@@ -1799,7 +2436,7 @@
     var currentSort = th.getAttribute("aria-sort");
     var nextDir = currentSort === "ascending" ? "descending" : "ascending";
 
-    table.querySelectorAll("thead th").forEach(function (headerEl) {
+    table.querySelectorAll("thead th").forEach((headerEl) => {
       headerEl.setAttribute("aria-sort", "none");
       var link = headerEl.querySelector(".ds-sort");
       var icon = headerEl.querySelector(".ds-sort__icon");
@@ -1813,7 +2450,7 @@
     if (activeIcon) activeIcon.textContent = nextDir === "ascending" ? "↑" : "↓";
 
     var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
-    rows.sort(function (rowA, rowB) {
+    rows.sort((rowA, rowB) => {
       var cellA = rowA.children[colIdx];
       var cellB = rowB.children[colIdx];
       var valA = (cellA && (cellA.getAttribute("data-sort-value") || cellA.textContent)) || "";
@@ -1829,17 +2466,19 @@
       return nextDir === "ascending" ? cmp : -cmp;
     });
 
-    rows.forEach(function (r) {
+    rows.forEach((r) => {
       tbody.appendChild(r);
     });
   });
 
   // Live client-side filter for the Guidelines left document menu
-  document.addEventListener("input", function (e) {
+  document.addEventListener("input", (e) => {
     var searchInput = e.target.closest("[data-guideline-search]");
     if (!searchInput) return;
-    var query = String(searchInput.value || "").trim().toLowerCase();
-    document.querySelectorAll("[data-guideline-item]").forEach(function (item) {
+    var query = String(searchInput.value || "")
+      .trim()
+      .toLowerCase();
+    document.querySelectorAll("[data-guideline-item]").forEach((item) => {
       var name = (item.getAttribute("data-guideline-item") || "").toLowerCase();
       item.style.display = !query || name.indexOf(query) !== -1 ? "" : "none";
     });
@@ -1856,7 +2495,7 @@
       selectEl.dispatchEvent(new Event("change", { bubbles: false }));
     }
 
-    document.querySelectorAll("[data-focus-expert]").forEach(function (el) {
+    document.querySelectorAll("[data-focus-expert]").forEach((el) => {
       var exp = (el.getAttribute("data-focus-expert") || "").trim();
       var isActive = nextExpert === "" ? exp === "" : exp === nextExpert;
       el.setAttribute("aria-pressed", isActive ? "true" : "false");
@@ -1865,7 +2504,7 @@
       }
     });
 
-    agendaList.querySelectorAll(".ds-agenda-item[data-required-experts]").forEach(function (row) {
+    agendaList.querySelectorAll(".ds-agenda-item[data-required-experts]").forEach((row) => {
       var raw = row.getAttribute("data-required-experts") || "";
       var requiredList = raw ? raw.split("|") : [];
       if (!nextExpert) {
@@ -1888,13 +2527,13 @@
     } catch (_err) {}
   }
 
-  document.addEventListener("change", function (e) {
+  document.addEventListener("change", (e) => {
     var focusSelect = e.target.closest("[data-agenda-focus-select]");
     if (!focusSelect) return;
     applyAgendaSpecialtyFocus((focusSelect.value || "").trim());
   });
 
-  document.addEventListener("click", function (e) {
+  document.addEventListener("click", (e) => {
     var focusTrigger = e.target.closest("[data-focus-expert]");
     if (!focusTrigger) return;
     e.preventDefault();
@@ -1917,13 +2556,12 @@
     if (activeState && activeState.placeholder && activeState.row) {
       var slots = Array.prototype.slice
         .call(list.children)
-        .filter(function (el) {
-          return (
+        .filter(
+          (el) =>
             el !== activeState.row &&
-            (el.classList.contains("ds-agenda-item") || el === activeState.placeholder)
-          );
-        });
-      slots.forEach(function (slot, idx) {
+            (el.classList.contains("ds-agenda-item") || el === activeState.placeholder),
+        );
+      slots.forEach((slot, idx) => {
         var row = slot === activeState.placeholder ? activeState.row : slot;
         var pos = idx + 1;
         row.setAttribute("data-position", String(pos));
@@ -1935,7 +2573,7 @@
       return;
     }
 
-    getAgendaRows(list).forEach(function (row, idx) {
+    getAgendaRows(list).forEach((row, idx) => {
       var pos = idx + 1;
       row.setAttribute("data-position", String(pos));
       var posEl = row.querySelector(".ds-agenda-item__pos");
@@ -1995,9 +2633,7 @@
 
     if (state.placeholder && state.placeholder.parentNode) {
       if (cancelled) {
-        var currentRows = getAgendaRows(state.list).filter(function (r) {
-          return r !== state.row;
-        });
+        var currentRows = getAgendaRows(state.list).filter((r) => r !== state.row);
         var refRow = currentRows[state.initialIndex] || null;
         state.placeholder.remove();
         if (refRow) {
@@ -2023,7 +2659,8 @@
 
   function startAgendaDrag(e) {
     if (typeof e.button === "number" && e.button !== 0) return;
-    var handle = e.target && e.target.closest ? e.target.closest("[data-agenda-drag-handle]") : null;
+    var handle =
+      e.target && e.target.closest ? e.target.closest("[data-agenda-drag-handle]") : null;
     if (!handle || agendaDragState) return;
     if (window.matchMedia && !window.matchMedia("(min-width: 48rem)").matches) {
       return;
@@ -2119,7 +2756,7 @@
   window.addEventListener("pointerup", endAgendaDrag);
   window.addEventListener("mouseup", endAgendaDrag);
 
-  window.addEventListener("keydown", function (e) {
+  window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && agendaDragState) {
       finalizeAgendaDrag(agendaDragState, true);
     }
@@ -2131,7 +2768,7 @@
   var pdfJsPromise = null;
   function loadLocalPdfJs() {
     if (!pdfJsPromise) {
-      pdfJsPromise = import("/public/vendor/pdfjs/pdf.mjs").then(function (mod) {
+      pdfJsPromise = import("/public/vendor/pdfjs/pdf.mjs").then((mod) => {
         if (mod && mod.GlobalWorkerOptions) {
           mod.GlobalWorkerOptions.workerSrc = new URL(
             "/public/vendor/pdfjs/pdf.worker.mjs",
@@ -2188,12 +2825,12 @@
 
     Promise.all([
       loadLocalPdfJs(),
-      fetch(pdfUrl, { credentials: "same-origin" }).then(function (res) {
+      fetch(pdfUrl, { credentials: "same-origin" }).then((res) => {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.arrayBuffer();
       }),
     ])
-      .then(function (results) {
+      .then((results) => {
         var pdfjs = results[0];
         var buffer = results[1];
         return pdfjs.getDocument({
@@ -2201,16 +2838,16 @@
           useSystemFonts: true,
         }).promise;
       })
-      .then(function (pdfDoc) {
+      .then((pdfDoc) => {
         var total = pdfDoc.numPages || 1;
         statusEl.textContent = total + (total > 1 ? " pages" : " page");
         var dpr = Math.min(window.devicePixelRatio || 1, 2);
         var containerWidth = Math.max(260, pagesEl.clientWidth || viewerEl.clientWidth || 340);
 
         var chain = Promise.resolve();
-        var _loop = function (pageNum) {
-          chain = chain.then(function () {
-            return pdfDoc.getPage(pageNum).then(function (page) {
+        var _loop = (pageNum) => {
+          chain = chain.then(() =>
+            pdfDoc.getPage(pageNum).then((page) => {
               var unscaled = page.getViewport({ scale: 1 });
               var cssScale = containerWidth / Math.max(1, unscaled.width);
               var viewport = page.getViewport({ scale: cssScale * dpr });
@@ -2222,17 +2859,17 @@
               var ctx = canvas.getContext("2d");
               if (!ctx) return;
               return page.render({ canvasContext: ctx, viewport: viewport }).promise;
-            });
-          });
+            }),
+          );
         };
         for (var p = 1; p <= total; p++) {
           _loop(p);
         }
-        return chain.then(function () {
+        return chain.then(() => {
           viewerEl.setAttribute("data-pdf-rendered", "true");
         });
       })
-      .catch(function (err) {
+      .catch((err) => {
         pdfJsPromise = null;
         viewerEl.setAttribute("data-pdf-rendered", "error");
         statusEl.textContent =
@@ -2268,7 +2905,7 @@
 
   function snapshotOpenDetails(scopeEl) {
     var openKeys = {};
-    (scopeEl || document).querySelectorAll("details[open]").forEach(function (d) {
+    (scopeEl || document).querySelectorAll("details[open]").forEach((d) => {
       var key = d.id || d.getAttribute("data-testid");
       if (key) openKeys[key] = true;
     });
@@ -2276,9 +2913,9 @@
   }
 
   function restoreOpenDetails(scopeEl, openKeys) {
-    (scopeEl || document).querySelectorAll("details").forEach(function (d) {
+    (scopeEl || document).querySelectorAll("details").forEach((d) => {
       var key = d.id || d.getAttribute("data-testid");
-      if (key && Object.prototype.hasOwnProperty.call(openKeys, key)) {
+      if (key && Object.hasOwn(openKeys, key)) {
         d.open = Boolean(openKeys[key]);
       }
     });
@@ -2297,11 +2934,11 @@
       cache: "no-store",
       headers: { "X-Requested-With": "AutoRefresh" },
     })
-      .then(function (res) {
+      .then((res) => {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.text();
       })
-      .then(function (htmlText) {
+      .then((htmlText) => {
         if (!canSafelyAutoRefresh()) return;
         var parser = new DOMParser();
         var nextDoc = parser.parseFromString(htmlText, "text/html");
@@ -2345,14 +2982,14 @@
           if (curSynoptic && nextSynoptic) {
             curSynoptic.outerHTML = nextSynoptic.outerHTML;
           }
-          ["panel-clinical", "panel-opinions", "panel-expert"].forEach(function (panelId) {
+          ["panel-clinical", "panel-opinions", "panel-expert"].forEach((panelId) => {
             var curPanel = document.getElementById(panelId);
             var nextPanel = nextDoc.getElementById(panelId);
             if (curPanel && nextPanel) {
               curPanel.innerHTML = nextPanel.innerHTML;
             }
           });
-          ["tab-clinical", "tab-opinions", "tab-expert"].forEach(function (tabId) {
+          ["tab-clinical", "tab-opinions", "tab-expert"].forEach((tabId) => {
             var curTab = document.getElementById(tabId);
             var nextTab = nextDoc.getElementById(tabId);
             if (curTab && nextTab) {
@@ -2375,8 +3012,8 @@
           centerActiveTimelineStep(curMain);
         }
       })
-      .catch(function () {})
-      .finally(function () {
+      .catch(() => {})
+      .finally(() => {
         isAutoRefreshing = false;
       });
   }
@@ -2449,8 +3086,8 @@
     }
   }
 
-  ["mouseover", "focusin"].forEach(function (evtName) {
-    document.addEventListener(evtName, function (ev) {
+  ["mouseover", "focusin"].forEach((evtName) => {
+    document.addEventListener(evtName, (ev) => {
       var target = ev.target;
       if (!target || typeof target.closest !== "function") return;
       var pointEl = target.closest('[data-chart-point="true"]');
@@ -2458,8 +3095,8 @@
     });
   });
 
-  ["mouseout", "focusout"].forEach(function (evtName) {
-    document.addEventListener(evtName, function (ev) {
+  ["mouseout", "focusout"].forEach((evtName) => {
+    document.addEventListener(evtName, (ev) => {
       var target = ev.target;
       if (!target || typeof target.closest !== "function") return;
       var pointEl = target.closest('[data-chart-point="true"]');
@@ -2468,7 +3105,7 @@
   });
 
   // Poll auto-refresh every 4s while any fiche on the current page is marked as processing
-  window.setInterval(function () {
+  window.setInterval(() => {
     if (document.querySelector('[data-processing-active="true"]')) {
       softRefreshCurrentPage();
     }
@@ -2477,7 +3114,7 @@
   if (typeof window.EventSource === "function" && document.getElementById("nav-queue-badges")) {
     try {
       var es = new EventSource("/events/queue");
-      es.addEventListener("badges", function (ev) {
+      es.addEventListener("badges", (ev) => {
         if (!ev.data) return;
         var parser = new DOMParser();
         var tempDoc = parser.parseFromString(ev.data, "text/html");
@@ -2507,11 +3144,11 @@
           var nextPending = newBadges.getAttribute("data-pending");
           var nextFailed = newBadges.getAttribute("data-failed");
 
-          var hasPageProcessing = Boolean(document.querySelector('[data-processing-active="true"]'));
+          var hasPageProcessing = Boolean(
+            document.querySelector('[data-processing-active="true"]'),
+          );
           var queueStateChanged =
-            prevRunning !== nextRunning ||
-            prevPending !== nextPending ||
-            prevFailed !== nextFailed;
+            prevRunning !== nextRunning || prevPending !== nextPending || prevFailed !== nextFailed;
 
           if (hasPageProcessing && (queueStateChanged || nextRunning !== "0")) {
             softRefreshCurrentPage();

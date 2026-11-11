@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import hashlib
 import re
 from typing import Any, Optional, Self
 
@@ -6,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from slugify import slugify
 
 from src.domain.common.common_ressources import Gender
+
+
+_PSEUDONYMIZED_PATIENT_ID_RE = re.compile(r"^(?:pat|patient)_[0-9a-f]{16}$")
 
 
 def _normalize_birth_date_slug(dt: datetime | date | str | None) -> str:
@@ -135,18 +139,31 @@ class PatientIdentity(BaseModel):
         fallback_file: str | None = None,
     ) -> str:
         """
-        Build a deterministic, normalized `patient_id` from `(last_name, first_name, date_birth)`.
-        Falls back to `(last_name, first_name)` if `date_birth` is missing, or `fallback_file` if unknown.
+        Build a deterministic, opaque pseudonymized `patient_id` using SHA-256.
+        Preserves the `pat_` prefix for identified patients and `patient_` for unidentified PDFs
+        while preventing civil identity or filename PII leakage in identifiers and URLs.
         """
         name_key = cls.build_name_key(first_name, last_name)
         if not name_key:
             file_slug = slugify(fallback_file or "unknown", separator="_")
-            return f"patient_{file_slug}"
+            digest = hashlib.sha256(
+                f"medsyntis:unidentified:{file_slug}".encode("utf-8")
+            ).hexdigest()[:16]
+            return f"patient_{digest}"
 
         dob_str = _normalize_birth_date_slug(date_birth)
-        if dob_str:
-            return f"{name_key}_{dob_str}"
-        return name_key
+        canonical = f"{name_key}_{dob_str}" if dob_str else name_key
+        digest = hashlib.sha256(
+            f"medsyntis:patient:{canonical}".encode("utf-8")
+        ).hexdigest()[:16]
+        return f"pat_{digest}"
+
+    @staticmethod
+    def is_pseudonymized_id(patient_id: str | None) -> bool:
+        """Return True when `patient_id` conforms to the opaque SHA-256 format (`pat_<16hex>` or `patient_<16hex>`)."""
+        if not patient_id or not isinstance(patient_id, str):
+            return False
+        return _PSEUDONYMIZED_PATIENT_ID_RE.fullmatch(patient_id.strip()) is not None
 
     def build_patient_id(self, fallback_file: str | None = None) -> str:
         return self.build_id(
@@ -238,6 +255,10 @@ class Patient(BaseModel):
             date_birth=date_birth,
             fallback_file=fallback_file,
         )
+
+    @staticmethod
+    def is_pseudonymized_id(patient_id: str | None) -> bool:
+        return PatientIdentity.is_pseudonymized_id(patient_id)
 
     def attach_file(self, filename: str) -> bool:
         """Attach a PatientMDTForm filename to this patient aggregate if not already present."""

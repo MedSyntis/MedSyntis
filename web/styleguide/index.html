@@ -105,6 +105,10 @@
     <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
     <symbol id="ic-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.02 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
     <symbol id="ic-expand" viewBox="0 0 24 24"><path d="M15 4h5v5M9 20H4v-5M20 4l-6 6M4 20l6-6"/></symbol>
+    <symbol id="ic-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17V3.5Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="ic-contrast-standard" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/></symbol>
+    <symbol id="ic-contrast-medium" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17V3.5Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="ic-contrast-high" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/></symbol>
   </svg>
 
   <a class="ds-skip-link" href="#main">Aller au contenu</a>
@@ -126,7 +130,7 @@
       <p class="ds-nav__heading">Fondations M3</p>
       <ul class="ds-nav">
         <li><a class="ds-nav__link" href="#tokens-colors" aria-current="page" data-rail-label="Couleurs & Thèmes"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-palette"/></svg></span><span class="ds-nav__label">Couleurs &amp; Thèmes</span></a></li>
-        <li><a class="ds-nav__link" href="#tokens-icons" data-rail-label="Catalogue d'icônes"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-shapes"/></svg></span><span class="ds-nav__label">Catalogue d'icônes</span><span class="ds-nav__count">64</span></a></li>
+        <li><a class="ds-nav__link" href="#tokens-icons" data-rail-label="Catalogue d'icônes"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-shapes"/></svg></span><span class="ds-nav__label">Catalogue d'icônes</span><span class="ds-nav__count">68</span></a></li>
         <li><a class="ds-nav__link" href="#tokens-type" data-rail-label="Typographie"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-type"/></svg></span><span class="ds-nav__label">Typographie</span></a></li>
         <li><a class="ds-nav__link" href="#tokens-space" data-rail-label="Espaces & Rayons"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-ruler"/></svg></span><span class="ds-nav__label">Espaces, rayons, ombres</span></a></li>
       </ul>
@@ -176,6 +180,15 @@
           <input type="radio" name="ds-theme" id="theme-dark" value="dark">
           <label for="theme-dark"><svg class="ds-icon" aria-hidden="true"><use href="#ic-moon"/></svg> Sombre</label>
         </div>
+        <!-- Sélecteur de contraste M3 Standard / Moyen / Élevé (fonctionne en CSS pur :has() ET en JS) -->
+        <div class="ds-segmented" role="radiogroup" aria-label="Niveau de contraste Material Design 3" data-testid="contrast-selector">
+          <input type="radio" name="ds-contrast" id="contrast-standard" value="standard" checked>
+          <label for="contrast-standard"><svg class="ds-icon" aria-hidden="true"><use href="#ic-contrast-standard"/></svg> Standard</label>
+          <input type="radio" name="ds-contrast" id="contrast-medium" value="medium">
+          <label for="contrast-medium"><svg class="ds-icon" aria-hidden="true"><use href="#ic-contrast-medium"/></svg> Moyen</label>
+          <input type="radio" name="ds-contrast" id="contrast-high" value="high">
+          <label for="contrast-high"><svg class="ds-icon" aria-hidden="true"><use href="#ic-contrast-high"/></svg> Élevé</label>
+        </div>
       </div>
     </header>
 
@@ -190,7 +203,7 @@
       <!-- ===================== COLORS ===================== -->
       <section class="sg-section" id="tokens-colors" aria-labelledby="h-colors">
         <h2 id="h-colors"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-palette"/></svg> Couleurs &amp; surfaces Material Design 3</h2>
-        <p class="sg-lead">Hiérarchie de surfaces en gris neutres modernes (<code>#F6F6F8</code> canvas, <code>#FFFFFF</code> surface carte, <code>#F0F0F3</code> conteneur M3, <code>#0F0F12</code> / <code>#17171B</code> en mode sombre). Utilisez le sélecteur <strong>Clair / Sombre</strong> dans la barre supérieure pour basculer instantanément.</p>
+        <p class="sg-lead">Hiérarchie de surfaces M3 Neutre Pur sans bordures structurelles (<code>#E9EBEE</code> canvas, <code>#FFFFFF</code> surface carte, <code>#E1E2E5</code> rail latéral, <code>#121315</code> / <code>#1A1C1D</code> en mode sombre). Utilisez les sélecteurs <strong>Clair / Sombre</strong> et <strong>Standard / Moyen / Élevé</strong> dans la barre supérieure pour basculer instantanément entre les 6 schémas HCT.</p>
         <div id="swatches" class="ds-stack"></div>
       </section>
 
@@ -972,6 +985,9 @@
       var root = document.documentElement;
       var radioLight = document.getElementById("theme-light");
       var radioDark = document.getElementById("theme-dark");
+      var radioContrastStd = document.getElementById("contrast-standard");
+      var radioContrastMed = document.getElementById("contrast-medium");
+      var radioContrastHigh = document.getElementById("contrast-high");
 
       function applyTheme(mode) {
         root.setAttribute("data-theme", mode);
@@ -982,8 +998,19 @@
         renderSwatches();
       }
 
+      function applyContrast(mode) {
+        root.setAttribute("data-contrast", mode);
+        if (radioContrastStd) radioContrastStd.checked = mode === "standard";
+        if (radioContrastMed) radioContrastMed.checked = mode === "medium";
+        if (radioContrastHigh) radioContrastHigh.checked = mode === "high";
+        renderSwatches();
+      }
+
       if (radioLight) radioLight.addEventListener("change", function () { if (radioLight.checked) applyTheme("light"); });
       if (radioDark) radioDark.addEventListener("change", function () { if (radioDark.checked) applyTheme("dark"); });
+      if (radioContrastStd) radioContrastStd.addEventListener("change", function () { if (radioContrastStd.checked) applyContrast("standard"); });
+      if (radioContrastMed) radioContrastMed.addEventListener("change", function () { if (radioContrastMed.checked) applyContrast("medium"); });
+      if (radioContrastHigh) radioContrastHigh.addEventListener("change", function () { if (radioContrastHigh.checked) applyContrast("high"); });
 
       // Interactive M3 filter chips demo
       document.querySelectorAll(".ds-chip[aria-pressed]").forEach(function (chip) {
@@ -1102,7 +1129,11 @@
           { id: "ic-split", label: "Vue scindée" },
           { id: "ic-star", label: "Dernière RCP" },
           { id: "ic-trend-up", label: "Hausse marqueur" },
-          { id: "ic-trend-down", label: "Baisse" }
+          { id: "ic-trend-down", label: "Baisse" },
+          { id: "ic-contrast", label: "Contraste Auto" },
+          { id: "ic-contrast-standard", label: "Contraste Standard (0.0)" },
+          { id: "ic-contrast-medium", label: "Contraste Moyen (+0.5)" },
+          { id: "ic-contrast-high", label: "Contraste Élevé (+1.0)" }
         ]
       };
 
@@ -1188,7 +1219,8 @@
         row.innerHTML = "<code>--ds-space-" + s + "</code><span class=\"sg-space-bar\" style=\"width:var(--ds-space-" + s + ")\"></span>";
         space.appendChild(row);
       });
-      applyTheme("light");
+      applyTheme(root.getAttribute("data-theme") === "dark" ? "dark" : "light");
+      applyContrast(root.getAttribute("data-contrast") || "standard");
     })();
   </script>
 </body>

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from bson.codec_options import CodecOptions, TypeCodec, TypeRegistry
 from pydantic import BaseModel
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 
 from src.application.app_functions import to_naive
 from src.application.config import AppConfig
@@ -59,6 +59,8 @@ def sanitize_bson_payload(data: Any) -> Any:
 # creating one per request / rerun / job wastes sockets and threads.
 _CLIENTS: dict[str, MongoClient] = {}
 _CLIENTS_LOCK = threading.Lock()
+_ENSURED_INDEXES: set[tuple[int, str, str, str, str]] = set()
+_ENSURED_INDEXES_LOCK = threading.Lock()
 
 
 def build_connection_string(config: AppConfig) -> str:
@@ -70,6 +72,9 @@ def build_connection_string(config: AppConfig) -> str:
             f"{quote_plus(config.mongodb.password or '')}@"
         )
     connection_string += f"{config.mongodb.host}:{config.mongodb.port}"
+    auth_source = getattr(config.mongodb, "auth_source", None)
+    if isinstance(auth_source, str) and auth_source.strip():
+        connection_string += f"/?authSource={quote_plus(auth_source.strip())}"
     return connection_string
 
 
@@ -92,6 +97,8 @@ def close_all_mongo_clients() -> None:
         for client in _CLIENTS.values():
             client.close()
         _CLIENTS.clear()
+    with _ENSURED_INDEXES_LOCK:
+        _ENSURED_INDEXES.clear()
 
 
 class Mongodb:
@@ -115,6 +122,8 @@ class Mongodb:
                 "database": config.mongodb.database,
             },
         )
+        self._uri = build_connection_string(config)
+        self._db_name = config.mongodb.database
         self.client = get_mongo_client(config)
         self.database = self.client.get_database(
             config.mongodb.database,
@@ -131,8 +140,20 @@ class Mongodb:
             self.documents_to_insert.clear()
 
     def set_uniq_index(self, collection, field):
-        collection = self.database[collection]
-        collection.create_index(field, unique=True)
+        cache_key = (
+            id(getattr(self, "client", self)),
+            getattr(self, "_uri", ""),
+            getattr(self, "_db_name", ""),
+            str(collection),
+            str(field),
+        )
+        with _ENSURED_INDEXES_LOCK:
+            if cache_key in _ENSURED_INDEXES:
+                return
+        col = self.database[collection]
+        col.create_index(field, unique=True)
+        with _ENSURED_INDEXES_LOCK:
+            _ENSURED_INDEXES.add(cache_key)
 
     def get_or_create_document(self, collection, document):
         collection = self.database[collection]
@@ -210,21 +231,25 @@ class Mongodb:
         file_name: str,
         markdown: str,
         document_type: str = "mtd",
+        doc_type: str | None = None,
     ) -> None:
         """
         Saves or updates a document markdown parsing in the document_cache collection.
         Ensures a unique index on 'hash' exists.
         """
         self.set_uniq_index("document_cache", "hash")
+        upsertable_data: dict[str, Any] = {
+            "hash": file_hash,
+            "file": file_name,
+            "document_type": document_type,
+            "markdown": markdown,
+        }
+        if doc_type is not None:
+            upsertable_data["doc_type"] = doc_type
         self.update_doc(
             collection="document_cache",
             filter={"hash": file_hash},
-            upsertable_data={
-                "hash": file_hash,
-                "file": file_name,
-                "document_type": document_type,
-                "markdown": markdown,
-            },
+            upsertable_data=upsertable_data,
         )
 
     def delete_document_cache(
@@ -266,8 +291,8 @@ class Mongodb:
         fallback_file: str | None = None,
     ) -> dict | None:
         """
-        Finds an existing patient by normalized identity (last_name + first_name + date_birth),
-        with a fallback to (last_name + first_name) if date_birth is missing on either side.
+        Find an existing patient by deterministic pseudonymized ID (`last_name + first_name + date_birth`),
+        falling back to `name_key` when `date_birth` was missing on an earlier or current extraction.
         """
         from src.domain.patient import Patient
 
@@ -285,14 +310,15 @@ class Mongodb:
         if not name_key:
             return None
 
-        # If date_birth is missing in the newly extracted RCP, match any existing patient with the same name_key
+        # If date_birth is missing in the newly extracted form, match any existing patient with the same name_key
         if date_birth is None:
             return self.get_document("patients", {"name_key": name_key})
 
         # If date_birth is present, check if a previous patient record was created without date_birth
+        no_dob_id = Patient.build_id(first_name=first_name, last_name=last_name)
         return self.get_document(
             "patients", {"name_key": name_key, "date_birth": None}
-        ) or self.get_patient(name_key)
+        ) or self.get_patient(no_dob_id)
 
     def upsert_patient(self, patient_data: dict, filename: str | None = None) -> dict:
         """
@@ -314,6 +340,7 @@ class Mongodb:
             )
 
         existing = self.get_patient(patient_id)
+
         files: list[str] = []
         if existing and isinstance(existing.get("files"), list):
             for f in existing["files"]:
@@ -440,7 +467,8 @@ class Mongodb:
 
     def update_bug_report(self, bug_id: str, update_data: dict) -> dict | None:
         """
-        Updates fields of an existing bug report in the bug_reports collection.
+        Updates fields of an existing bug report in the bug_reports collection without upserting.
+        Returns None when `bug_id` does not exist.
         """
         from datetime import datetime
 
@@ -450,16 +478,21 @@ class Mongodb:
                 payload[enum_field] = payload[enum_field].value
         payload["updated_at"] = payload.get("updated_at") or datetime.now()
 
-        self.update_doc(
-            collection="bug_reports",
-            filter={"bug_id": bug_id},
-            upsertable_data=payload,
+        col = self.database["bug_reports"]
+        updated = col.find_one_and_update(
+            {"bug_id": bug_id},
+            {"$set": sanitize_bson_payload(payload)},
+            upsert=False,
+            return_document=ReturnDocument.AFTER,
         )
-        return self.get_bug_report(bug_id)
+        if not updated:
+            return None
+        return {k: v for k, v in updated.items() if k != "_id"}
 
-    def delete_bug_report(self, bug_id: str) -> None:
-        """Deletes a bug report from the bug_reports collection by bug_id."""
-        self.delete_docs(["bug_reports"], {"bug_id": bug_id})
+    def delete_bug_report(self, bug_id: str) -> bool:
+        """Deletes a bug report from the bug_reports collection by bug_id and returns True if deleted."""
+        res = self.database["bug_reports"].delete_one({"bug_id": bug_id})
+        return bool(getattr(res, "deleted_count", 0) > 0)
 
     # --- MDT Agendas Collection Methods ---
 

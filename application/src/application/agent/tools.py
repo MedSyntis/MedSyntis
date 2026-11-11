@@ -163,38 +163,26 @@ def search_on_mtd(
     runtime: ToolRuntime[Context],
     query: str,
     k: int = 4,
-    param: Optional[dict | list[dict]] = None,
-    expr: Optional[str] = None,
     timeout: Optional[float] = None,
 ):
     """Search within the Medical Technical Documents (MTD) / Patient Records.
-    This tools use VectoreStore similarity_search options, you can set them as you need
 
     Args:
         runtime (ToolRuntime): The runtime context containing the document reader.
-        query (str): The search query to vectorestore.
+        query (str): The search query for the vector store.
         k (int, optional): How many results to return. Defaults to 4.
-        param (dict | list[dict], optional): The search params for the index type.
-            Defaults to None.
-        expr (str, optional): Filtering expression. Defaults to None.
-        timeout (int, optional): How long to wait before timeout error.
+        timeout (float, optional): How long to wait before timeout error.
             Defaults to None.
 
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
     """
     k = _normalize_k(k, default=4, max_k=MAX_SEARCH_K_PER_READER)
-    if isinstance(expr, str) and expr.strip().lower() in ("none", "null", ""):
-        expr = None
-    if isinstance(param, str) and param.strip().lower() in ("none", "null", "{}", ""):
-        param = None
-    elif isinstance(param, dict) and not param:
-        param = None
     if isinstance(timeout, str) and timeout.strip().lower() in ("none", "null", ""):
         timeout = None
 
     runtime.context["logger"].debug(
-        f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
+        "tool search_on_mtd called with k=%s, timeout=%s", k, timeout
     )
     if runtime.context["reader"] is None:
         raise ValueError("No main document reader (mtd) provided in Context.")
@@ -202,12 +190,9 @@ def search_on_mtd(
     retrieved_docs = runtime.context[
         "reader"
     ].vecdb.clientdb.max_marginal_relevance_search(
-        query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
+        query, k=k, fetch_k=20, param=None, expr=None, timeout=timeout
     )
     serialized = "\n\n".join(_format_doc_for_llm(doc) for doc in retrieved_docs)
-    runtime.context["logger"].debug(
-        f"search_on_mtd - serialized : {serialized}, retrieved_docs : {retrieved_docs}"
-    )
     return serialized, retrieved_docs
 
 
@@ -216,38 +201,26 @@ def search_on_patient_mtds(
     runtime: ToolRuntime[PatientContext],
     query: str,
     k: int = 4,
-    param: Optional[dict | list[dict]] = None,
-    expr: Optional[str] = None,
     timeout: Optional[float] = None,
 ):
     """Search within all Medical Technical Documents (MTD) / PatientMDTForm records of the PatientRecord.
-    This tool uses VectorStore similarity_search options across all PatientMDTForm records of the patient.
 
     Args:
         runtime (ToolRuntime): The runtime context containing the patient document readers.
-        query (str): The search query to vectorstore.
+        query (str): The search query for the vector store.
         k (int, optional): How many results to return per document. Defaults to 4.
-        param (dict | list[dict], optional): The search params for the index type.
-            Defaults to None.
-        expr (str, optional): Filtering expression. Defaults to None.
-        timeout (int, optional): How long to wait before timeout error.
+        timeout (float, optional): How long to wait before timeout error.
             Defaults to None.
 
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
     """
     k = _normalize_k(k, default=4, max_k=MAX_SEARCH_K_PER_READER)
-    if isinstance(expr, str) and expr.strip().lower() in ("none", "null", ""):
-        expr = None
-    if isinstance(param, str) and param.strip().lower() in ("none", "null", "{}", ""):
-        param = None
-    elif isinstance(param, dict) and not param:
-        param = None
     if isinstance(timeout, str) and timeout.strip().lower() in ("none", "null", ""):
         timeout = None
 
     runtime.context["logger"].debug(
-        f"tool search_on_patient_mtds called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
+        "tool search_on_patient_mtds called with k=%s, timeout=%s", k, timeout
     )
     patient_readers = runtime.context.get("patient_readers")
     if not patient_readers:
@@ -258,7 +231,7 @@ def search_on_patient_mtds(
     retrieved_docs = []
     for r in patient_readers:
         docs = r.vecdb.clientdb.max_marginal_relevance_search(
-            query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
+            query, k=k, fetch_k=20, param=None, expr=None, timeout=timeout
         )
         retrieved_docs.extend(docs)
 
@@ -271,54 +244,38 @@ def search_on_ressources(
     runtime: ToolRuntime[Context | PatientContext],
     query: str,
     k: int = 3,
-    param: Optional[dict | list[dict]] = None,
-    expr: Optional[str] = None,
     timeout: Optional[float] = None,
 ):
-    """Search within additional resources (e.g., TNCD, PNDS).
-    This tools use VectoreStore similarity_search options, you can set them as you need.
-    Additional resources can be in french or english.
+    """Search within additional clinical reference resources (e.g., TNCD, PNDS).
 
     Args:
         runtime (ToolRuntime): The runtime context containing additional readers.
-        query (str): The search query to vectorestore.
+        query (str): The search query for the vector store.
         k (int, optional): How many results to return per resource. Defaults to 3.
-        param (dict | list[dict], optional): The search params for the index type.
-            Defaults to None.
-        expr (str, optional): Filtering expression. Defaults to None.
-        timeout (int, optional): How long to wait before timeout error.
+        timeout (float, optional): How long to wait before timeout error.
             Defaults to None.
 
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts.
     """
     k = _normalize_k(k, default=3, max_k=MAX_SEARCH_K_PER_READER)
-    if isinstance(expr, str) and expr.strip().lower() in ("none", "null", ""):
-        expr = None
-    if isinstance(param, str) and param.strip().lower() in ("none", "null", "{}", ""):
-        param = None
-    elif isinstance(param, dict) and not param:
-        param = None
     if isinstance(timeout, str) and timeout.strip().lower() in ("none", "null", ""):
         timeout = None
 
     runtime.context["logger"].debug(
-        f"tool search_on_ressources called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout} in {runtime.context['additionnal_readers']}"
+        "tool search_on_ressources called with k=%s, timeout=%s", k, timeout
     )
     retrieved_docs = []
     for r in runtime.context["additionnal_readers"]:
         docs = r.vecdb.clientdb.max_marginal_relevance_search(
-            query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
+            query, k=k, fetch_k=20, param=None, expr=None, timeout=timeout
         )
         for doc in docs:
             retrieved_docs.append(doc)
 
     runtime.context["logger"].info(
-        f"search_on_ressources - query={query!r} - retrieved {len(retrieved_docs)} doc(s): "
+        f"search_on_ressources - retrieved {len(retrieved_docs)} doc(s): "
         f"{[_sanitize_doc_metadata(doc.metadata) for doc in retrieved_docs]}"
-    )
-    runtime.context["logger"].debug(
-        f"search_on_ressources - retrieved_docs : {retrieved_docs}"
     )
     if retrieved_docs:
         serialized = _cap_tool_output(

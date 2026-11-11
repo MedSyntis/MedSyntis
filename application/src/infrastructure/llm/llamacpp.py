@@ -34,14 +34,21 @@ class LlamaCppCompatibleEmbeddings(OpenAIEmbeddings):
         chunk_size: Optional[int] = None,
         **kwargs,
     ) -> List[List[float]]:
+        if not texts:
+            return []
         model_name = self.model if self.model else engine
         params = {"model": model_name, "encoding_format": "float"} | {
             k: v for k, v in kwargs.items() if v is not None
         }
-        response = self.client.create(input=texts, **params)
-        if not isinstance(response, dict):
-            response = response.model_dump()
-        return [r["embedding"] for r in response["data"]]
+        batch_size = max(1, chunk_size or self.chunk_size or 32)
+        embeddings: List[List[float]] = []
+        for idx in range(0, len(texts), batch_size):
+            batch = texts[idx : idx + batch_size]
+            response = self.client.create(input=batch, **params)
+            if not isinstance(response, dict):
+                response = response.model_dump()
+            embeddings.extend(r["embedding"] for r in response["data"])
+        return embeddings
 
 
 class LlamaCppChatOpenAI(ChatOpenAI):

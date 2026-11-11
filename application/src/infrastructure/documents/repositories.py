@@ -20,7 +20,7 @@ class InMemoryPatientRepository:
 
     def get_by_id(self, patient_id: str) -> Patient | None:
         p = self._patients.get(patient_id)
-        return p.model_copy(deep=True) if p else None
+        return p.model_copy(deep=True) if p is not None else None
 
     def find_by_identity(
         self,
@@ -51,7 +51,12 @@ class InMemoryPatientRepository:
         for p in self._patients.values():
             if p.name_key == name_key and p.date_birth is None:
                 return p.model_copy(deep=True)
-        return self.get_by_id(name_key)
+        no_dob_id = Patient.build_id(first_name=first_name, last_name=last_name)
+        return (
+            self._patients[no_dob_id].model_copy(deep=True)
+            if no_dob_id in self._patients
+            else None
+        )
 
     def list_all(self) -> list[Patient]:
         return [p.model_copy(deep=True) for p in self._patients.values()]
@@ -77,9 +82,6 @@ class InMemoryPatientRepository:
         updated = patient.model_copy(
             update={
                 "files": files,
-                "name_key": Patient.build_name_key(
-                    patient.first_name, patient.last_name
-                ),
                 "record_summary": deepcopy(preserved_summary)
                 if preserved_summary is not None
                 else None,
@@ -221,13 +223,17 @@ class InMemoryDocumentCacheRepository:
         file_name: str,
         markdown: str,
         document_type: str = "mtd",
+        doc_type: str | None = None,
     ) -> None:
-        self._cache[file_hash] = {
+        entry: dict[str, Any] = {
             "hash": file_hash,
             "file": file_name,
             "document_type": document_type,
             "markdown": markdown,
         }
+        if doc_type is not None:
+            entry["doc_type"] = doc_type
+        self._cache[file_hash] = entry
 
     def delete(
         self,
@@ -598,12 +604,14 @@ class MongoDocumentCacheRepository:
         file_name: str,
         markdown: str,
         document_type: str = "mtd",
+        doc_type: str | None = None,
     ) -> None:
         self.db_client.save_document_cache(
             file_hash=file_hash,
             file_name=file_name,
             markdown=markdown,
             document_type=document_type,
+            doc_type=doc_type,
         )
 
     def delete(
@@ -665,7 +673,21 @@ class MongoBugReportRepository:
             query["severity"] = severity
         if category:
             query["category"] = category
-        return self.db_client.get_all_bug_reports(query)
+        raw_docs = self.db_client.get_all_bug_reports(query)
+        validated_list: list[dict[str, Any]] = []
+        for raw in raw_docs:
+            clean = {k: v for k, v in raw.items() if k != "_id"}
+            try:
+                report = BugReport.model_validate(clean)
+                validated_list.append(report.model_dump(mode="python"))
+            except Exception as exc:
+                if hasattr(self.db_client, "logger"):
+                    self.db_client.logger.warning(
+                        "Skipping invalid bug_reports document (bug_id=%s): %s",
+                        clean.get("bug_id"),
+                        exc,
+                    )
+        return validated_list
 
     def update_status(self, bug_id: str, status: BugStatus | str) -> BugReport | None:
         val = status.value if isinstance(status, BugStatus) else status
@@ -680,7 +702,7 @@ class MongoBugReportRepository:
         return self.db_client.update_bug_report(bug_id, fields)
 
     def delete(self, bug_id: str) -> bool:
-        return bool(self.db_client.delete_bug_report(bug_id))
+        return self.db_client.delete_bug_report(bug_id)
 
 
 class MongoMDTAgendaRepository:

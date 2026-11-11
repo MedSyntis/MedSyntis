@@ -76,6 +76,7 @@ class DocumentCacheRepository(Protocol):
         file_name: str,
         markdown: str,
         document_type: str = "mtd",
+        doc_type: str | None = None,
     ) -> None: ...
 
     def delete(
@@ -99,13 +100,13 @@ class BugReportRepository(Protocol):
         status: str | None = None,
         severity: str | None = None,
         category: str | None = None,
-    ) -> list[BugReport]: ...
+    ) -> list[BugReport] | list[dict[str, Any]]: ...
 
     def update_status(
         self, bug_id: str, status: BugStatus | str
     ) -> BugReport | None: ...
 
-    def delete(self, bug_id: str) -> None: ...
+    def delete(self, bug_id: str) -> bool: ...
 
 
 @runtime_checkable

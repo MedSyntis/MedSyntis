@@ -96,6 +96,7 @@ class TestReaderCache(unittest.TestCase):
             file_name="test.pdf",
             markdown="# Extracted Markdown",
             document_type="mtd",
+            doc_type="docling",
         )
 
     @patch("os.path.exists", return_value=True)
@@ -168,6 +169,7 @@ class TestReaderCache(unittest.TestCase):
             file_name="sample.pdf",
             markdown="# New Content",
             document_type="mtd",
+            doc_type="docling",
         )
 
         # 4. Test clear_cache

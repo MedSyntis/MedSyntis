@@ -10,6 +10,7 @@ services:
   mongod:
     image: mongodb/mongodb-community-server:9.0-ubuntu2204
     container_name: medsyntis-mongod
+    oom_score_adj: -500
     restart: unless-stopped
     logging: *default-logging
     entrypoint:
@@ -42,17 +43,16 @@ services:
     networks:
       - search-community
 
-  # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
-  # create directory ollama
+  # Local Ollama inference server (bound strictly to loopback 127.0.0.1)
   ollama:
     image: ollama/ollama:0.40.14
     restart: always
     ports:
-     - 11434:11434
+      - "127.0.0.1:11434:11434"
     volumes:
       - /data/ollama:/root/.ollama
     devices:
-        - nvidia.com/gpu=all
+      - nvidia.com/gpu=all
     deploy:
       resources:
         reservations:
@@ -61,22 +61,23 @@ services:
               count: 1
               capabilities: [gpu]
     profiles:
-    - "dev"
-    - "ollama"
+      - "dev"
+      - "ollama"
 
   llama-cpp-chat:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda12
     container_name: llama-cpp-chat-server
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - DO_NOT_TRACK=1
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface:z
       - ./model-config:/models-config
     ipc: host
     devices:
-        - nvidia.com/gpu=all
+      - nvidia.com/gpu=all
     deploy:
       resources:
         reservations:
@@ -106,16 +107,17 @@ services:
       - search-community
     restart: unless-stopped
     profiles:
-    - "local"
-    - "llamacpp-chat"
+      - "local"
+      - "llamacpp-chat"
 
   llama-cpp-embeddings:
     image: ghcr.io/ggml-org/llama.cpp:server
     container_name: llama-cpp-embeddings-server
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - DO_NOT_TRACK=1
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface:z
     ipc: host
@@ -139,61 +141,25 @@ services:
       - search-community
     restart: unless-stopped
     profiles:
-    - "dev"
-    - "llamacpp"
+      - "dev"
+      - "llamacpp"
 
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:v1.108.4
     container_name: litellm-proxy
     network_mode: "host"
     environment:
       LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY: "true"
+      LITELLM_TELEMETRY: "False"
+      SCARF_NO_ANALYTICS: "true"
+      DO_NOT_TRACK: "1"
     ports:
-     - 4000:4000
+      - "127.0.0.1:4000:4000"
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
-    command: [ "--config", "/app/config.yaml", "--port", "4000" ]
+    command: ["--config", "/app/config.yaml", "--host", "127.0.0.1", "--port", "4000"]
     restart: unless-stopped
-    #networks:
-    #  - search-community
-
-
-  # chromadb:
-  #   #image: chromadb/chroma:0.5.15
-  #   image: chromadb/chroma:1.3.5
-  #   restart: always
-  #   ports:
-  #    - 8000:8000
-
-  # pgvector:
-  #   image: pgvector/pgvector:pg18-trixie
-  #   shm_size: 1g
-  #   ports:
-  #     - 5432:5432
-  #   environment:
-  #     POSTGRES_PASSWORD: root
-
-  # grafana:
-  #   image: grafana/grafana-enterprise
-  #   restart: always
-  #   ports:
-  #     - 3000:3000
-  #   environment:
-  #     GF_INSTALL_PLUGINS: "https://github.com/meln5674/grafana-mongodb-community-plugin/releases/download/v0.2.0%2Brc5/meln5674-mongodb-community.zip;meln5674-mongodb-community"
-  #     GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: meln5674-mongodb-community
-  #   links:
-  #     - "mongo:mongo"
-  # mongo-express:
-  #   image: mongo-express
-  #   restart: always
-  #   ports:
-  #     - 8081:8081
-  #   environment:
-  #     ME_CONFIG_MONGODB_ADMINUSERNAME: root
-  #     ME_CONFIG_MONGODB_ADMINPASSWORD: example
-  #     ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
-  #     ME_CONFIG_BASICAUTH: false
 
 networks:
-   search-community:
-      name: search-community
+  search-community:
+    name: search-community

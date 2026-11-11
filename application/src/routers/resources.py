@@ -4,7 +4,7 @@ import re
 from typing import List
 import unicodedata
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from src.application.paths import UnsafePathError, is_safe_filename, safe_path
@@ -18,7 +18,7 @@ from src.models.resources import (
     ResourceIndexedResponse,
     ResourceIndexResponse,
 )
-from src.routers.dependencies import DomainConfigDep
+from src.routers.dependencies import DomainConfigDep, require_admin
 
 router = APIRouter(prefix="/resources", tags=["resources"])
 
@@ -111,23 +111,47 @@ def upload_resource(
         chunks.append(chunk)
     file_bytes = b"".join(chunks)
 
-    os.makedirs(base_dir, exist_ok=True)
-    with open(target_path, "wb") as buffer:
-        buffer.write(file_bytes)
+    try:
+        os.makedirs(base_dir, exist_ok=True)
+        was_existing = os.path.isfile(target_path)
+        old_hash = (
+            DocumentReader.calculate_file_hash(str(target_path))
+            if was_existing
+            else None
+        )
+        with open(target_path, "wb") as buffer:
+            buffer.write(file_bytes)
 
-    size_bytes, updated_at = _stat_resource_metadata(base_dir, filename)
-    manager = Ressources(config)
-    return {
-        "filename": filename,
-        "is_indexed": manager.is_indexed(filename),
-        "size_bytes": size_bytes or len(file_bytes),
-        "updated_at": updated_at,
-    }
+        manager = Ressources(config)
+        if was_existing:
+            manager.drop_ressource_index(filename, file_hash=old_hash)
+
+        size_bytes, updated_at = _stat_resource_metadata(base_dir, filename)
+        return {
+            "filename": filename,
+            "is_indexed": False if was_existing else manager.is_indexed(filename),
+            "size_bytes": size_bytes or len(file_bytes),
+            "updated_at": updated_at,
+        }
+    except HTTPException:
+        raise
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to upload resource %s", filename
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de l'enregistrement de la ressource.",
+        ) from err
 
 
-@router.delete("/{filename}", response_model=ResourceDeleteResponse)
+@router.delete(
+    "/{filename}",
+    response_model=ResourceDeleteResponse,
+    dependencies=[Depends(require_admin)],
+)
 def delete_resource(filename: str, config: DomainConfigDep):
-    """Delete a clinical reference PDF from the domain resources directory."""
+    """Delete a clinical reference PDF and drop its vector collection and document cache (admin required)."""
     if not is_safe_filename(filename):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -148,7 +172,18 @@ def delete_resource(filename: str, config: DomainConfigDep):
             detail=f"La ressource '{filename}' n'a pas été trouvée ({config.domain}).",
         )
 
-    os.remove(file_path)
+    try:
+        old_hash = DocumentReader.calculate_file_hash(str(file_path))
+        os.remove(file_path)
+        Ressources(config).drop_ressource_index(filename, file_hash=old_hash)
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to delete resource %s", filename
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de la suppression de la ressource.",
+        ) from err
     return {"deleted": filename}
 
 

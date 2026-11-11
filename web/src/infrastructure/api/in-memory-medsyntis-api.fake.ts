@@ -36,6 +36,7 @@ import type {
   PatientDashboardView,
   PatientListItem,
   PatientRecordSummaryView,
+  PriorityLevel,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -855,29 +856,56 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     );
 
     const mtdCompleted = (form.sections.MTDCompleted ?? {}) as Record<string, unknown>;
+    const mtdNested =
+      mtdCompleted.mtd_complete && typeof mtdCompleted.mtd_complete === "object"
+        ? (mtdCompleted.mtd_complete as Record<string, unknown>)
+        : mtdCompleted;
     const hasMtdCompleted = Object.keys(mtdCompleted).length > 0;
+    const isMtdManual = Boolean(
+      form.manualEdits.MTDCompleted?.is_manual !== false && form.manualEdits.MTDCompleted,
+    );
     const isAiCompleted =
       String(form.processingStatus ?? "COMPLETED")
         .trim()
         .toUpperCase() === "COMPLETED";
+    const isEvaluated = (isAiCompleted || isMtdManual) && hasMtdCompleted;
     const missingItems = Array.isArray(form.metrics.missing_items)
       ? (form.metrics.missing_items as string[])
-      : Array.isArray(mtdCompleted.what_missing)
-        ? (mtdCompleted.what_missing as string[])
-        : [];
+      : Array.isArray(mtdNested.what_missing)
+        ? (mtdNested.what_missing as string[])
+        : Array.isArray(mtdCompleted.what_missing)
+          ? (mtdCompleted.what_missing as string[])
+          : [];
     const missingCount =
       typeof form.metrics.missing_count === "number"
         ? form.metrics.missing_count
         : missingItems.length;
-    const hideMissingItems = Boolean(form.metrics.hide_missing_items ?? false);
-    const isComplete = hideMissingItems
-      ? true
-      : isAiCompleted &&
-        hasMtdCompleted &&
-        (typeof form.metrics.is_complete === "boolean"
-          ? form.metrics.is_complete
-          : missingCount === 0) &&
-        missingCount === 0;
+    const rawCompFlag = mtdNested.is_mtd_complete ?? mtdCompleted.is_mtd_complete;
+    const rawCompNorm = String(rawCompFlag ?? "")
+      .trim()
+      .toLowerCase();
+    const completenessStatus: "yes" | "partial" | "no" | "pending" = !isEvaluated
+      ? "pending"
+      : form.metrics.completeness_status === "yes" ||
+          form.metrics.completeness_status === "partial" ||
+          form.metrics.completeness_status === "no"
+        ? form.metrics.completeness_status
+        : rawCompFlag === true ||
+            rawCompNorm === "true" ||
+            rawCompNorm === "yes" ||
+            rawCompNorm === "oui"
+          ? "yes"
+          : rawCompNorm === "partial" || rawCompNorm === "partiel"
+            ? "partial"
+            : rawCompFlag === false ||
+                rawCompNorm === "false" ||
+                rawCompNorm === "no" ||
+                rawCompNorm === "non"
+              ? "no"
+              : missingCount === 0
+                ? "yes"
+                : "no";
+    const isComplete = completenessStatus === "yes";
 
     const priorityLevel = normalizePriorityLevel(form.metrics.priority_level);
     const priorityReasons = Array.isArray(form.metrics.urgency_reasons)
@@ -905,6 +933,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       priorityReason,
       priorityReasons,
       isComplete,
+      completenessStatus,
       missingCount,
       missingItems,
       careAdaptationSuggested:
@@ -1047,6 +1076,62 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       ...previousSectionObj,
       ...coerced,
     };
+    if (section === "CareOrientationProposal") {
+      if (typeof coerced.care_adaptation_suggested === "boolean") {
+        form.metrics.care_adaptation_suggested = coerced.care_adaptation_suggested;
+      }
+      if (coerced.proposed_care_type !== undefined) {
+        form.metrics.proposed_care_type =
+          typeof coerced.proposed_care_type === "string" && coerced.proposed_care_type.trim()
+            ? coerced.proposed_care_type.trim()
+            : null;
+      }
+      if (typeof coerced.suggested_priority === "string" && coerced.suggested_priority) {
+        form.metrics.priority_level = coerced.suggested_priority as PriorityLevel;
+      }
+    }
+    if (section === "MTDCompleted") {
+      const mtdNested =
+        coerced.mtd_complete && typeof coerced.mtd_complete === "object"
+          ? (coerced.mtd_complete as Record<string, unknown>)
+          : coerced;
+      const nextAll = Array.isArray(mtdNested.what_missing)
+        ? (mtdNested.what_missing as string[]).map(String).filter(Boolean)
+        : Array.isArray(coerced.what_missing)
+          ? (coerced.what_missing as string[]).map(String).filter(Boolean)
+          : [];
+      const nextAllSet = new Set(nextAll);
+      const prevHidden = Array.isArray(form.metrics.hidden_missing_items)
+        ? form.metrics.hidden_missing_items.filter((x) => nextAllSet.has(x))
+        : [];
+      const hideAll = nextAll.length > 0 ? false : Boolean(form.metrics.hide_missing_items);
+      const hiddenSet = new Set(prevHidden);
+      const visible = hideAll ? [] : nextAll.filter((x) => !hiddenSet.has(x));
+      const rawFlag = mtdNested.is_mtd_complete ?? coerced.is_mtd_complete;
+      const normFlag = String(rawFlag ?? "")
+        .trim()
+        .toLowerCase();
+      const compStatus: "yes" | "partial" | "no" =
+        rawFlag === true || normFlag === "true" || normFlag === "yes" || normFlag === "oui"
+          ? "yes"
+          : normFlag === "partial" || normFlag === "partiel"
+            ? "partial"
+            : rawFlag === false || normFlag === "false" || normFlag === "no" || normFlag === "non"
+              ? "no"
+              : nextAll.length === 0
+                ? "yes"
+                : "no";
+      form.metrics.all_missing_items = nextAll;
+      form.metrics.hidden_missing_items = prevHidden;
+      form.metrics.hide_missing_items = hideAll;
+      form.metrics.missing_items = visible;
+      form.metrics.missing_count = visible.length;
+      form.metrics.completeness_status = compStatus;
+      form.metrics.completeness_tone =
+        compStatus === "yes" ? "green" : compStatus === "partial" ? "orange" : "red";
+      form.metrics.is_complete = compStatus === "yes";
+      delete form.metrics.completeness_summary;
+    }
     form.manualEdits[section] = {
       is_manual: true,
       edited_at: new Date().toISOString(),
@@ -1096,10 +1181,29 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     const hiddenSet = new Set(hidden);
     const visible = hideAll ? [] : nextAll.filter((x) => !hiddenSet.has(x));
 
+    const mtdNested =
+      mtdComp.mtd_complete && typeof mtdComp.mtd_complete === "object"
+        ? (mtdComp.mtd_complete as Record<string, unknown>)
+        : mtdComp;
+    const existingFlag = mtdNested.is_mtd_complete ?? mtdComp.is_mtd_complete;
+    const preservedCompleteFlag = existingFlag !== undefined ? existingFlag : nextAll.length === 0;
+    const normFlag = String(preservedCompleteFlag ?? "")
+      .trim()
+      .toLowerCase();
+    const preservedStatus: "yes" | "partial" | "no" =
+      preservedCompleteFlag === true ||
+      normFlag === "true" ||
+      normFlag === "yes" ||
+      normFlag === "oui"
+        ? "yes"
+        : normFlag === "partial" || normFlag === "partiel"
+          ? "partial"
+          : "no";
+
     form.sections.MTDCompleted = {
       ...mtdComp,
       what_missing: nextAll,
-      is_mtd_complete: visible.length === 0,
+      is_mtd_complete: preservedCompleteFlag,
     };
     form.metrics = {
       ...form.metrics,
@@ -1108,7 +1212,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       hide_missing_items: hideAll,
       missing_items: visible,
       missing_count: visible.length,
-      is_complete: visible.length === 0,
+      completeness_status: form.metrics.completeness_status ?? preservedStatus,
+      is_complete:
+        typeof form.metrics.is_complete === "boolean"
+          ? form.metrics.is_complete
+          : preservedStatus === "yes",
     };
     return form;
   }
@@ -1129,7 +1237,56 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       (existingMeta as Record<string, unknown> | undefined)?.ai_original;
     if (aiOriginal && typeof aiOriginal === "object" && !Array.isArray(aiOriginal)) {
       const targetKey = form.sections[section] !== undefined ? section : canonical;
-      form.sections[targetKey] = { ...(aiOriginal as Record<string, unknown>) };
+      const restored = { ...(aiOriginal as Record<string, unknown>) };
+      form.sections[targetKey] = restored;
+      if (canonical === "CareOrientationProposal") {
+        if (typeof restored.care_adaptation_suggested === "boolean") {
+          form.metrics.care_adaptation_suggested = restored.care_adaptation_suggested;
+        }
+        if (restored.proposed_care_type !== undefined) {
+          form.metrics.proposed_care_type = restored.proposed_care_type
+            ? String(restored.proposed_care_type)
+            : null;
+        }
+        if (typeof restored.suggested_priority === "string" && restored.suggested_priority) {
+          form.metrics.priority_level = restored.suggested_priority as PriorityLevel;
+        }
+      }
+      if (canonical === "MTDCompleted") {
+        const mtdNested =
+          restored.mtd_complete && typeof restored.mtd_complete === "object"
+            ? (restored.mtd_complete as Record<string, unknown>)
+            : restored;
+        const restoredAll = Array.isArray(mtdNested.what_missing)
+          ? (mtdNested.what_missing as string[]).map(String)
+          : Array.isArray(restored.what_missing)
+            ? (restored.what_missing as string[]).map(String)
+            : [];
+        const rawFlag = mtdNested.is_mtd_complete ?? restored.is_mtd_complete;
+        const normFlag = String(rawFlag ?? "")
+          .trim()
+          .toLowerCase();
+        const compStatus: "yes" | "partial" | "no" =
+          rawFlag === true || normFlag === "true" || normFlag === "yes" || normFlag === "oui"
+            ? "yes"
+            : normFlag === "partial" || normFlag === "partiel"
+              ? "partial"
+              : rawFlag === false || normFlag === "false" || normFlag === "no" || normFlag === "non"
+                ? "no"
+                : restoredAll.length === 0
+                  ? "yes"
+                  : "no";
+        form.metrics.all_missing_items = restoredAll;
+        form.metrics.hidden_missing_items = [];
+        form.metrics.hide_missing_items = false;
+        form.metrics.missing_items = restoredAll;
+        form.metrics.missing_count = restoredAll.length;
+        form.metrics.completeness_status = compStatus;
+        form.metrics.completeness_tone =
+          compStatus === "yes" ? "green" : compStatus === "partial" ? "orange" : "red";
+        form.metrics.is_complete = compStatus === "yes";
+        delete form.metrics.completeness_summary;
+      }
     }
     delete form.manualEdits[section];
     delete form.manualEdits[canonical];
@@ -1217,6 +1374,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     filename: string,
     patientId: string | null,
     _domain: ClinicalDomain,
+    _editedBy?: string,
   ): Promise<void> {
     const form = this.forms.get(filename);
     if (form) {
@@ -1780,6 +1938,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         priorityReason: card.priorityReason ?? null,
         priorityReasons: card.priorityReasons ?? [],
         isComplete: card.isComplete,
+        completenessStatus: card.completenessStatus,
         missingCount: card.missingCount,
         missingItems: card.missingItems,
         careAdaptationSuggested: card.careAdaptationSuggested,
@@ -1913,6 +2072,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           priorityReason: c.priorityReason ?? null,
           priorityReasons: c.priorityReasons ?? [],
           isComplete: c.isComplete,
+          completenessStatus: c.completenessStatus,
           missingCount: c.missingCount,
           missingItems: c.missingItems,
           careAdaptationSuggested: c.careAdaptationSuggested,

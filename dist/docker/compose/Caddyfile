@@ -1,13 +1,41 @@
+(security_headers) {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "same-origin"
+        -Server
+    }
+}
+
+(strip_spoofed_headers) {
+    # Never trust identity, client-IP chain, or domain headers sent by the client: only forward_auth / Caddy may set them.
+    request_header -X-Forwarded-For
+    request_header -X-Auth-Request-User
+    request_header -X-Auth-Request-Email
+    request_header -X-Auth-Request-Preferred-Username
+    request_header -X-Forwarded-User
+    request_header -X-Forwarded-Email
+    request_header -X-Forwarded-Preferred-Username
+    request_header -X-MedSyntis-User
+    request_header -X-MedSyntis-User-Name
+    request_header -X-MedSyntis-Domain
+    request_header -X-MedSyntis-Proxy-Secret
+    request_header -X-Proxy-Secret
+}
+
 (oauth_guard) {
     handle /oauth2/* {
-        reverse_proxy oauth2-proxy:4180 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-Uri {uri}
+        route {
+            import strip_spoofed_headers
+            reverse_proxy oauth2-proxy:4180 {
+                header_up Host {host}
+                header_up X-Real-IP {remote_host}
+                header_up X-Forwarded-Uri {uri}
 
-            @error500 status 500
-            handle_response @error500 {
-                respond "Accès non autorisé : votre compte GitHub n'est pas autorisé ou la session a expiré." 401
+                @error500 status 500
+                handle_response @error500 {
+                    respond "Accès non autorisé : votre compte n'est pas autorisé ou la session a expiré." 401
+                }
             }
         }
     }
@@ -47,6 +75,7 @@
 
 sso.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
+    import security_headers
     import oauth_guard
 
     handle {
@@ -56,23 +85,13 @@ sso.{$PROD_BASE_DOMAIN:medsyntis.fr} {
 
 oncologic.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
+    import security_headers
     import oauth_guard
     import error_pages
 
     handle {
         route {
-            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
-            request_header -X-Auth-Request-User
-            request_header -X-Auth-Request-Email
-            request_header -X-Auth-Request-Preferred-Username
-            request_header -X-Forwarded-User
-            request_header -X-Forwarded-Email
-            request_header -X-Forwarded-Preferred-Username
-            request_header -X-MedSyntis-User
-            request_header -X-MedSyntis-User-Name
-            request_header -X-MedSyntis-Domain
-            request_header -X-MedSyntis-Proxy-Secret
-            request_header -X-Proxy-Secret
+            import strip_spoofed_headers
             import oauth_forward
             reverse_proxy medsyntis-web:3000 {
                 # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
@@ -88,23 +107,13 @@ oncologic.{$PROD_BASE_DOMAIN:medsyntis.fr} {
 
 sma.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
+    import security_headers
     import oauth_guard
     import error_pages
 
     handle {
         route {
-            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
-            request_header -X-Auth-Request-User
-            request_header -X-Auth-Request-Email
-            request_header -X-Auth-Request-Preferred-Username
-            request_header -X-Forwarded-User
-            request_header -X-Forwarded-Email
-            request_header -X-Forwarded-Preferred-Username
-            request_header -X-MedSyntis-User
-            request_header -X-MedSyntis-User-Name
-            request_header -X-MedSyntis-Domain
-            request_header -X-MedSyntis-Proxy-Secret
-            request_header -X-Proxy-Secret
+            import strip_spoofed_headers
             import oauth_forward
             reverse_proxy medsyntis-web:3000 {
                 # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
@@ -118,29 +127,21 @@ sma.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     }
 }
 
-# Déploiements Streamlit optionnels (--profile streamlit)
+# Optional legacy Streamlit deployments (--profile streamlit)
 oncologic-st.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
+    import security_headers
     import oauth_guard
     import error_pages
 
     handle {
         route {
-            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
-            request_header -X-Auth-Request-User
-            request_header -X-Auth-Request-Email
-            request_header -X-Auth-Request-Preferred-Username
-            request_header -X-Forwarded-User
-            request_header -X-Forwarded-Email
-            request_header -X-Forwarded-Preferred-Username
-            request_header -X-MedSyntis-User
-            request_header -X-MedSyntis-User-Name
-            request_header -X-MedSyntis-Proxy-Secret
-            request_header -X-Proxy-Secret
+            import strip_spoofed_headers
             import oauth_forward
             reverse_proxy medsyntis-ui-oncology:8501 {
                 # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
                 header_up X-MedSyntis-Proxy-Secret {$APP_PROXY_SECRET}
+                header_up X-MedSyntis-Domain oncology
                 header_up Host {host}
                 header_up X-Real-IP {remote_host}
                 header_up X-Forwarded-Uri {uri}
@@ -151,26 +152,18 @@ oncologic-st.{$PROD_BASE_DOMAIN:medsyntis.fr} {
 
 sma-st.{$PROD_BASE_DOMAIN:medsyntis.fr} {
     encode zstd gzip
+    import security_headers
     import oauth_guard
     import error_pages
 
     handle {
         route {
-            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
-            request_header -X-Auth-Request-User
-            request_header -X-Auth-Request-Email
-            request_header -X-Auth-Request-Preferred-Username
-            request_header -X-Forwarded-User
-            request_header -X-Forwarded-Email
-            request_header -X-Forwarded-Preferred-Username
-            request_header -X-MedSyntis-User
-            request_header -X-MedSyntis-User-Name
-            request_header -X-MedSyntis-Proxy-Secret
-            request_header -X-Proxy-Secret
+            import strip_spoofed_headers
             import oauth_forward
             reverse_proxy medsyntis-ui-sma:8501 {
                 # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
                 header_up X-MedSyntis-Proxy-Secret {$APP_PROXY_SECRET}
+                header_up X-MedSyntis-Domain sma
                 header_up Host {host}
                 header_up X-Real-IP {remote_host}
                 header_up X-Forwarded-Uri {uri}

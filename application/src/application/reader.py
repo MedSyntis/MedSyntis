@@ -44,8 +44,12 @@ from src.infrastructure.llm.base import LLMConnect
 from src.infrastructure.llm.factory import get_llm_client
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from src.infrastructure.vectorial.database import VectorialDataBase
+from src.infrastructure.vectorial.database import (
+    VectorialDataBase,
+    sanitize_collection_name,
+)
 
 from slugify import slugify
 
@@ -75,9 +79,9 @@ class DocumentReader:
 
     @classmethod
     def get_docling_components(cls, device: str = "cpu"):
-        if cls._docling_converter is None or cls._docling_chunker is None:
+        if cls._docling_converter is None:
             with cls._docling_lock:
-                if cls._docling_converter is None or cls._docling_chunker is None:
+                if cls._docling_converter is None:
                     from docling.chunking import HybridChunker
                     from docling_core.transforms.chunker.tokenizer.huggingface import (
                         HuggingFaceTokenizer,
@@ -109,14 +113,47 @@ class DocumentReader:
                             ),
                         },
                     )
-                    chunker = HybridChunker(
-                        tokenizer=HuggingFaceTokenizer.from_pretrained(
-                            model_name="intfloat/multilingual-e5-base"
+                    chunker = None
+                    try:
+                        chunker = HybridChunker(
+                            tokenizer=HuggingFaceTokenizer.from_pretrained(
+                                model_name="intfloat/multilingual-e5-base",
+                                local_files_only=True,
+                                max_tokens=512,
+                            )
                         )
-                    )
+                    except Exception:
+                        try:
+                            chunker = HybridChunker(
+                                tokenizer=HuggingFaceTokenizer.from_pretrained(
+                                    model_name="intfloat/multilingual-e5-base",
+                                )
+                            )
+                        except Exception:
+                            chunker = None
                     cls._docling_chunker = chunker
                     cls._docling_converter = converter
         return cls._docling_converter, cls._docling_chunker
+
+    def _build_text_splitter(self) -> RecursiveCharacterTextSplitter:
+        """Build a character text splitter configured from `config.rcp` chunk settings."""
+        raw_chunk_size = getattr(self.config.rcp, "chunk_size", 1000)
+        raw_chunk_overlap = getattr(self.config.rcp, "chunk_overlap", 150)
+        chunk_size = (
+            raw_chunk_size
+            if isinstance(raw_chunk_size, int) and raw_chunk_size > 0
+            else 1000
+        )
+        chunk_overlap = (
+            raw_chunk_overlap
+            if isinstance(raw_chunk_overlap, int)
+            and 0 <= raw_chunk_overlap < chunk_size
+            else min(150, max(0, chunk_size // 4))
+        )
+        return RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
 
     @staticmethod
     def calculate_file_hash(file_path: str) -> str:
@@ -151,7 +188,8 @@ class DocumentReader:
         if vecdb_client is None:
             # pyrefly: ignore [bad-assignment]
             self.vecdb = VectorialDataBaseClient(
-                config, coll_prefix=slugify(document, separator="_")
+                config,
+                coll_prefix=sanitize_collection_name(slugify(document, separator="_")),
             ).vectordb
         else:
             self.vecdb = vecdb_client
@@ -209,31 +247,86 @@ class DocumentReader:
                     )
                 ]
 
-                chunked_docs = [
-                    Document(
-                        page_content=chunker.contextualize(chunk=chunk),
-                        metadata=meta_extractor.extract_chunk_meta(
-                            file_path=document, chunk=chunk
-                        ),
+                if chunker is not None:
+                    chunked_docs = [
+                        Document(
+                            page_content=chunker.contextualize(chunk=chunk),
+                            metadata=meta_extractor.extract_chunk_meta(
+                                file_path=document, chunk=chunk
+                            ),
+                        )
+                        for chunk in chunker.chunk(dl_doc)
+                    ]
+                else:
+                    chunked_docs = self._build_text_splitter().split_documents(
+                        self.markdown_exporter
                     )
-                    for chunk in chunker.chunk(dl_doc)
-                ]
 
                 del conv_res, dl_doc
 
                 return chunked_docs
+            elif loader_type in ("pymupdf", "fitz"):
+                import fitz
+
+                raw_docs: list[Document] = []
+                with fitz.open(document) as pdf_doc:
+                    for page_idx in range(len(pdf_doc)):
+                        raw_page_text = pdf_doc[page_idx].get_text("text")
+                        page_text = (
+                            raw_page_text if isinstance(raw_page_text, str) else ""
+                        )
+                        if page_text.strip():
+                            raw_docs.append(
+                                Document(
+                                    page_content=page_text,
+                                    metadata={
+                                        "source": document,
+                                        "file": self.document,
+                                        "page": page_idx + 1,
+                                    },
+                                )
+                            )
+                if raw_docs:
+                    self.markdown_exporter = [
+                        Document(
+                            page_content="\n\n".join(
+                                d.page_content for d in raw_docs if d.page_content
+                            ),
+                            metadata={"source": document, "file": self.document},
+                        )
+                    ]
+                return self._build_text_splitter().split_documents(raw_docs)
             elif loader_type == "ollamaOcr":
-                return OllamaOcrDocumentLoader(document, self.config).load()
+                raw_docs = OllamaOcrDocumentLoader(document, self.config).load()
+                if raw_docs:
+                    self.markdown_exporter = [
+                        Document(
+                            page_content="\n\n".join(
+                                d.page_content for d in raw_docs if d.page_content
+                            ),
+                            metadata={"source": document, "file": self.document},
+                        )
+                    ]
+                return self._build_text_splitter().split_documents(raw_docs)
             elif loader_type in ("unstructured", "UnstructuredPDFLoader"):
-                return UnstructuredDocumentLoader(
+                raw_docs = UnstructuredDocumentLoader(
                     document,
                     chunking_strategy="by_title",
                     max_characters=1000000,
                     include_orig_elements=False,
                 ).load()
+                if raw_docs:
+                    self.markdown_exporter = [
+                        Document(
+                            page_content="\n\n".join(
+                                d.page_content for d in raw_docs if d.page_content
+                            ),
+                            metadata={"source": document, "file": self.document},
+                        )
+                    ]
+                return self._build_text_splitter().split_documents(raw_docs)
             else:
                 raise ValueError(f"Unknown document loader type: {loader_type}")
-            # return self.text_splitter.split_documents(docs)
         except Exception as e:
             self.logger.exception("Error in document load: %s", e)
             raise
@@ -278,6 +371,21 @@ class DocumentReader:
             client = Mongodb(self.config)
             cached_entry = client.get_document_cache(file_hash)
             client.close()
+            if isinstance(cached_entry, dict):
+                cached_doc_type = cached_entry.get("doc_type")
+                if (
+                    isinstance(cached_doc_type, str)
+                    and cached_doc_type
+                    and isinstance(self.default_loader, str)
+                    and cached_doc_type != self.default_loader
+                ):
+                    self.logger.info(
+                        "Document cache doc_type mismatch for %s (cached=%s, current=%s); re-parsing.",
+                        self.document,
+                        cached_doc_type,
+                        self.default_loader,
+                    )
+                    return None
             return cached_entry
         except Exception as e:
             self.logger.warning("Error querying document cache from MongoDB: %s", e)
@@ -320,6 +428,11 @@ class DocumentReader:
                 file_name=self.document,
                 markdown=markdown,
                 document_type=getattr(self, "document_type", "mtd"),
+                doc_type=(
+                    self.default_loader
+                    if isinstance(self.default_loader, str)
+                    else None
+                ),
             )
             client.close()
             self.logger.info(

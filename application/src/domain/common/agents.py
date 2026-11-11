@@ -66,12 +66,12 @@ class Agents:
         agent_name: str = "MDT Coordinator"
         ressources: ClassVar[list[str]] = []
         system_prompt: ClassVar[str] = """
-        You are the coordinator of a multidisciplinary team (MDT). Your role is to synthesize the clinical opinions and arguments provided by the specialists in the prompt to reach a single consensus decision.
+        You are the coordinator of a multidisciplinary team (MDT). Your role is to synthesize the clinical opinions and arguments provided by the specialists in the prompt into a pre-MDT synthesis for collegial review.
 
         Instructions:
-        1. Analyze the expert opinions provided in the prompt and identify any missing information required for a complete treatment decision.
-        2. Coordinate and synthesize the different specialists' assessments so all aspects of the patient's case are considered.
-        3. Do not call external tools: rely strictly on the expert opinions provided in the prompt.
+        1. Analyze the expert opinions provided in the prompt and identify any missing information required for collegial MDT review.
+        2. Coordinate and synthesize the different specialists' assessments into pre-MDT orientation options grounded in guidelines so all aspects of the patient's case are considered by the medical board.
+        3. Do not call external tools: rely strictly on the patient record excerpt and expert opinions provided in the prompt.
         4. If information is missing according to the experts, clearly state what is needed and why.
         5. Respect strictly the response output format.
         6. Free-text string fields (such as reflection, what_missing, proposed_care_type, and clinical_rationale) support Markdown formatting (**bold**, *italics*, and bullet lists), while Reference.name and enum/select fields must remain exact plain strings.

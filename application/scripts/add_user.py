@@ -5,26 +5,27 @@ import streamlit_authenticator as stauth
 
 
 def main():
-    print("--- MedSyntis : Ajouter un nouvel utilisateur ---")
+    """Interactive CLI utility to add or update a local Streamlit authenticator user."""
+    print("--- MedSyntis: Add or update a user ---")
 
-    username = input("Nom d'utilisateur (username) : ").strip()
+    username = input("Username: ").strip()
     if not username:
-        print("Erreur : Le nom d'utilisateur ne peut pas être vide.")
+        print("Error: Username cannot be empty.")
         return
 
-    name = input("Nom complet (ex: Dr. Martin) : ").strip()
-    email = input("Adresse e-mail : ").strip()
-    password = input("Mot de passe : ").strip()
+    name = input("Full name (e.g. Dr. Martin): ").strip()
+    email = input("Email address: ").strip()
+    password = input("Password: ").strip()
 
     if not password:
-        print("Erreur : Le mot de passe ne peut pas être vide.")
+        print("Error: Password cannot be empty.")
         return
 
-    # Hachage du mot de passe
-    print("Génération du hash sécurisé...")
+    # Hash the password using bcrypt via streamlit-authenticator
+    print("Generating secure password hash...")
     hashed_password = stauth.Hasher.hash(password)
 
-    # Détermination du chemin du fichier de configuration via AppConfig
+    # Resolve configuration file path via AppConfig
     try:
         import sys
 
@@ -41,14 +42,14 @@ def main():
         )
 
     if not os.path.exists(config_path):
-        print(f"Erreur : Le fichier de configuration {config_path} n'existe pas.")
+        print(f"Error: Configuration file {config_path} does not exist.")
         return
 
-    # Lecture de la config existante
+    # Read existing configuration
     with open(config_path, "r", encoding="utf-8") as file:
         config = yaml.load(file, Loader=SafeLoader)
 
-    # Initialisation des structures si nécessaire
+    # Initialize nested credential mappings if missing
     if "credentials" not in config or config["credentials"] is None:
         config["credentials"] = {}
     if (
@@ -57,22 +58,20 @@ def main():
     ):
         config["credentials"]["usernames"] = {}
 
-    # Ajout/Mise à jour de l'utilisateur
+    # Add or update user entry
     config["credentials"]["usernames"][username] = {
         "email": email,
         "name": name,
         "password": hashed_password,
     }
 
-    # Écriture dans le fichier config
+    # Write updated configuration back to disk
     with open(config_path, "w", encoding="utf-8") as file:
         yaml.dump(
             config, file, default_flow_style=False, sort_keys=False, allow_unicode=True
         )
 
-    print(
-        f"\nSuccès ! L'utilisateur '{username}' a été ajouté/mis à jour dans {config_path}."
-    )
+    print(f"\nSuccess! User '{username}' has been added/updated in {config_path}.")
 
 
 if __name__ == "__main__":

@@ -105,6 +105,7 @@ export interface MedsyntisApiPort {
     filename: string,
     patientId: string | null,
     domain: ClinicalDomain,
+    editedBy?: string,
   ): Promise<void>;
   getFormPdfBuffer(
     filename: string,

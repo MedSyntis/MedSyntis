@@ -75,7 +75,11 @@
 
 - name: "scope:infra"
   color: "956018"
-  description: "Docker Compose, MongoDB, Milvus, Caddy/OAuth2, OpenTelemetry & CI/CD pipelines"
+  description: "Docker Compose, MongoDB, Milvus, Caddy/OAuth2, OpenTelemetry & host operations"
+
+- name: "scope:ci"
+  color: "5319e7"
+  description: "GitHub Actions CI/CD pipelines, Dependabot, pre-commit hooks & DevSecOps scanners"
 
 # ------------------------------------------------------------------------------
 # 5. Hospital Personas

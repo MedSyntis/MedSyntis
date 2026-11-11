@@ -16,7 +16,8 @@ To join the community and start contributing:
    * Follow **Domain-Driven Design (DDD)** and **Hexagonal / Clean Architecture** boundaries across both `application/` (Python) and `web/` (TypeScript).
    * Write **100% English** code identifiers, comments, docstrings, and commit messages.
    * Use the Ubiquitous Language term **`PatientMDTForm`** (`patient_mdt_form` / `mdt_form`) in code identifiers and domain models.
-   * Never import `streamlit` outside `application/src/ui/`.
+   * Target **`web/` (Material Design 3 Fastify Web UI)** for all new frontend features—`web/` is the **primary clinical interface**, whereas `application/src/ui/` (`application/app-ui.py`, Streamlit) is **deprecated / legacy**.
+   * Never import `streamlit` outside `application/src/ui/` and `application/app-ui.py`.
 4. **Test-Driven Development (TDD)**: Follow the `Red -> Green -> Refactor` cycle and ensure all linters, type checks, unit tests, WCAG contrast checks, E2E tests, and `prek` hooks pass before opening a Pull Request.
 
 ---
@@ -159,7 +160,7 @@ uv run uvicorn app-api:app --reload --host 127.0.0.1 --port 8000
 * Interactive Swagger UI: `http://127.0.0.1:8000/docs`
 * OpenAPI v3 JSON Schema: `http://127.0.0.1:8000/api/v1/openapi.json`
 
-### B. Material Design 3 Web UI (`web/`)
+### B. Material Design 3 Web UI (`web/` — Primary Clinical Interface)
 1. **Connected to the Live FastAPI Backend (`http://127.0.0.1:8000`)**:
    ```bash
    npm --prefix web run dev
@@ -171,7 +172,10 @@ uv run uvicorn app-api:app --reload --host 127.0.0.1 --port 8000
    WEB_FAKE_API_FALLBACK=true npm --prefix web run dev
    ```
 
-### C. Legacy Streamlit Dashboard (`application/app-ui.py`)
+### C. Legacy Streamlit Dashboard (`application/app-ui.py` — Deprecated)
+> [!NOTE]
+> The Streamlit dashboard (`application/src/ui/`) is **deprecated** in favor of the Material Design 3 Web UI (`web/`) and is kept only for legacy compatibility.
+
 ```bash
 cd application
 uv run streamlit run app-ui.py --server.port=8501

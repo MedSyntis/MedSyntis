@@ -23,15 +23,39 @@ jobs:
 
             const labelsToAdd = new Set();
             const labelsToRemove = new Set();
+            const reasons = [];
 
-            // 1. Detect issue type from title prefix or existing labels
-            const isStory = title.startsWith("[Story]") || currentLabels.includes("type:story");
-            const isFeature = title.startsWith("[Feature]") || currentLabels.includes("type:feature");
-            const isBug = title.startsWith("[Bug]") || currentLabels.includes("type:bug");
+            // 1. Resolve canonical issue type and enforce strict mutual exclusivity of type:* labels
+            const allTypeLabels = ["type:story", "type:feature", "type:bug"];
+            let resolvedType = null;
 
-            if (isStory) labelsToAdd.add("type:story");
-            if (isFeature) labelsToAdd.add("type:feature");
-            if (isBug) labelsToAdd.add("type:bug");
+            if (/^\[Story\]/i.test(title)) {
+              resolvedType = "type:story";
+            } else if (/^\[Feature\]/i.test(title)) {
+              resolvedType = "type:feature";
+            } else if (/^\[Bug\]/i.test(title)) {
+              resolvedType = "type:bug";
+            } else {
+              const existingTypes = allTypeLabels.filter(t => currentLabels.includes(t));
+              if (existingTypes.length === 1) {
+                resolvedType = existingTypes[0];
+              } else if (existingTypes.length > 1) {
+                reasons.push("Issue type labels (`type:story`, `type:feature`, `type:bug`) are mutually exclusive. Keep exactly one `type:*` label.");
+              }
+            }
+
+            if (resolvedType) {
+              labelsToAdd.add(resolvedType);
+              for (const t of allTypeLabels) {
+                if (t !== resolvedType) {
+                  labelsToRemove.add(t);
+                }
+              }
+            }
+
+            const isStory = resolvedType === "type:story";
+            const isFeature = resolvedType === "type:feature";
+            const isBug = resolvedType === "type:bug";
 
             // 2. Auto-detect domain, scope, and persona labels from YAML form selections
             const autoDetectTokens = [
@@ -44,6 +68,7 @@ jobs:
               "scope:ui-web",
               "scope:ui-streamlit",
               "scope:infra",
+              "scope:ci",
               "persona:physician",
               "persona:secretary"
             ];
@@ -54,8 +79,6 @@ jobs:
             }
 
             // 3. Evaluate completeness rules
-            const reasons = [];
-
             // Check for open clinical/PO questions
             const hasOpenQuestions =
               body.includes("❓") ||
@@ -79,21 +102,32 @@ jobs:
             }
 
             if (isStory) {
-              // Story must only contain business need (no code blocks or technical file paths)
+              // Story must be paired with a GitHub Milestone
+              if (!Boolean(issue.milestone)) {
+                reasons.push("A **Story** must be associated with a matching GitHub **Milestone** to group and track child **Feature** tickets.");
+              }
+
+              // Story must have all Product Owner Validation checkboxes checked (zero unchecked '- [ ]')
+              const poSectionMatch = body.match(/###\s*.*Product Owner Validation[\s\S]*?(?=\n###\s|$)/i);
+              if (!poSectionMatch || /- \[\s\]/.test(poSectionMatch[0])) {
+                reasons.push("All **Product Owner Validation** checkboxes must be checked (`- [x]`) before a **Story** can transition to `status:ready`.");
+              }
+
+              // Story must only contain business need (no fenced code blocks, API routes, or technical file paths)
               if (
-                /```(python|ts|typescript|js|json|bash|sh)/i.test(body) ||
-                /application\/src\/|web\/src\//.test(body)
+                body.includes("```") ||
+                /application\/src\/|web\/src\/|dist\/docker\/|\/api\/v1\//i.test(body)
               ) {
-                reasons.push("A **Story** must strictly contain the business need only (no code blocks or file paths). Move technical details into child **Feature** tickets.");
+                reasons.push("A **Story** must strictly contain the business need only (no fenced code blocks ` ``` `, API routes `/api/v1/`, or file paths such as `application/src/`, `web/src/`, `dist/docker/`). Move technical details into child **Feature** tickets.");
               }
             }
 
             if (isFeature) {
-              // Feature must reference a parent Story (#XX) or be assigned to a Milestone
-              const hasParentIssueRef = /#\d+/.test(body);
+              // Feature must BOTH reference a parent Story ('Parent Story: #XX') AND be assigned to a Milestone
+              const hasParentStoryRef = /Parent Story:\s*#\d+/i.test(body);
               const hasMilestone = Boolean(issue.milestone);
-              if (!hasParentIssueRef && !hasMilestone) {
-                reasons.push("A **Feature** must be linked to a parent **Story** (via `#XX` issue reference and/or a GitHub **Milestone**).");
+              if (!hasParentStoryRef || !hasMilestone) {
+                reasons.push("A **Feature** must explicitly reference a parent **Story** (`Parent Story: #XX`) **and** be assigned to the corresponding GitHub **Milestone**.");
               }
               // Feature must have a DoD section
               if (!/Definition of Done|Acceptance Criteria/i.test(body)) {

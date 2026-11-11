@@ -14,7 +14,7 @@ import {
   resolveCanonicalSectionName,
   type SectionPresentationMeta,
 } from "../../domain/catalog.js";
-import { translateValue } from "../../domain/i18n.js";
+import { t, translateValue } from "../../domain/i18n.js";
 import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
 import {
   computeLongitudinalDeltas,
@@ -28,6 +28,7 @@ import type {
   AgentModuleInfo,
   CitationRef,
   ClinicalDomain,
+  CompletenessStatus,
   DomainFormSchema,
   ExpertSuggestion,
   Language,
@@ -38,6 +39,7 @@ import type {
   PatientListItem,
   PatientRecordSummaryView,
   PriorityLevel,
+  RawCompletenessStatus,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
 import { stripMarkdown } from "../../ui/views/html.js";
@@ -88,7 +90,7 @@ export interface DossierSectionView {
   name: string;
   meta: SectionPresentationMeta;
   summaryText: string;
-  sectionTone?: "green" | "orange" | "red" | null;
+  sectionTone?: "green" | "orange" | "red" | "neutral" | null;
   fields: DossierFieldView[];
   subCards: DossierSubCardView[];
   references: CitationRef[];
@@ -108,6 +110,8 @@ export interface TimelineSessionItem {
   isLatest: boolean;
   priorityLevel: PriorityLevel;
   priorityLabel: string;
+  completenessStatus: CompletenessStatus;
+  completenessLabel: string;
   orientationLabel: string;
   durationSec: number | null;
 }
@@ -165,6 +169,8 @@ export interface PatientDossierView {
 const LONG_TEXT_KEYS = new Set([
   "reflection",
   "clinical_rationale",
+  "orientation_rationale",
+  "priority_reason",
   "why",
   "why_relevant",
   "exam_result",
@@ -270,42 +276,46 @@ export class PatientDossierUseCase {
           )
         : allMissingItems.filter((x) => !hiddenSet.has(x));
     const hasMtdCompleted = Object.keys(mtdCompletedRaw).length > 0;
+    const isMtdManual = Boolean(
+      currentForm.manualEdits.MTDCompleted &&
+        currentForm.manualEdits.MTDCompleted.is_manual !== false,
+    );
     const isAiCompleted =
       String(currentForm.processingStatus ?? "COMPLETED")
         .trim()
         .toUpperCase() === "COMPLETED";
+    const isMtdEvaluated = (isAiCompleted || isMtdManual) && hasMtdCompleted;
     const rawMtdCompFlag = mtdNested.is_mtd_complete ?? mtdCompletedRaw.is_mtd_complete;
     const rawMtdCompNorm = String(rawMtdCompFlag ?? "")
       .trim()
       .toLowerCase();
-    const completenessStatus: "yes" | "partial" | "no" =
-      hideAllMissing || (allMissingItems.length > 0 && missingItems.length === 0)
-        ? "yes"
-        : !isAiCompleted || !hasMtdCompleted
-          ? "no"
-          : currentForm.metrics.completeness_status === "yes" ||
-              currentForm.metrics.completeness_status === "partial" ||
-              currentForm.metrics.completeness_status === "no"
-            ? currentForm.metrics.completeness_status
-            : rawMtdCompFlag === true ||
-                rawMtdCompNorm === "true" ||
-                rawMtdCompNorm === "yes" ||
-                rawMtdCompNorm === "oui"
-              ? "yes"
-              : rawMtdCompNorm === "partial" || rawMtdCompNorm === "partiel"
-                ? "partial"
-                : rawMtdCompFlag === false ||
-                    rawMtdCompNorm === "false" ||
-                    rawMtdCompNorm === "no" ||
-                    rawMtdCompNorm === "non"
-                  ? "no"
-                  : missingItems.length === 0
-                    ? "yes"
-                    : "no";
+    const completenessStatus: RawCompletenessStatus = !isMtdEvaluated
+      ? "pending"
+      : currentForm.metrics.completeness_status === "yes" ||
+          currentForm.metrics.completeness_status === "partial" ||
+          currentForm.metrics.completeness_status === "no"
+        ? currentForm.metrics.completeness_status
+        : rawMtdCompFlag === true ||
+            rawMtdCompNorm === "true" ||
+            rawMtdCompNorm === "yes" ||
+            rawMtdCompNorm === "oui"
+          ? "yes"
+          : rawMtdCompNorm === "partial" || rawMtdCompNorm === "partiel"
+            ? "partial"
+            : rawMtdCompFlag === false ||
+                rawMtdCompNorm === "false" ||
+                rawMtdCompNorm === "no" ||
+                rawMtdCompNorm === "non"
+              ? "no"
+              : allMissingItems.length === 0
+                ? "yes"
+                : "no";
     const isFormComplete = completenessStatus === "yes";
     const completenessBadge = deriveCompletenessInfo(
       {
         is_complete: isFormComplete,
+        completeness_status: completenessStatus,
+        is_manually_edited: isMtdManual,
         missing_count: missingItems.length,
         missing_items: missingItems,
         processing_status: currentForm.processingStatus,
@@ -368,6 +378,22 @@ export class PatientDossierUseCase {
     const timeline: TimelineSessionItem[] = sorted.map((f, idx) => {
       const fPrio = normalizePriorityLevel(f.metrics.priority_level);
       const fPrioInfo = derivePriorityBadgeInfo(fPrio, lang, true);
+      const fMtdRaw = (f.sections.MTDCompleted ?? {}) as Record<string, unknown>;
+      const fHasMtd = Object.keys(fMtdRaw).length > 0;
+      const fMtdManual = Boolean(
+        f.manualEdits.MTDCompleted && f.manualEdits.MTDCompleted.is_manual !== false,
+      );
+      const fCompl = deriveCompletenessInfo(
+        {
+          is_complete: f.metrics.is_complete,
+          completeness_status: !fHasMtd ? "pending" : f.metrics.completeness_status,
+          is_manually_edited: fMtdManual,
+          missing_count: f.metrics.missing_count,
+          missing_items: f.metrics.missing_items,
+          processing_status: f.processingStatus,
+        },
+        lang,
+      );
       const fOrient = deriveOrientationInfo(
         {
           care_adaptation_suggested:
@@ -391,6 +417,8 @@ export class PatientDossierUseCase {
         isLatest: idx === sorted.length - 1,
         priorityLevel: fPrio,
         priorityLabel: fPrioInfo.label,
+        completenessStatus: fCompl.status,
+        completenessLabel: fCompl.label,
         orientationLabel: fOrient.label,
         durationSec: fExecSum > 0 ? Math.round(fExecSum * 10) / 10 : null,
       };
@@ -442,7 +470,10 @@ export class PatientDossierUseCase {
       careProposal: {
         careAdaptationSuggested,
         proposedCareType,
-        clinicalRationale: careSec.clinical_rationale ? String(careSec.clinical_rationale) : null,
+        clinicalRationale:
+          (careSec.orientation_rationale ?? careSec.clinical_rationale)
+            ? String(careSec.orientation_rationale ?? careSec.clinical_rationale)
+            : null,
         reasoningThinking: careReasoning,
         userPrompt: careMeta.userPrompt ?? null,
         durationSec: careDuration,
@@ -467,7 +498,7 @@ export class PatientDossierUseCase {
       return [
         {
           key: "sma_type",
-          label: "Type SMA",
+          label: lang === "fr" ? "Type SMA" : "SMA Type",
           value: translateValue(mot.sma_type, lang),
           isMissing: !mot.sma_type,
           targetSection: "MotorFunctionStatus",
@@ -475,7 +506,7 @@ export class PatientDossierUseCase {
         },
         {
           key: "smn2_copy_count",
-          label: "Copies SMN2",
+          label: lang === "fr" ? "Copies SMN2" : "SMN2 Copies",
           value: translateValue(gen.smn2_copy_count, lang),
           isMissing: gen.smn2_copy_count == null,
           targetSection: "GeneticDiagnosis",
@@ -516,7 +547,7 @@ export class PatientDossierUseCase {
         },
         {
           key: "forced_vital_capacity_percent",
-          label: "CVF",
+          label: lang === "fr" ? "CVF" : "FVC",
           value:
             resp.forced_vital_capacity_percent != null
               ? `${resp.forced_vital_capacity_percent} %`
@@ -528,7 +559,7 @@ export class PatientDossierUseCase {
         },
         {
           key: "scoliosis_cobb_angle",
-          label: "Rachis / Cobb",
+          label: lang === "fr" ? "Rachis / Cobb" : "Spine / Cobb",
           value:
             ortho.scoliosis_cobb_angle != null
               ? `${ortho.scoliosis_cobb_angle}°`
@@ -557,7 +588,7 @@ export class PatientDossierUseCase {
     return [
       {
         key: "tumor_location",
-        label: "Organe / Tumeur",
+        label: lang === "fr" ? "Organe / Tumeur" : "Organ / Tumor",
         value: translateValue(loc.tumor_location, lang),
         isMissing: !loc.tumor_location,
         targetSection: "TumorLocation",
@@ -565,7 +596,7 @@ export class PatientDossierUseCase {
       },
       {
         key: "ca19_9",
-        label: "Biologie / MSI",
+        label: lang === "fr" ? "Biologie / MSI" : "Biology / MSI",
         value: translateValue(bio.ca19_9 ?? bio.msi_state, lang),
         isMissing: !bio.ca19_9 && !bio.msi_state,
         targetSection: "TumorBiology",
@@ -573,7 +604,7 @@ export class PatientDossierUseCase {
       },
       {
         key: "performance_status",
-        label: "OMS / ECOG",
+        label: lang === "fr" ? "OMS / ECOG" : "WHO / ECOG",
         value: translateValue(perf.performance_status, lang),
         isMissing: perf.performance_status === undefined,
         targetSection: "PatientPerformanceStatus",
@@ -582,7 +613,7 @@ export class PatientDossierUseCase {
       },
       {
         key: "chemotherapy_name",
-        label: "Traitement systémique",
+        label: lang === "fr" ? "Traitement systémique" : "Systemic Treatment",
         value: translateValue(firstChemoName, lang),
         isMissing: !firstChemoName && chemo.chemotherapy === undefined,
         targetSection: chemoSectionName,
@@ -597,6 +628,7 @@ export class PatientDossierUseCase {
     subCards: DossierSubCardView[],
     fields: DossierFieldView[],
     lang: Language,
+    form?: MdtFormDetail,
   ): string {
     if (sectionName === "TumorLocation") {
       return stripMarkdown(translateValue(rawObj.tumor_location, lang));
@@ -624,7 +656,7 @@ export class PatientDossierUseCase {
           : null,
         rawObj.ace !== undefined && rawObj.ace !== null ? `ACE: ${rawObj.ace} ng/mL` : null,
         rawObj.dpd_uracilemia !== undefined && rawObj.dpd_uracilemia !== null
-          ? `Uracilémie: ${rawObj.dpd_uracilemia} ng/mL`
+          ? `${lang === "fr" ? "Uracilémie" : "Uracilemia"}: ${rawObj.dpd_uracilemia} ng/mL`
           : null,
       ].filter((v): v is string => Boolean(v));
       return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
@@ -649,7 +681,9 @@ export class PatientDossierUseCase {
         rawObj.weight_loss_percent !== undefined && rawObj.weight_loss_percent !== null
           ? `-${rawObj.weight_loss_percent} %`
           : null,
-        rawObj.bmi !== undefined && rawObj.bmi !== null ? `IMC ${rawObj.bmi}` : null,
+        rawObj.bmi !== undefined && rawObj.bmi !== null
+          ? `${lang === "fr" ? "IMC" : "BMI"} ${rawObj.bmi}`
+          : null,
       ].filter((v): v is string => Boolean(v));
       return parts.join(" · ") || translateValue(null, lang);
     }
@@ -665,7 +699,7 @@ export class PatientDossierUseCase {
     if (sectionName === "PatientPerformanceStatus") {
       const ps = rawObj.performance_status;
       if (ps === undefined || ps === null || ps === "") return translateValue(null, lang);
-      return `OMS ${stripMarkdown(translateValue(ps, lang))}`;
+      return `${lang === "fr" ? "OMS" : "WHO"} ${stripMarkdown(translateValue(ps, lang))}`;
     }
     if (sectionName === "RadiologicExams" || sectionName === "RadiologicalExams") {
       if (subCards.length === 0) return lang === "fr" ? "Aucun examen" : "No exam";
@@ -695,40 +729,68 @@ export class PatientDossierUseCase {
       return stripMarkdown(translateValue(rawObj.chemotherapy, lang));
     }
     if (sectionName === "MTDCompleted") {
-      const missing = Array.isArray(rawObj.what_missing) ? rawObj.what_missing.length : 0;
+      if (form?.metrics.completeness_status === "pending" || Object.keys(rawObj).length === 0) {
+        return t("completeness.pending", lang);
+      }
+      const rawList = Array.isArray(rawObj.what_missing)
+        ? rawObj.what_missing.filter((x) => Boolean(x) && x !== "no data").map(String)
+        : [];
+      const hideAll = Boolean(form?.metrics.hide_missing_items);
+      const hiddenSet = new Set(
+        Array.isArray(form?.metrics.hidden_missing_items)
+          ? form.metrics.hidden_missing_items.map(String)
+          : [],
+      );
+      const visibleMissing = hideAll ? 0 : rawList.filter((x) => !hiddenSet.has(x)).length;
       const rawComp = rawObj.is_mtd_complete;
       const normComp = String(rawComp ?? "")
         .trim()
         .toLowerCase();
       const status: "yes" | "partial" | "no" =
-        rawComp === true || normComp === "true" || normComp === "yes" || normComp === "oui"
-          ? "yes"
-          : normComp === "partial" || normComp === "partiel"
-            ? "partial"
-            : rawComp === false || normComp === "false" || normComp === "no" || normComp === "non"
-              ? "no"
-              : missing === 0
-                ? "yes"
-                : "no";
+        form?.metrics.completeness_status === "yes" ||
+        form?.metrics.completeness_status === "partial" ||
+        form?.metrics.completeness_status === "no"
+          ? form.metrics.completeness_status
+          : rawComp === true || normComp === "true" || normComp === "yes" || normComp === "oui"
+            ? "yes"
+            : normComp === "partial" || normComp === "partiel"
+              ? "partial"
+              : rawComp === false || normComp === "false" || normComp === "no" || normComp === "non"
+                ? "no"
+                : rawList.length === 0
+                  ? "yes"
+                  : "no";
       if (status === "yes") {
-        if (missing > 0) {
+        if (visibleMissing > 0) {
           return lang === "fr"
-            ? `${missing} élément(s) facultatif manquant(s)`
-            : `${missing} optional missing item(s)`;
+            ? `${visibleMissing} élément(s) facultatif(s) manquant(s)`
+            : `${visibleMissing} optional missing item(s)`;
         }
         return lang === "fr" ? "Dossier complet" : "Complete";
       }
       if (status === "partial") {
-        if (missing > 0) {
-          return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+        if (visibleMissing > 0) {
+          return lang === "fr"
+            ? `Partiel · ${visibleMissing} élément(s) manquant(s)`
+            : `Partial · ${visibleMissing} missing item(s)`;
         }
         return lang === "fr" ? "Dossier partiel" : "Partial";
       }
-      if (missing > 0) {
-        return lang === "fr" ? `${missing} élément(s) manquant(s)` : `${missing} missing item(s)`;
+      if (visibleMissing > 0) {
+        return lang === "fr"
+          ? `Incomplet · ${visibleMissing} élément(s) manquant(s)`
+          : `Incomplete · ${visibleMissing} missing item(s)`;
       }
       return lang === "fr" ? "Dossier incomplet" : "Incomplete";
     }
+    if (sectionName === "CareOrientationProposal") {
+      const proposed = String(rawObj.proposed_care_type ?? "").trim();
+      if (proposed) return stripMarkdown(proposed);
+      if (rawObj.care_adaptation_suggested === true) return t("orientation.adapt", lang);
+      if (rawObj.care_adaptation_suggested === false) return t("orientation.standard", lang);
+      return t("orientation.pending", lang);
+    }
+
     if (sectionName === "PatientAdministrative") {
       const fn =
         rawObj.first_name && rawObj.first_name !== "Not_given"
@@ -762,7 +824,7 @@ export class PatientDossierUseCase {
     lang: Language,
     domainSchema?: DomainFormSchema | null,
   ): DossierSectionView[] {
-    const skip = new Set(["ExpertAnswer", "CareOrientationProposal"]);
+    const skip = new Set(["ExpertAnswer"]);
     const internalKeys = new Set([
       "reasoning_thinking",
       "time_execution",
@@ -772,11 +834,24 @@ export class PatientDossierUseCase {
       "references",
     ]);
     const result: DossierSectionView[] = [];
+    const sectionEntries: Array<[string, Record<string, unknown>]> = Object.entries(form.sections);
+    if (!Object.hasOwn(form.sections, "CareOrientationProposal")) {
+      sectionEntries.push(["CareOrientationProposal", {}]);
+    }
 
-    for (const [sectionName, rawSectionObj] of Object.entries(form.sections)) {
+    for (const [sectionName, rawSectionObj] of sectionEntries) {
       if (skip.has(sectionName)) continue;
       const meta = getSectionPresentation(sectionName, form.domain, lang);
       const rawObj: Record<string, unknown> = { ...(rawSectionObj ?? {}) };
+
+      if (sectionName === "CareOrientationProposal") {
+        if (rawObj.orientation_rationale === undefined && rawObj.clinical_rationale !== undefined) {
+          rawObj.orientation_rationale = rawObj.clinical_rationale;
+        }
+        if (rawObj.suggested_priority !== undefined) {
+          rawObj.suggested_priority = normalizePriorityLevel(rawObj.suggested_priority);
+        }
+      }
 
       // Unpack nested mtd_complete object if present (avoiding raw JSON stringification)
       if (
@@ -821,6 +896,14 @@ export class PatientDossierUseCase {
         if (internalKeys.has(k)) continue;
         // Skip duplicate radiological_exams alias if exams_list is already present
         if (k === "radiological_exams" && orderedKeys.includes("exams_list")) continue;
+        // Skip duplicate clinical_rationale alias on CareOrientationProposal when orientation_rationale is present
+        if (
+          sectionName === "CareOrientationProposal" &&
+          k === "clinical_rationale" &&
+          orderedKeys.includes("orientation_rationale")
+        ) {
+          continue;
+        }
 
         const wasPresentInRaw = Object.hasOwn(rawObj, k);
         const v =
@@ -893,10 +976,10 @@ export class PatientDossierUseCase {
                 .join(" → ");
               subCards.push({
                 title: String(ch.chemotherapy_name ?? formatFieldLabel("chemotherapy_name", lang)),
-                badge: "Chimiothérapie",
+                badge: lang === "fr" ? "Chimiothérapie" : "Chemotherapy",
                 subtitle: dates || null,
                 body: ch.chemotherapy_tolerance
-                  ? `Tolérance : ${translateValue(ch.chemotherapy_tolerance, lang)}`
+                  ? `${lang === "fr" ? "Tolérance" : "Tolerance"} : ${translateValue(ch.chemotherapy_tolerance, lang)}`
                   : translateValue(null, lang),
               });
             }
@@ -994,7 +1077,12 @@ export class PatientDossierUseCase {
           placeholder: lang === "fr" ? fieldSchema?.placeholderFr : fieldSchema?.placeholderEn,
           options: mapOptions(fieldSchema?.options),
           isLongText: inputType === "textarea" || LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
-          hiddenInReadView: !wasPresentInRaw,
+          hiddenInReadView:
+            !wasPresentInRaw ||
+            (sectionName === "MTDCompleted" &&
+              k === "what_missing" &&
+              Array.isArray(v) &&
+              v.length > 0),
           badgeTone,
         });
       }
@@ -1003,17 +1091,31 @@ export class PatientDossierUseCase {
         sectionName === "MTDCompleted"
           ? (fields.find((f) => f.key === "is_mtd_complete")?.badgeTone ?? null)
           : null;
-      const sectionTone: "green" | "orange" | "red" | null =
-        sectionName === "MTDCompleted"
-          ? (form.metrics.completeness_tone ?? mtdFieldTone ?? "green")
+      const carePriorityLevel =
+        sectionName === "CareOrientationProposal"
+          ? normalizePriorityLevel(rawObj.suggested_priority ?? form.metrics.priority_level)
           : null;
-      const summaryText =
-        sectionName === "MTDCompleted" &&
-        lang === "fr" &&
-        typeof form.metrics.completeness_summary === "string" &&
-        form.metrics.completeness_summary.trim()
-          ? form.metrics.completeness_summary.trim()
-          : this.extractSectionHeaderSummary(sectionName, rawObj, subCards, fields, lang);
+      const sectionTone: "green" | "orange" | "red" | "neutral" | null =
+        sectionName === "MTDCompleted"
+          ? form.metrics.completeness_status === "pending"
+            ? "neutral"
+            : (form.metrics.completeness_tone ?? mtdFieldTone ?? "neutral")
+          : sectionName === "CareOrientationProposal"
+            ? carePriorityLevel === "high"
+              ? "red"
+              : rawObj.care_adaptation_suggested === true ||
+                  form.metrics.care_adaptation_suggested === true
+                ? "orange"
+                : "green"
+            : null;
+      const summaryText = this.extractSectionHeaderSummary(
+        sectionName,
+        rawObj,
+        subCards,
+        fields,
+        lang,
+        form,
+      );
 
       const canonicalSection = resolveCanonicalSectionName(sectionName);
       const rawManualMeta =
@@ -1199,8 +1301,9 @@ export class PatientDossierUseCase {
     filename: string,
     patientId: string | null,
     domain: ClinicalDomain,
+    editedBy?: string,
   ): Promise<void> {
-    return this.api.linkFormToPatient(filename, patientId, domain);
+    return this.api.linkFormToPatient(filename, patientId, domain, editedBy);
   }
 
   async askQuestion(

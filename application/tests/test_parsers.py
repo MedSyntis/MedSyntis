@@ -63,7 +63,7 @@ class TestParsers(unittest.TestCase):
             }
         )
         mock_parser.parse.assert_called_once_with("/path/to/doc.pdf", ocr=True)
-        mock_pdf_cls.assert_called_once_with("/path/to/doc.pdf")
+        mock_pdf_cls.assert_not_called()
 
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0].page_content, "Node 1 text")

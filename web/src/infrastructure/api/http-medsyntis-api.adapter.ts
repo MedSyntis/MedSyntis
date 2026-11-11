@@ -36,6 +36,7 @@ import type {
   PatientRecordSummaryView,
   QueueJobItem,
   QueueStats,
+  RawCompletenessStatus,
   ResourceDocument,
 } from "../../domain/types.js";
 import {
@@ -201,10 +202,24 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       typeof raw.missing_count === "number" ? raw.missing_count : missingItems.length;
     const processingStatus = String(raw.processing_status ?? "COMPLETED");
     const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
-    const isComplete =
-      isAiCompleted &&
-      (typeof raw.is_complete === "boolean" ? raw.is_complete : missingCount === 0) &&
-      missingCount === 0;
+    const rawCompStatusStr = String(raw.completeness_status ?? "")
+      .trim()
+      .toLowerCase();
+    const completenessStatus: RawCompletenessStatus = !isAiCompleted
+      ? "pending"
+      : rawCompStatusStr === "yes" ||
+          rawCompStatusStr === "partial" ||
+          rawCompStatusStr === "no" ||
+          rawCompStatusStr === "pending"
+        ? rawCompStatusStr
+        : raw.is_complete === true
+          ? "yes"
+          : raw.is_complete === false
+            ? "no"
+            : missingCount === 0
+              ? "yes"
+              : "no";
+    const isComplete = completenessStatus === "yes";
     const specialties = Array.isArray(raw.specialties)
       ? (raw.specialties as string[])
       : Array.isArray(raw.experts)
@@ -237,6 +252,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       priorityReason,
       priorityReasons,
       isComplete,
+      completenessStatus,
       missingCount,
       missingItems,
       careAdaptationSuggested:
@@ -371,19 +387,63 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           ? (rawMetrics.missing as string[]).filter((x) => !hiddenSet.has(x))
           : allMissingItems.filter((x) => !hiddenSet.has(x));
     const missingCount = missingItems.length;
+    const rawManualEdits =
+      ((raw.manual_edits ?? raw.manually_edited_sections) as Record<
+        string,
+        Record<string, unknown>
+      >) ?? {};
+    const manualEdits: MdtFormDetail["manualEdits"] = {};
+    for (const [secKey, metaVal] of Object.entries(rawManualEdits)) {
+      if (metaVal && typeof metaVal === "object" && metaVal.is_manual !== false) {
+        manualEdits[secKey] = metaVal as MdtFormDetail["manualEdits"][string];
+      }
+    }
+
     const processingStatus = String(raw.processing_status ?? "COMPLETED");
     const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
     const hasMtdCompleted = Boolean(
       sections.MTDCompleted && Object.keys(sections.MTDCompleted).length > 0,
     );
-    const isComplete =
-      hideMissingItems || (allMissingItems.length > 0 && missingCount === 0)
-        ? true
-        : !isAiCompleted || !hasMtdCompleted
-          ? false
-          : typeof rawMetrics.is_complete === "boolean"
-            ? rawMetrics.is_complete
-            : derivedIsComplete;
+    const isMtdManual = Boolean(manualEdits.MTDCompleted);
+    const isEvaluated = (isAiCompleted || isMtdManual) && hasMtdCompleted;
+    const rawMetricsStatusStr = String(rawMetrics.completeness_status ?? "")
+      .trim()
+      .toLowerCase();
+    const completenessStatus: RawCompletenessStatus = !isEvaluated
+      ? "pending"
+      : rawMetricsStatusStr === "yes" ||
+          rawMetricsStatusStr === "partial" ||
+          rawMetricsStatusStr === "no" ||
+          (rawMetricsStatusStr === "pending" && !isMtdManual)
+        ? (rawMetricsStatusStr as RawCompletenessStatus)
+        : rawCompFlag === true ||
+            rawCompNorm === "true" ||
+            rawCompNorm === "yes" ||
+            rawCompNorm === "oui"
+          ? "yes"
+          : rawCompNorm === "partial" || rawCompNorm === "partiel"
+            ? "partial"
+            : rawCompFlag === false ||
+                rawCompNorm === "false" ||
+                rawCompNorm === "no" ||
+                rawCompNorm === "non"
+              ? "no"
+              : typeof rawMetrics.is_complete === "boolean"
+                ? rawMetrics.is_complete
+                  ? "yes"
+                  : "no"
+                : derivedIsComplete
+                  ? "yes"
+                  : "no";
+    const isComplete = completenessStatus === "yes";
+    const completenessTone: "green" | "orange" | "red" | "neutral" =
+      completenessStatus === "yes"
+        ? "green"
+        : completenessStatus === "partial"
+          ? "orange"
+          : completenessStatus === "pending"
+            ? "neutral"
+            : "red";
     const specialties = Array.isArray(rawMetrics.specialties)
       ? (rawMetrics.specialties as string[])
       : Array.isArray(rawMetrics.experts)
@@ -396,6 +456,8 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         rawMetrics.priority_level ?? rawMetrics.urgency ?? highestPriority ?? "none",
       ),
       is_complete: isComplete,
+      completeness_status: completenessStatus,
+      completeness_tone: completenessTone,
       missing_count: missingCount,
       missing_items: missingItems,
       all_missing_items: allMissingItems,
@@ -412,18 +474,6 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           : null,
       specialties,
     };
-
-    const rawManualEdits =
-      ((raw.manual_edits ?? raw.manually_edited_sections) as Record<
-        string,
-        Record<string, unknown>
-      >) ?? {};
-    const manualEdits: MdtFormDetail["manualEdits"] = {};
-    for (const [secKey, metaVal] of Object.entries(rawManualEdits)) {
-      if (metaVal && typeof metaVal === "object" && metaVal.is_manual !== false) {
-        manualEdits[secKey] = metaVal as MdtFormDetail["manualEdits"][string];
-      }
-    }
 
     return {
       file: String(raw.file ?? ""),
@@ -481,22 +531,30 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       return cached.data;
     }
     try {
-      const rows = await this.requestJson<Array<Record<string, unknown>>>(
-        `/api/v1/patientmdtform/patients?domain=${encodeURIComponent(domain)}&identified_only=${String(identifiedOnly)}`,
+      const rawRows = await this.requestJson<unknown>(
+        `/api/v1/patients?domain=${encodeURIComponent(domain)}&identified_only=${identifiedOnly ? "true" : "false"}`,
         domain,
       );
-      const data = rows.map((r) => ({
-        id: String(r.patient_id ?? r.id ?? ""),
-        firstName: r.first_name && r.first_name !== "Not_given" ? String(r.first_name) : "",
-        lastName:
-          r.last_name && r.last_name !== "Not_given"
-            ? String(r.last_name)
-            : String(r.patient ?? r.patient_id ?? ""),
-        bornName: r.born_name && r.born_name !== "Not_given" ? String(r.born_name) : null,
-        dateBirth: this.formatIsoDate(r.date_birth),
-        gender: r.gender && r.gender !== "Not_given" ? String(r.gender) : null,
-        rcpCount: Number(r.rcp_count ?? 1),
-      }));
+      const rows = Array.isArray(rawRows)
+        ? (rawRows as Array<Record<string, unknown>>)
+        : Array.isArray((rawRows as Record<string, unknown>)?.patients)
+          ? ((rawRows as Record<string, unknown>).patients as Array<Record<string, unknown>>)
+          : [];
+      const data = rows.map((r) => {
+        const filesList = Array.isArray(r.files) ? r.files : null;
+        return {
+          id: String(r.patient_id ?? r.id ?? ""),
+          firstName: r.first_name && r.first_name !== "Not_given" ? String(r.first_name) : "",
+          lastName:
+            r.last_name && r.last_name !== "Not_given"
+              ? String(r.last_name)
+              : String(r.patient ?? r.patient_id ?? ""),
+          bornName: r.born_name && r.born_name !== "Not_given" ? String(r.born_name) : null,
+          dateBirth: this.formatIsoDate(r.date_birth),
+          gender: r.gender && r.gender !== "Not_given" ? String(r.gender) : null,
+          rcpCount: filesList ? filesList.length : Number(r.rcp_count ?? 1),
+        };
+      });
       if (this.cacheTtlMs > 0) {
         this.patientsListCache.set(cacheKey, {
           expiresAt: now + Math.min(this.cacheTtlMs, 15_000),
@@ -700,6 +758,8 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         coerced,
         domainSchema,
       );
+      const ctx = bffRequestContext.getStore();
+      const resolvedEditor = editedBy || ctx?.userId || ctx?.userName || "Clinicien";
       await this.requestJson<Record<string, unknown>>(
         `/api/v1/patientmdtform/${encodeURIComponent(filename)}/sections/${encodeURIComponent(canonicalSection)}?domain=${encodeURIComponent(domain)}`,
         domain,
@@ -708,7 +768,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             section_data: strictPayload,
-            edited_by: editedBy,
+            edited_by: resolvedEditor,
           }),
         },
       );
@@ -756,6 +816,8 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
   ): Promise<MdtFormDetail> {
     this.invalidateDossierCaches();
     try {
+      const ctx = bffRequestContext.getStore();
+      const resolvedEditor = input.editedBy || ctx?.userId || ctx?.userName || "Clinicien";
       const res = await this.requestJson<Record<string, unknown>>(
         `/api/v1/patientmdtform/${encodeURIComponent(filename)}/missing-items?domain=${encodeURIComponent(domain)}`,
         domain,
@@ -767,7 +829,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
             toggle_item: input.toggleItem,
             hidden_missing_items: input.hiddenMissingItems,
             what_missing: input.whatMissing,
-            edited_by: input.editedBy ?? "Clinicien",
+            edited_by: resolvedEditor,
           }),
         },
       );
@@ -802,8 +864,9 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           }),
         },
       );
+      const jobs = Array.isArray(res.jobs) ? (res.jobs as Array<Record<string, unknown>>) : [];
       return {
-        jobId: String(res.job_id ?? res.id ?? "job"),
+        jobId: String(jobs[0]?.job_id ?? res.job_id ?? res.id ?? "job"),
         preserveManualEdits,
       };
     } catch (err) {
@@ -849,9 +912,12 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     filename: string,
     patientId: string | null,
     domain: ClinicalDomain,
+    editedBy?: string,
   ): Promise<void> {
     this.invalidateDossierCaches();
     try {
+      const ctx = bffRequestContext.getStore();
+      const resolvedEditor = editedBy || ctx?.userId || ctx?.userName || "Clinicien";
       await this.requestJson(
         `/api/v1/patientmdtform/${encodeURIComponent(filename)}/link-patient?domain=${encodeURIComponent(domain)}`,
         domain,
@@ -860,12 +926,14 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             target_patient_id: patientId || "CREATE_NEW",
-            edited_by: "Clinicien",
+            edited_by: resolvedEditor,
           }),
         },
       );
     } catch (err) {
-      if (this.fallback) return this.fallback.linkFormToPatient(filename, patientId, domain);
+      if (this.fallback) {
+        return this.fallback.linkFormToPatient(filename, patientId, domain, editedBy);
+      }
       throw err;
     }
   }
@@ -1013,15 +1081,24 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         status: String(f.status ?? f.processing_status ?? "COMPLETED"),
         step: f.step ? String(f.step) : null,
         progressPct: Number(f.progress_pct ?? f.pct ?? 100),
-        error: f.error ? String(f.error) : null,
+        error: (f.error_message ?? f.error) ? String(f.error_message ?? f.error) : null,
         patientId: f.patient_id ? String(f.patient_id) : null,
       }));
+      const runningStatuses = new Set([
+        "RUNNING",
+        "PROCESSING",
+        "PROCESSING_ADMIN",
+        "PROCESSING_CLINICAL",
+        "PROCESSING_EXPERTS",
+      ]);
       const countBy = (st: string) => files.filter((f) => f.status.toUpperCase() === st).length;
+      const countRunning = () =>
+        files.filter((f) => runningStatuses.has(f.status.toUpperCase())).length;
       return {
         batchId: String(res.batch_id ?? batchId),
         total: Number(res.total ?? files.length),
         completed: Number(res.completed ?? countBy("COMPLETED")),
-        running: Number(res.running ?? countBy("RUNNING")),
+        running: Number(res.running ?? countRunning()),
         pending: Number(res.pending ?? countBy("PENDING")),
         failed: Number(res.failed ?? countBy("FAILED")),
         progressPct: Number(res.progress_pct ?? res.overall_pct ?? 100),
@@ -1067,7 +1144,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         new Blob([new Uint8Array(content)], { type: "application/pdf" }),
         filename,
       );
-      await this.requestJson(
+      const res = await this.requestJson<Record<string, unknown> | undefined>(
         `/api/v1/resources/upload?domain=${encodeURIComponent(domain)}`,
         domain,
         {
@@ -1076,11 +1153,11 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         },
       );
       return {
-        filename,
-        sizeBytes: content.byteLength,
-        indexed: true,
-        chunkCount: 0,
-        updatedAt: new Date().toISOString().slice(0, 10),
+        filename: String(res?.filename ?? res?.name ?? filename),
+        sizeBytes: Number(res?.size_bytes ?? res?.size ?? content.byteLength),
+        indexed: Boolean(res?.is_indexed ?? res?.indexed ?? false),
+        chunkCount: Number(res?.chunk_count ?? res?.chunks ?? 0),
+        updatedAt: res?.updated_at ? String(res.updated_at) : new Date().toISOString().slice(0, 10),
       };
     } catch (err) {
       if (this.fallback) return this.fallback.uploadResource(filename, content, domain);
@@ -1288,6 +1365,8 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     input: Omit<BugReportItem, "id" | "createdAt" | "status">,
   ): Promise<BugReportItem> {
     const domain = (input.domain === "sma" ? "sma" : "oncology") as ClinicalDomain;
+    const rawRef = typeof input.patientOrFile === "string" ? input.patientOrFile.trim() : "";
+    const isPdfRef = rawRef.toLowerCase().endsWith(".pdf");
     try {
       const res = await this.requestJson<Record<string, unknown>>(
         `/api/v1/bug-reports?domain=${encodeURIComponent(domain)}`,
@@ -1301,8 +1380,8 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
             category: input.category,
             severity: input.severity,
             domain: input.domain,
-            patient_id: input.patientOrFile,
-            rcp_file: input.patientOrFile,
+            patient_id: rawRef && !isPdfRef ? rawRef : null,
+            rcp_file: rawRef && isPdfRef ? rawRef : null,
             reporter: input.author,
           }),
         },
@@ -1375,6 +1454,27 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     }
   }
 
+  async getQueueThinking(domain: ClinicalDomain): Promise<{
+    active: boolean;
+    filename: string | null;
+    step: string | null;
+    content: string | null;
+  }> {
+    const thinking = await this.requestJson<Record<string, unknown>>(
+      `/api/v1/queue/thinking?domain=${encodeURIComponent(domain)}`,
+      domain,
+    );
+    const active = Boolean(thinking.active ?? thinking.is_thinking);
+    const stepRaw = thinking.current_step ?? thinking.step;
+    const contentRaw = thinking.current_thinking ?? thinking.content;
+    return {
+      active,
+      filename: thinking.filename ? String(thinking.filename) : null,
+      step: stepRaw ? String(stepRaw) : null,
+      content: contentRaw ? String(contentRaw) : null,
+    };
+  }
+
   async getQueueStats(domain: ClinicalDomain, allDomains = true): Promise<QueueStats> {
     try {
       const rawRes = await this.requestJson<Record<string, unknown>>(
@@ -1394,16 +1494,13 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       const activeProgressPct = Number(res.active_progress_pct ?? (running > 0 ? 50 : 0));
       let thinkingPreview = res.thinking_preview ? String(res.thinking_preview) : null;
 
-      if (running > 0 && !activeFormFile) {
+      if (running > 0 && (!activeFormFile || !thinkingPreview)) {
         try {
-          const thinking = await this.requestJson<Record<string, unknown>>(
-            `/api/v1/queue/thinking?domain=${encodeURIComponent(domain)}`,
-            domain,
-          );
-          if (thinking.is_thinking) {
-            activeFormFile = thinking.filename ? String(thinking.filename) : activeFormFile;
-            activeStep = thinking.step ? String(thinking.step) : activeStep;
-            thinkingPreview = thinking.content ? String(thinking.content) : thinkingPreview;
+          const thinking = await this.getQueueThinking(domain);
+          if (thinking.active) {
+            activeFormFile = thinking.filename ?? activeFormFile;
+            activeStep = thinking.step ?? activeStep;
+            thinkingPreview = thinking.content ?? thinkingPreview;
           }
         } catch (_e) {
           // Non-blocking enrichment
@@ -1543,7 +1640,19 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       priorityReasons: Array.isArray(it.urgency_reasons)
         ? (it.urgency_reasons as string[]).map(String).filter(Boolean)
         : [],
-      isComplete: Boolean(it.is_complete ?? true),
+      isComplete:
+        typeof it.is_complete === "boolean"
+          ? it.is_complete
+          : String(it.completeness_status ?? "").toLowerCase() === "yes",
+      completenessStatus: (["yes", "partial", "no", "pending"].includes(
+        String(it.completeness_status ?? "").toLowerCase(),
+      )
+        ? String(it.completeness_status).toLowerCase()
+        : typeof it.is_complete === "boolean"
+          ? it.is_complete
+            ? "yes"
+            : "no"
+          : "pending") as RawCompletenessStatus,
       missingCount: Number(it.missing_count ?? 0),
       missingItems: Array.isArray(it.missing_items)
         ? (it.missing_items as string[]).map(String)
@@ -1603,7 +1712,19 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       priorityReasons: Array.isArray(c.urgency_reasons)
         ? (c.urgency_reasons as string[]).map(String).filter(Boolean)
         : [],
-      isComplete: Boolean(c.is_complete ?? true),
+      isComplete:
+        typeof c.is_complete === "boolean"
+          ? c.is_complete
+          : String(c.completeness_status ?? "").toLowerCase() === "yes",
+      completenessStatus: (["yes", "partial", "no", "pending"].includes(
+        String(c.completeness_status ?? "").toLowerCase(),
+      )
+        ? String(c.completeness_status).toLowerCase()
+        : typeof c.is_complete === "boolean"
+          ? c.is_complete
+            ? "yes"
+            : "no"
+          : "pending") as RawCompletenessStatus,
       missingCount: Number(c.missing_count ?? 0),
       missingItems: Array.isArray(c.missing_items) ? (c.missing_items as string[]).map(String) : [],
       careAdaptationSuggested:

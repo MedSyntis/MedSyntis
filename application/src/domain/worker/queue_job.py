@@ -96,115 +96,115 @@ class QueueJob(BaseModel):
 
     job_id: str = Field(
         default_factory=lambda: f"job_{uuid.uuid4().hex[:12]}",
-        description="Identifiant unique de la tâche",
+        description="Unique identifier of the queue task",
     )
     batch_id: str | None = Field(
         default=None,
-        description="Identifiant du lot d'import (regroupe les fichiers importés ensemble)",
+        description="Upload batch identifier grouping files imported together",
     )
     domain: str = Field(
         default="oncology",
-        description="Domaine applicatif (oncology, sma)",
+        description="Clinical application domain (oncology, sma)",
     )
     filename: str = Field(
-        description="Nom du fichier PDF de la fiche RCP",
+        description="PDF filename of the PatientMDTForm document",
     )
     target_patient_id: str | None = Field(
         default=None,
-        description="Identifiant patient forcé à l'import (None si automatique)",
+        description="Explicit patient identifier enforced at import time (None if automatic)",
     )
     resolved_patient_id: str | None = Field(
         default=None,
-        description="Identifiant patient résolu après l'étape d'identification",
+        description="Resolved patient identifier after administrative identification",
     )
     patient_label: str | None = Field(
         default=None,
-        description="Nom affiché du patient une fois identifié",
+        description="Formatted patient display label once identified",
     )
     job_type: JobType = Field(
         default=JobType.WAVE1_ADMIN,
-        description="Type de tâche (WAVE1_ADMIN, WAVE2_CLINICAL, SINGLE_MODEL)",
+        description="Queue task type (WAVE1_ADMIN, WAVE2_CLINICAL, WAVE3_EXPERTS, SINGLE_MODEL, PATIENT_SUMMARY)",
     )
     model_name: str | None = Field(
         default=None,
-        description="Nom du modèle ciblé lorsque job_type == SINGLE_MODEL",
+        description="Target section model name when job_type == SINGLE_MODEL",
     )
     status: JobStatus = Field(
         default=JobStatus.PENDING,
-        description="Statut courant de la tâche",
+        description="Current execution status of the task",
     )
     priority: int = Field(
         default=JobPriority.WAVE1_ADMIN_IMPORT,
-        description="Priorité d'ordonnancement (100 = Étape 1, 50 = Étape 2)",
+        description="Scheduling priority (higher value = higher priority)",
     )
     depends_on_job_id: str | None = Field(
         default=None,
-        description="ID de la tâche parente (ex: WAVE1_ADMIN) devant être terminée avant l'exécution",
+        description="Parent task identifier (e.g. WAVE1_ADMIN) that must complete before execution",
     )
     worker_id: str | None = Field(
         default=None,
-        description="Identifiant du worker traitant la tâche",
+        description="Identifier of the worker executing the task",
     )
     lease_id: str | None = Field(
         default=None,
-        description="Identifiant du verrou matériel associé",
+        description="Associated hardware execution lease identifier",
     )
     current_step: str = Field(
         default="En attente de traitement",
-        description="Libellé métier de l'étape en cours",
+        description="Human-readable label of the current execution step",
     )
     completed_models: list[str] = Field(
         default_factory=list,
-        description="Liste des rubriques cliniques déjà traitées",
+        description="List of clinical section models already extracted",
     )
     force_replace: bool = Field(
         default=False,
-        description="Forcer le recalcul même si la rubrique est déjà présente en base",
+        description="Force recomputation even if the section already exists in persistence",
     )
     preserve_manual_edits: bool = Field(
         default=True,
-        description="Conserver les rubriques modifiées manuellement lors d'une relance globale",
+        description="Preserve manually edited sections during a full rerun",
     )
     total_models: int = Field(
         default=1,
         ge=1,
-        description="Nombre total de rubriques à traiter dans cette tâche",
+        description="Total number of clinical section models to process in this task",
     )
     progress_pct: float = Field(
         default=0.0,
         ge=0.0,
         le=100.0,
-        description="Pourcentage d'avancement (0 à 100)",
+        description="Completion percentage (0 to 100)",
     )
     attempts: int = Field(
         default=0,
         ge=0,
-        description="Nombre de tentatives effectuées",
+        description="Number of execution attempts performed",
     )
     max_retries: int = Field(
         default=2,
         ge=0,
-        description="Nombre maximal de réessais autorisés",
+        description="Maximum number of retry attempts allowed",
     )
     error_message: str | None = Field(
         default=None,
-        description="Message d'erreur en cas d'échec",
+        description="Error message recorded on failure",
     )
     created_at: datetime = Field(
         default_factory=datetime.now,
-        description="Date de création de la tâche",
+        description="Task creation timestamp",
     )
     started_at: datetime | None = Field(
         default=None,
-        description="Date de début de traitement",
+        description="Task execution start timestamp",
     )
     completed_at: datetime | None = Field(
         default=None,
-        description="Date de fin de traitement",
+        description="Task completion timestamp",
     )
     heartbeat_at: datetime | None = Field(
         default=None,
-        description="Dernier signal de vie du worker",
+        description="Latest worker heartbeat timestamp",
     )
     active_agent: str | None = Field(
         default=None,
@@ -225,12 +225,12 @@ class GpuLease(BaseModel):
 
     lease_id: str = Field(
         default_factory=lambda: f"lease_{uuid.uuid4().hex[:10]}",
-        description="Identifiant unique du verrou",
+        description="Unique hardware lease identifier",
     )
-    worker_id: str = Field(description="Identifiant du worker détenteur")
-    domain: str = Field(description="Domaine applicatif (oncology, sma)")
-    job_id: str = Field(description="Identifiant de la tâche en cours")
-    filename: str = Field(description="Fichier RCP en cours de traitement")
+    worker_id: str = Field(description="Identifier of the worker holding the lease")
+    domain: str = Field(description="Clinical application domain (oncology, sma)")
+    job_id: str = Field(description="Identifier of the active queue task")
+    filename: str = Field(description="PatientMDTForm PDF filename being processed")
     job_type: str = Field(default=JobType.WAVE1_ADMIN.value)
     acquired_at: datetime = Field(default_factory=datetime.now)
     heartbeat_at: datetime = Field(default_factory=datetime.now)

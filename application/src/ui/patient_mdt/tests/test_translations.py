@@ -32,7 +32,7 @@ def test_translation_french():
     # Test standard Enum (PatientPriority)
     assert (
         translate(PatientPriority.urgent)
-        == "Priorité haute (Le patient doit être traité de toute urgence)"
+        == "Priorité haute (discussion pré-RCP prioritaire)"
     )
 
     # Test reflection
@@ -70,7 +70,7 @@ def test_translation_english():
     assert translate("First name of the patient") == "First name of the patient"
     assert translate("first_name") == "first_name"
     assert translate(WHOPerformanceStatus._0) == "No limitation of activities (none)"
-    assert translate(PatientPriority.urgent) == "Patient must be treated urgently"
+    assert translate(PatientPriority.urgent) == "High-priority pre-MDT review suggested"
     assert translate("reflection") == "reflection"
     assert (
         translate(

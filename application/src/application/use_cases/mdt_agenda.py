@@ -107,10 +107,20 @@ class MDTAgendaService:
             urgency_score = int(card.get("urgency_score") or 0)
             missing_list = [str(m) for m in (card.get("missing") or []) if m]
             is_comp_raw = card.get("is_complete")
+            raw_comp_status = card.get("completeness_status")
+            comp_status = (
+                raw_comp_status
+                if raw_comp_status in ("yes", "partial", "no", "pending")
+                else None
+            )
             is_complete = (
                 bool(is_comp_raw)
                 if is_comp_raw is not None
-                else (len(missing_list) == 0)
+                else (
+                    comp_status == "yes"
+                    if comp_status is not None
+                    else (len(missing_list) == 0)
+                )
             )
             fname = str(card.get("latest_file") or card.get("file") or "")
             snap = MDTAgendaCandidateSnapshot(
@@ -128,6 +138,7 @@ class MDTAgendaService:
                 ],
                 priority_level=map_urgency_score_to_priority_level(urgency_score),
                 is_complete=is_complete,
+                completeness_status=comp_status or ("yes" if is_complete else "no"),
                 missing_count=len(missing_list),
                 missing_items=missing_list,
                 care_adaptation_suggested=card.get("care_adaptation_suggested"),

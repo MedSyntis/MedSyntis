@@ -57,6 +57,7 @@ from src.models.rcp import (
 )
 from src.routers.dependencies import (
     DomainConfigDep,
+    get_current_user_info,
     get_db,
     require_admin,
     require_db,
@@ -161,7 +162,7 @@ ExtractionServiceDep = Annotated[
 
 
 @router.get("", response_model=list[RCPCardResponse])
-def get_rcp_cards(record_service: RecordServiceDep):
+def get_mdt_form_cards(record_service: RecordServiceDep):
     """Retrieve the summary list of all PatientMDTForm records for the domain."""
     return record_service.list_patient_mdt_form_cards()
 
@@ -311,7 +312,7 @@ def delete_patient(patient_id: str, record_service: RecordServiceDep):
 
 
 @router.post("/patients/{patient_id}/chat", response_model=ChatResponse)
-def chat_with_patient_dossier(
+def chat_with_patient_record(
     patient_id: str,
     request: ChatRequest,
     config: DomainConfigDep,
@@ -376,7 +377,7 @@ def chat_with_patient_dossier(
 
 
 @router.get("/{filename}", response_model=PatientMDTFormDetailResponse)
-def get_rcp_detail(
+def get_mdt_form_detail(
     filename: str,
     config: DomainConfigDep,
     mdt_repo=Depends(get_mdt_form_repo),
@@ -402,7 +403,7 @@ def get_rcp_detail(
 
 
 @router.get("/{filename}/jobs-state", response_model=ActiveJobsStateResponse)
-def get_rcp_jobs_state(
+def get_mdt_form_jobs_state(
     filename: str,
     config: DomainConfigDep,
     extraction_service: ExtractionServiceDep,
@@ -420,7 +421,7 @@ def get_rcp_jobs_state(
 
 
 @router.get("/{filename}/status", response_model=PatientMDTFormStatusResponse)
-def get_rcp_status(
+def get_mdt_form_status(
     filename: str,
     config: DomainConfigDep,
     mdt_repo=Depends(get_mdt_form_repo),
@@ -460,9 +461,13 @@ def get_rcp_status(
     return status_info
 
 
-@router.delete("/{filename}", response_model=MessageResponse)
-def delete_rcp(filename: str, config: DomainConfigDep):
-    """Delete a PatientMDTForm record from the database and disk."""
+@router.delete(
+    "/{filename}",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_admin)],
+)
+def delete_mdt_form(filename: str, config: DomainConfigDep):
+    """Delete a PatientMDTForm record from the database and disk (admin required)."""
     file_path = _safe_mdt_form_path(config.rcp.path, filename)
     mdt_repo = MongoPatientMDTFormRepository(config)
     if not os.path.exists(file_path):
@@ -473,13 +478,22 @@ def delete_rcp(filename: str, config: DomainConfigDep):
                 detail=f"Le dossier RCP '{filename}' n'existe pas.",
             )
 
-    record_service = _build_record_service(config)
-    record_service.delete_patient_mdt_form_document(filename)
+    try:
+        record_service = _build_record_service(config)
+        record_service.delete_patient_mdt_form_document(filename)
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to delete PatientMDTForm %s", filename
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de la suppression du dossier.",
+        ) from err
     return {"message": f"Dossier '{filename}' supprimé avec succès."}
 
 
 @router.post("/upload", response_model=UploadResponse)
-def upload_rcp_file(
+def upload_mdt_form_file(
     config: DomainConfigDep,
     file: UploadFile = File(),
     patient_id: str | None = Form(default=None),
@@ -587,7 +601,7 @@ def upload_rcp_file(
 
 
 @router.post("/{filename}/process", response_model=ProcessResponse)
-def process_rcp(filename: str, request: ProcessRequest, config: DomainConfigDep):
+def process_mdt_form(filename: str, request: ProcessRequest, config: DomainConfigDep):
     """Enqueue a reprocessing job for a specific clinical model or for the complete PatientMDTForm."""
     file_path = _safe_mdt_form_path(config.rcp.path, filename)
     if not os.path.exists(file_path):
@@ -725,7 +739,7 @@ def chat_with_patient_agent(
     response_class=FileResponse,
     responses={200: {"content": {"application/pdf": {}}}},
 )
-def download_rcp_pdf(
+def download_mdt_form_pdf(
     filename: str,
     config: DomainConfigDep,
     inline: Annotated[
@@ -764,14 +778,16 @@ def download_rcp_pdf(
     "/{filename}/missing-items",
     response_model=PatientMDTFormDetailResponse,
 )
-def update_rcp_missing_items(
+def update_mdt_form_missing_items(
     filename: str,
     request: MissingItemsUpdateRequest,
     config: DomainConfigDep,
     record_service: RecordServiceDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
 ):
     """Update missing-items visibility (hide all, toggle item, or replace hidden/missing lists) on a PatientMDTForm."""
     _safe_mdt_form_path(config.rcp.path, filename)
+    effective_editor = str(user_info.get("username") or "").strip() or request.edited_by
     try:
         updated_doc = record_service.update_missing_items_visibility(
             filename=filename,
@@ -779,7 +795,7 @@ def update_rcp_missing_items(
             toggle_item=request.toggle_item,
             hidden_missing_items=request.hidden_missing_items,
             what_missing=request.what_missing,
-            edited_by=request.edited_by,
+            edited_by=effective_editor,
         )
         return serialize_mongo_doc(updated_doc)
     except FileNotFoundError as err:
@@ -792,28 +808,38 @@ def update_rcp_missing_items(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
         ) from err
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to update missing items for %s", filename
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de la mise à jour des éléments manquants.",
+        ) from err
 
 
 @router.patch(
     "/{filename}/sections/{section_name}",
     response_model=PatientMDTFormDetailResponse,
 )
-def update_rcp_section(
+def update_mdt_form_section(
     filename: str,
     section_name: str,
     request: SectionUpdateRequest,
     config: DomainConfigDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
     db=Depends(require_db),
 ):
     """Manually update a clinical, completeness, or decision section on a PatientMDTForm."""
     _safe_mdt_form_path(config.rcp.path, filename)
     record_service = _build_record_service(config, db=db)
+    effective_editor = str(user_info.get("username") or "").strip() or request.edited_by
     try:
         updated_doc = record_service.update_patient_mdt_form_section(
             filename=filename,
             section_name=section_name,
             section_data=request.section_data,
-            edited_by=request.edited_by,
+            edited_by=effective_editor,
         )
         return serialize_mongo_doc(updated_doc)
     except ValueError as err:
@@ -821,13 +847,21 @@ def update_rcp_section(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
         ) from err
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to update section %s on %s", section_name, filename
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de la mise à jour de la rubrique.",
+        ) from err
 
 
 @router.post(
     "/{filename}/sections/{section_name}/rollback",
     response_model=PatientMDTFormDetailResponse,
 )
-def rollback_rcp_section(
+def rollback_mdt_form_section(
     filename: str,
     section_name: str,
     config: DomainConfigDep,
@@ -852,21 +886,31 @@ def rollback_rcp_section(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
         ) from err
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to rollback section %s on %s", section_name, filename
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de la restauration de la rubrique.",
+        ) from err
 
 
 @router.patch(
     "/{filename}/administrative",
     response_model=AdministrativeUpdateResponse,
 )
-def update_rcp_administrative(
+def update_mdt_form_administrative(
     filename: str,
     request: AdministrativeUpdateRequest,
     config: DomainConfigDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
     db=Depends(require_db),
 ):
     """Manually update patient administrative information and synchronize the PatientRecord."""
     _safe_mdt_form_path(config.rcp.path, filename)
     record_service = _build_record_service(config, db=db)
+    effective_editor = str(user_info.get("username") or "").strip() or request.edited_by
     try:
         patient, updated_doc = record_service.update_patient_administrative(
             filename=filename,
@@ -879,7 +923,7 @@ def update_rcp_administrative(
                 "gender": request.gender,
             },
             apply_to_all_patient_forms=request.apply_to_all_patient_forms,
-            edited_by=request.edited_by,
+            edited_by=effective_editor,
         )
         return {
             "patient": patient.model_dump(mode="json"),
@@ -890,27 +934,37 @@ def update_rcp_administrative(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
         ) from err
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to update administrative section on %s", filename
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de la mise à jour administrative.",
+        ) from err
 
 
 @router.post(
     "/{filename}/link-patient",
     response_model=AdministrativeUpdateResponse,
 )
-def link_rcp_to_patient(
+def link_mdt_form_to_patient(
     filename: str,
     request: LinkPatientRequest,
     config: DomainConfigDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
     db=Depends(require_db),
 ):
-    """Link a PatientMDTForm record to an existing PatientRecord."""
+    """Link a PatientMDTForm record to an existing PatientRecord (or create a standalone PatientRecord)."""
     _safe_mdt_form_path(config.rcp.path, filename)
     record_service = _build_record_service(config, db=db)
+    effective_editor = str(user_info.get("username") or "").strip() or request.edited_by
     try:
         patient, updated_doc = record_service.link_mdt_form_to_patient(
             filename=filename,
             target_patient_id=request.target_patient_id,
             override_date_rcp=request.override_date_rcp,
-            edited_by=request.edited_by,
+            edited_by=effective_editor,
         )
         return {
             "patient": patient.model_dump(mode="json"),
@@ -920,4 +974,12 @@ def link_rcp_to_patient(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(err),
+        ) from err
+    except Exception as err:
+        config.set_logger("medsyntis.api").exception(
+            "Failed to link %s to patient %s", filename, request.target_patient_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors du rattachement au dossier patient.",
         ) from err

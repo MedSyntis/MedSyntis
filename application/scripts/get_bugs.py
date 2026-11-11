@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime
 
-# Ajout du dossier application au PYTHONPATH
+# Add the application directory to PYTHONPATH
 script_dir = os.path.dirname(os.path.abspath(__file__))
 app_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if app_dir not in sys.path:
@@ -44,7 +44,7 @@ def _json_default(obj):
 
 
 def format_bugs_report(bugs: list[dict]) -> str:
-    """Formate la liste des rapports de bugs pour un affichage lisible dans le terminal."""
+    """Format the list of bug reports for readable terminal output."""
     category_labels = {k.value: v for k, v in BugCategory.labels().items()}
     severity_labels = {k.value: v for k, v in BugSeverity.labels().items()}
     status_labels = {k.value: v for k, v in BugStatus.labels().items()}
@@ -117,35 +117,35 @@ def format_bugs_report(bugs: list[dict]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Récupère et affiche les rapports de bugs stockés dans MongoDB."
+        description="Fetch and display bug reports stored in MongoDB."
     )
     parser.add_argument(
         "--status",
         choices=[s.value for s in BugStatus],
         default=None,
-        help="Filtrer par statut (open, in_progress, resolved, closed)",
+        help="Filter by status (open, in_progress, resolved, closed)",
     )
     parser.add_argument(
         "--severity",
         choices=[s.value for s in BugSeverity],
         default=None,
-        help="Filtrer par sévérité (low, medium, high, critical)",
+        help="Filter by severity (low, medium, high, critical)",
     )
     parser.add_argument(
         "--category",
         choices=[c.value for c in BugCategory],
         default=None,
-        help="Filtrer par catégorie",
+        help="Filter by category",
     )
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Afficher la sortie au format JSON",
+        help="Output results as JSON",
     )
     args = parser.parse_args(argv)
 
     app_conf = AppConfig()
-    # Désactiver les logs verbeux sur stdout lors de l'exécution CLI
+    # Suppress verbose stdout logs during CLI execution
     app_conf.logs.level = "ERROR"
 
     filter_query: dict = {}

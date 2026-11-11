@@ -104,7 +104,9 @@ export const CLINICAL_TRANSLATIONS_FR: Record<string, string> = {
   reflection: "Réflexion / Synthèse du débat",
   care_adaptation_suggested: "Adaptation de prise en charge suggérée",
   suggested_priority: "Priorité suggérée",
+  priority_reason: "Justification du niveau de priorité",
   proposed_care_type: "Modalité / Axe de prise en charge proposé",
+  orientation_rationale: "Argumentaire clinique pré-RCP",
   clinical_rationale: "Argumentaire clinique pré-RCP",
   // SMA fields
   smn1_deletion_confirmed: "Délétion SMN1 confirmée",
@@ -154,9 +156,16 @@ export const CLINICAL_TRANSLATIONS_FR: Record<string, string> = {
   female: "Femme",
   other: "Autre",
   urgent: "Priorité haute",
+  high: "Priorité haute",
   medium: "Priorité modérée",
   low: "Priorité standard",
+  none: "Non évaluée",
   "no answer": "Non évaluée",
+  "High-priority pre-MDT review suggested": "Priorité haute",
+  "Semi-urgent pre-MDT review suggested": "Priorité modérée",
+  "Patient must be treated urgently": "Priorité haute",
+  "Patient must be treated as soon as possible": "Priorité modérée",
+  "Patient is not urgent": "Priorité standard",
   Pancreas: "Pancréas",
   Colon: "Côlon",
   Liver: "Foie",
@@ -230,6 +239,199 @@ export const CLINICAL_TRANSLATIONS_FR: Record<string, string> = {
   Oral_Thickened: "Voie orale épaissie",
 };
 
+export const CLINICAL_TRANSLATIONS_EN: Record<string, string> = {
+  // Model Class Titles
+  ExpertAnswer: "Specialty Opinions",
+  MTDCompleted: "Pre-MDT Completeness Check",
+  CareOrientationProposal: "Pre-MDT Care Orientation Proposal",
+  GeneticDiagnosis: "Genetic Diagnosis",
+  MotorFunctionStatus: "Motor Function Status (MFM / RULM / CHOP-INTEND)",
+  RespiratoryFunction: "Respiratory Function",
+  OrthopedicAndSpineStatus: "Orthopedic & Spine Status",
+  BulbarAndNutritionalStatus: "Bulbar & Nutritional Status",
+  PatientAdministrative: "Identity & MDT Session",
+  PatientPerformanceStatus: "WHO Performance Status",
+  TumorLocation: "Primary Tumor Location & Stage",
+  CancerDescription: "Tumor Characterization, TNM & RECIST Response",
+  TumorBiology: "Tumor Biology & Biomarkers",
+  HepaticStatus: "Hepatic Function, Child-Pugh & BCLC",
+  NutritionalStatus: "Nutritional Status & Weight Evolution",
+  SurgicalStatus: "Surgical Status & Resectability",
+  RadiologicalExams: "Radiological Examinations",
+  RadiologicExams: "Radiological Examinations",
+  PreviousSurgery: "Previous Curative Surgery",
+  PreviousCurativeSurgery: "Previous Curative Surgery",
+  PlannedSurgery: "Planned Curative Surgery",
+  PlannedCurativeSurgery: "Planned Curative Surgery",
+  Chemotherapy: "Systemic Treatments / Chemotherapy",
+  ChemotherapyTreament: "Systemic Treatments / Chemotherapy",
+  mtd_complete: "Completeness Summary",
+  // Field names
+  first_name: "First name",
+  last_name: "Last name",
+  born_name: "Birth name",
+  age: "Age",
+  date_birth: "Date of birth",
+  date_rcp: "MDT session date",
+  gender: "Gender",
+  performance_status: "WHO Performance Status",
+  tumor_location: "Tumor location",
+  type_of_cancer: "Histological cancer type",
+  histological_grade: "Histological grade",
+  tnm_status: "TNM staging",
+  figo_stage: "FIGO stage",
+  metastatic_status: "Metastatic status (M+)",
+  metastatic_sites: "Metastatic sites",
+  target_lesion_size_mm: "Target lesion size (mm)",
+  recist_response: "Radiological response (RECIST 1.1)",
+  msi_state: "MSI / MSS status",
+  ca19_9: "CA 19-9 (U/mL)",
+  ace: "CEA / ACE (ng/mL)",
+  afp: "Alpha-fetoprotein / AFP (ng/mL)",
+  dpd_uracilemia: "Pre-5FU Uracilemia / DPD (ng/mL)",
+  ras_braf_status: "RAS / BRAF molecular status",
+  her2_status: "HER2 / PD-L1 (CPS) status",
+  bilirubin_umol_l: "Total bilirubin (µmol/L)",
+  child_pugh_score: "Child-Pugh score",
+  bclc_stage: "BCLC stage",
+  weight_kg: "Current weight (kg)",
+  weight_loss_percent: "Weight loss (%)",
+  bmi: "BMI (kg/m²)",
+  resectability_status: "Resectability status",
+  surgery_done: "Resection surgery performed",
+  resection_margin: "Surgical resection margin (R0/R1/R2)",
+  exams_list: "Examinations list",
+  exam_name: "Exam name",
+  exam_date: "Exam date",
+  exam_type: "Exam modality",
+  exam_result: "Exam conclusion / result",
+  previous_curative_surgery: "Previous curative surgery",
+  previous_curative_surgery_date: "Surgery date",
+  planned_curative_surgery: "Planned curative surgery",
+  chemotherapy: "Chemotherapy",
+  chemotherapy_list: "Chemotherapy lines",
+  chemotherapy_name: "Regimen / drug name",
+  chemotherapy_start_date: "Start date",
+  chemotherapy_end_date: "End date",
+  chemotherapy_tolerance: "Tolerance",
+  expert_relevant: "Relevant specialty",
+  patient_priority: "Priority",
+  why_relevant: "Clinical relevance",
+  sources_relevant: "Sources & References",
+  suggestions: "Proposals",
+  suggestion: "Proposal",
+  why: "Clinical justification",
+  references: "References",
+  name: "Name",
+  page: "Page",
+  position: "Section / Position",
+  excerpt: "Excerpt",
+  is_mtd_complete: "Complete record?",
+  what_missing: "Missing items",
+  reflection: "Synthesis & Rationale",
+  care_adaptation_suggested: "Suggested care adaptation",
+  suggested_priority: "Suggested priority",
+  priority_reason: "Priority rationale",
+  proposed_care_type: "Proposed care modality / orientation",
+  orientation_rationale: "Pre-MDT clinical rationale",
+  clinical_rationale: "Pre-MDT clinical rationale",
+  // SMA fields
+  smn1_deletion_confirmed: "Confirmed SMN1 deletion",
+  smn2_copy_count: "SMN2 copy count",
+  other_genetic_variants: "Other genetic variants",
+  sma_type: "SMA type",
+  motor_milestones: "Motor milestones",
+  mfm_scale_version: "MFM version (MFM-32 / MFM-20)",
+  mfm_total_score: "MFM Total score (%)",
+  mfm_d1_score: "MFM D1 — Standing & transfers (%)",
+  mfm_d2_score: "MFM D2 — Axial & proximal (%)",
+  mfm_d3_score: "MFM D3 — Distal (%)",
+  rulm_score: "RULM score",
+  chop_intend_score: "CHOP INTEND score",
+  hfmse_score: "HFMSE score (secondary)",
+  requires_ventilation_support: "Ventilation support required",
+  ventilation_type: "Ventilation type",
+  daily_ventilation_hours: "Ventilation hours/day",
+  uses_cough_assist: "Uses cough assist",
+  forced_vital_capacity_percent: "Forced vital capacity (FVC %)",
+  has_scoliosis: "Scoliosis present",
+  scoliosis_cobb_angle: "Cobb angle",
+  spine_surgery_history: "Spinal surgery history",
+  joint_contractures: "Joint contractures",
+  wheelchair_user: "Wheelchair user",
+  has_dysphagia: "Dysphagia present",
+  feeding_mode: "Feeding mode",
+  history_aspiration_pneumonia: "Aspiration pneumonia history",
+  nutritional_status: "Nutritional status",
+  best_motor_function: "Best motor function",
+  physiotherapy_frequency: "Physiotherapy frequency",
+  non_invasive_ventilation: "Non-invasive ventilation (NIV)",
+  cough_assist_used: "Cough assist used",
+  respiratory_infections_history: "Respiratory infections history",
+  corset_type: "Brace / corset type",
+  current_disease_modifying_therapy: "Current disease-modifying therapy",
+  previous_disease_modifying_therapies: "Previous disease-modifying therapies",
+  treatment_start_date: "Treatment start date",
+  treatment_tolerance_and_response: "Treatment tolerance & response",
+  // Enums & Clinical values
+  Not_given: "Not specified",
+  Homme: "Male",
+  Femme: "Female",
+  Autre: "Other",
+  urgent: "High priority",
+  high: "High priority",
+  medium: "Moderate priority",
+  low: "Standard priority",
+  none: "Not assessed",
+  "no answer": "Not assessed",
+  "High-priority pre-MDT review suggested": "High priority",
+  "Semi-urgent pre-MDT review suggested": "Moderate priority",
+  "Patient must be treated urgently": "High priority",
+  "Patient must be treated as soon as possible": "Moderate priority",
+  "Patient is not urgent": "Standard priority",
+  Pancréas: "Pancreas",
+  Côlon: "Colon",
+  Foie: "Liver",
+  Estomac: "Stomach",
+  Œsophage: "Oesophagus",
+  unknown: "Unknown",
+  Inconnu: "Unknown",
+  Bonne: "Good",
+  Moyenne: "Medium",
+  Mauvaise: "Poor",
+  Oui: "Yes",
+  Non: "No",
+  True: "Yes",
+  False: "No",
+  Partiel: "Partial",
+  Partial: "Partial",
+  Aucun: "None",
+  "Non renseigné": "Not documented",
+  "Non mentionné": "Not mentioned",
+  NIV_BiPAP: "NIV (BiPAP)",
+  Gastrostomy: "Gastrostomy (G-tube)",
+  Nasogastric: "Nasogastric tube",
+  Oral_Thickened: "Thickened oral intake",
+  oncology: "Oncology",
+  sma: "Spinal Muscular Atrophy",
+  // Agents
+  Administrative: "Administrative & Clinical Extraction",
+  "MDT Coordinator": "MDT Coordinator",
+  "Ressource Assistant": "Guidelines Assistant",
+  "pancreas expert": "Digestive Oncology — Pancreas",
+  "oesophagus expert": "Digestive Oncology — Oesophagus",
+  "hepatocellular expert": "Hepatology — Liver & HCC",
+  "neurologist expert": "Neurology — SMA Specialist",
+  "geneticist expert": "Molecular Genetics — SMN1/SMN2",
+  "pulmonologist expert": "Pulmonology — Respiratory Function",
+  "physiotherapy expert": "Physical Medicine & Rehabilitation",
+  "orthopedist expert": "Orthopedic & Spine Surgery",
+};
+
+const CLINICAL_TRANSLATIONS_EN_LOWER = new Map<string, string>(
+  Object.entries(CLINICAL_TRANSLATIONS_EN).map(([k, v]) => [k.toLowerCase(), v]),
+);
+
 export const UI_CATALOG: Record<Language, Record<string, string>> = {
   fr: {
     "app.title": "MedSyntis — Préparation collégiale RCP",
@@ -244,6 +446,13 @@ export const UI_CATALOG: Record<Language, Record<string, string>> = {
     "topbar.theme.auto": "Auto (Système)",
     "topbar.theme.light": "Clair",
     "topbar.theme.dark": "Sombre",
+    "topbar.menu.aria": "Menu contextuel d'affichage et d'accès rapide",
+    "topbar.menu.title": "Plus d'options",
+    "topbar.contrast.heading": "Contraste des couleurs (M3)",
+    "topbar.contrast.auto": "Auto (Système)",
+    "topbar.contrast.standard": "Standard",
+    "topbar.contrast.medium": "Contraste moyen",
+    "topbar.contrast.high": "Contraste élevé",
     "topbar.expert": "Mode expert",
     "queue.banner.idle": "Aucune analyse en cours",
     "queue.banner.running": "analyses en cours",
@@ -290,6 +499,13 @@ export const UI_CATALOG: Record<Language, Record<string, string>> = {
     "topbar.theme.auto": "Auto (System)",
     "topbar.theme.light": "Light",
     "topbar.theme.dark": "Dark",
+    "topbar.menu.aria": "Display and quick-access menu",
+    "topbar.menu.title": "More options",
+    "topbar.contrast.heading": "Color Contrast (M3)",
+    "topbar.contrast.auto": "Auto (System)",
+    "topbar.contrast.standard": "Standard",
+    "topbar.contrast.medium": "Medium contrast",
+    "topbar.contrast.high": "High contrast",
     "topbar.expert": "Expert mode",
     "queue.banner.idle": "No active analysis",
     "queue.banner.running": "analyses running",
@@ -329,9 +545,23 @@ export function t(key: string, lang: Language = "fr"): string {
   return UI_CATALOG[lang]?.[key] ?? UI_CATALOG.fr[key] ?? key;
 }
 
+/**
+ * Zero-allocation inline bilingual selector (`fr` vs `en`).
+ */
+export function tr(lang: Language, fr: string, en: string): string {
+  return lang === "en" ? en : fr;
+}
+
+const ISO_DATE_TEST_RE = /\d{4}-\d{2}-\d{2}/;
+const ISO_DATE_REPLACE_RE =
+  /\b(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g;
+
 export function formatCleanDateString(input: string, lang: Language = "fr"): string {
+  if (input.length < 10 || !ISO_DATE_TEST_RE.test(input)) {
+    return input;
+  }
   return input.replace(
-    /\b(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g,
+    ISO_DATE_REPLACE_RE,
     (_match, yyyy: string, mm: string, dd: string, hh?: string, min?: string) => {
       const datePart = lang === "fr" ? `${dd}/${mm}/${yyyy}` : `${yyyy}-${mm}-${dd}`;
       if (hh && min && !(hh === "00" && min === "00")) {
@@ -347,17 +577,13 @@ export function translateValue(value: unknown, lang: Language = "fr"): string {
     return t("empty.value", lang);
   }
   if (typeof value === "boolean") {
-    if (lang === "fr") return value ? "Oui" : "Non";
-    return value ? "Yes" : "No";
+    return lang === "en" ? (value ? "Yes" : "No") : value ? "Oui" : "Non";
   }
   const str = String(value).trim();
   if (!str) return t("empty.value", lang);
   if (lang === "fr") {
     const translated = CLINICAL_TRANSLATIONS_FR[str] ?? str;
     return formatCleanDateString(translated, "fr");
-  }
-  if (str.toLowerCase() === "partial" || str.toLowerCase() === "partiel") {
-    return "Partial";
   }
   if (
     str === "Not documented in record" ||
@@ -366,5 +592,7 @@ export function translateValue(value: unknown, lang: Language = "fr"): string {
   ) {
     return "Not documented";
   }
-  return formatCleanDateString(str, "en");
+  const translatedEn =
+    CLINICAL_TRANSLATIONS_EN[str] ?? CLINICAL_TRANSLATIONS_EN_LOWER.get(str.toLowerCase()) ?? str;
+  return formatCleanDateString(translatedEn, "en");
 }

@@ -6,8 +6,8 @@ updates:
     schedule:
       interval: "weekly"
     labels:
-      - "dependencies"
-      - "github-actions"
+      - "scope:ci"
+      - "scope:infra"
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -22,8 +22,25 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "python"
+      - "scope:api"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Maintain Python dependencies in the GCS smoke-test utility directory
+  - package-ecosystem: "uv"
+    directory: "/dist/gcloud_test/gcs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "scope:infra"
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -41,9 +58,7 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "javascript"
-      - "web"
+      - "scope:ui-web"
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -54,15 +69,14 @@ updates:
           - "minor"
           - "patch"
 
-  # Maintain Docker dependencies in the dist/docker directory (Dockerfile & Dockerfile.web)
+  # Maintain Docker dependencies in the dist/docker directory (Dockerfile, Dockerfile.api & Dockerfile.web)
   - package-ecosystem: "docker"
     directory: "/dist/docker"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "docker"
+      - "scope:infra"
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -80,8 +94,7 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "docker"
+      - "scope:infra"
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -92,7 +105,7 @@ updates:
           - "minor"
           - "patch"
     ignore:
-      # Milvus standalone relies on etcd 3.5.x; jumping 3.5 -> 3.7 breaks existing etcd data volumes
-      - dependency-name: "coreos/etcd"
+      # Milvus Standalone v3.0 relies on etcd 3.7.x; jumping minor/major etcd series can break existing etcd data volumes
+      - dependency-name: "quay.io/coreos/etcd"
         versions:
-          - ">= 3.6.0"
+          - ">= 3.8.0"

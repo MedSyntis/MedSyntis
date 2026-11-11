@@ -56,8 +56,9 @@ def test_remote_llm_allowed_with_explicit_opt_out():
     assert conf.allow_remote_llm
 
 
-def test_is_admin_open_when_not_configured():
-    assert AppConfig(admin_users="").is_admin("anyone")
+def test_is_admin_open_only_in_dev_mode_when_not_configured():
+    assert AppConfig(admin_users="", dev_mode=True).is_admin("anyone")
+    assert not AppConfig(admin_users="", dev_mode=False).is_admin("anyone")
 
 
 def test_is_admin_restricted_list_is_case_insensitive():

@@ -10,13 +10,14 @@ class VectorialDataBaseClient:
     vectordb: VectorialDataBase
 
     def __init__(self, config: AppConfig, coll_prefix: str | None = None) -> None:
-        if config.dbvec.type.lower() == "chromadb":
+        db_type = config.dbvec.type.strip().lower()
+        if db_type in ("chroma", "chromadb"):
             from src.infrastructure.vectorial.chromadb import Chromadb
 
             self.vectordb = Chromadb(config, coll_prefix)
-        elif config.dbvec.type.lower() == "mongodb":
+        elif db_type == "mongodb":
             self.vectordb = Mongodb(config, coll_prefix)
-        elif config.dbvec.type.lower() == "milvus":
+        elif db_type == "milvus":
             self.vectordb = MilvusDB(config, coll_prefix)
         else:
             raise ValueError(f"{config.dbvec.type} not yet supported")

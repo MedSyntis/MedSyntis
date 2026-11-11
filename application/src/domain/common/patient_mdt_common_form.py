@@ -6,17 +6,19 @@ from enum import Enum
 
 import inspect
 import json
-from typing import Any, ClassVar, Optional, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, PastDatetime, ValidationError, model_validator
 
-from src.application.agent.agent import MedSyntisAgent
 from src.domain.common import common_ressources
 from src.domain.common.agents import Agents
 from src.domain.common.common_ressources import *  # noqa: F403
 from src.domain.common.common_ressources import MarkdownStr
 from src.domain.worker.queue_job import RCPProcessingStatus
+
+if TYPE_CHECKING:
+    from src.application.agent.agent import MedSyntisAgent
 
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
@@ -265,7 +267,6 @@ class PatientMDTForm:
         return instance
 
     NON_EDITABLE_SECTIONS: tuple[str, ...] = (
-        "CareOrientationProposal",
         "ExpertAnswer",
         "PatientMDTFormCheck",
     )
@@ -276,7 +277,9 @@ class PatientMDTForm:
     ) -> bool:
         """
         Return True if `section_or_model` can be manually modified by a user.
-        AI synthesis/proposal sections (`CareOrientationProposal`, `ExpertAnswer`) are read-only.
+        Clinicians can manually edit `CareOrientationProposal` and `MTDCompleted`
+        for human oversight (French CSP Art. L. 4001-2), while raw per-specialist
+        `ExpertAnswer` and `PatientMDTFormCheck` remain read-only.
         """
         if isinstance(section_or_model, str):
             model_cls = cls.get_section_model(section_or_model)
@@ -287,7 +290,7 @@ class PatientMDTForm:
 
         if name in cls.NON_EDITABLE_SECTIONS or model_cls is None:
             return False
-        if name == "MTDCompleted":
+        if name in ("MTDCompleted", "CareOrientationProposal"):
             return True
         if getattr(model_cls, "collaborative", False):
             return False
@@ -755,27 +758,32 @@ class PatientMDTForm:
                         raw_prio.value if isinstance(raw_prio, Enum) else raw_prio
                     ).lower()
                     why_rel = str(agent_data.get("why_relevant") or "").strip()
-                    for urgency in list(PatientPriority):  # noqa: F405
-                        if p_prio in (urgency.value.lower(), urgency.name.lower()):
+                    resolved_urgency = PatientPriority._missing_(p_prio)  # noqa: F405
+                    if resolved_urgency is None:
+                        for cand in list(PatientPriority):  # noqa: F405
+                            if p_prio in (cand.value.lower(), cand.name.lower()):
+                                resolved_urgency = cand
+                                break
+                    if resolved_urgency is not None:
+                        exp_score = 0
+                        if resolved_urgency.name == "urgent":
+                            exp_score = 2
+                            if urgency_score < 2:
+                                urgency_score = 2
+                                urgency_level = "Urgent"
+                        elif resolved_urgency.name == "medium":
+                            exp_score = 1
+                            if urgency_score < 1:
+                                urgency_score = 1
+                                urgency_level = "Semi-urgent"
+                        elif resolved_urgency.name == "low":
                             exp_score = 0
-                            if urgency.name == "urgent":
-                                exp_score = 2
-                                if urgency_score < 2:
-                                    urgency_score = 2
-                                    urgency_level = "Urgent"
-                            elif urgency.name == "medium":
-                                exp_score = 1
-                                if urgency_score < 1:
-                                    urgency_score = 1
-                                    urgency_level = "Semi-urgent"
-                            elif urgency.name == "low":
-                                exp_score = 0
-                                if urgency_score == 0:
-                                    urgency_level = "Standard"
-                            if why_rel and why_rel.lower() != "no data":
-                                expert_priority_entries.append(
-                                    (agent_name, exp_score, why_rel)
-                                )
+                            if urgency_score == 0:
+                                urgency_level = "Standard"
+                        if why_rel and why_rel.lower() != "no data":
+                            expert_priority_entries.append(
+                                (agent_name, exp_score, why_rel)
+                            )
 
         def _parse_completeness_flag(val: Any) -> bool | str | None:
             if isinstance(val, bool):
@@ -850,26 +858,25 @@ class PatientMDTForm:
             and isinstance(d["MTDCompleted"], dict)
             and len(d["MTDCompleted"]) > 0
         )
+        raw_status = processing_status
         status_upper = (
             (
-                processing_status.value
-                if isinstance(processing_status, Enum)
-                else str(processing_status or "COMPLETED")
+                raw_status.value
+                if isinstance(raw_status, Enum)
+                else str(
+                    raw_status or ("COMPLETED" if has_mtd_completed else "PENDING")
+                )
             )
             .strip()
             .upper()
         )
-        is_ai_completed = (
+        is_manually_edited = cls.is_section_manually_edited(d, "MTDCompleted")
+        is_ai_completed = is_manually_edited or (
             status_upper == "COMPLETED" and has_mtd_completed
-        ) or cls.is_section_manually_edited(d, "MTDCompleted")
+        )
 
-        if hide_missing_items or (
-            raw_missing and all(m in hidden_set for m in raw_missing)
-        ):
-            completeness_status = "yes"
-            is_complete = True
-        elif not is_ai_completed:
-            completeness_status = "no"
+        if not is_ai_completed:
+            completeness_status = "pending"
             is_complete = False
         elif raw_is_mtd_complete is True:
             completeness_status = "yes"
@@ -881,14 +888,18 @@ class PatientMDTForm:
             completeness_status = "no"
             is_complete = False
         else:
-            is_complete = len(missing) == 0
+            is_complete = len(raw_missing) == 0
             completeness_status = "yes" if is_complete else "no"
 
-        if completeness_status == "yes":
+        if completeness_status == "pending":
+            completeness_label = "En attente IA"
+            completeness_tone = "neutral"
+            completeness_summary = "En attente d'analyse IA"
+        elif completeness_status == "yes":
             completeness_label = "Oui"
             completeness_tone = "green"
             completeness_summary = (
-                f"{len(missing)} élément(s) facultatif manquant(s)"
+                f"{len(missing)} élément(s) facultatif(s) manquant(s)"
                 if len(missing) > 0
                 else "Dossier complet"
             )
@@ -947,22 +958,27 @@ class PatientMDTForm:
             is_manual_proposal = cls.is_section_manually_edited(
                 d, "CareOrientationProposal"
             )
-            for urgency in list(PatientPriority):  # noqa: F405
-                if s_prio in (urgency.value.lower(), urgency.name.lower()):
-                    if urgency.name == "urgent":
-                        urgency_score = 2
-                        urgency_level = "Urgent"
-                    elif urgency.name == "medium":
-                        if is_manual_proposal or urgency_score < 1:
-                            urgency_score = 1
-                            urgency_level = "Semi-urgent"
-                    elif urgency.name == "low":
-                        if is_manual_proposal or urgency_score == 0:
-                            urgency_score = 0
-                            urgency_level = "Standard"
-                    elif urgency.name == "not_given" and is_manual_proposal:
+            resolved_s_prio = PatientPriority._missing_(s_prio)  # noqa: F405
+            if resolved_s_prio is None:
+                for cand in list(PatientPriority):  # noqa: F405
+                    if s_prio in (cand.value.lower(), cand.name.lower()):
+                        resolved_s_prio = cand
+                        break
+            if resolved_s_prio is not None:
+                if resolved_s_prio.name == "urgent":
+                    urgency_score = 2
+                    urgency_level = "Urgent"
+                elif resolved_s_prio.name == "medium":
+                    if is_manual_proposal or urgency_score < 1:
+                        urgency_score = 1
+                        urgency_level = "Semi-urgent"
+                elif resolved_s_prio.name == "low":
+                    if is_manual_proposal or urgency_score == 0:
                         urgency_score = 0
-                        urgency_level = "Indéfini"
+                        urgency_level = "Standard"
+                elif resolved_s_prio.name == "not_given" and is_manual_proposal:
+                    urgency_score = 0
+                    urgency_level = "Indéfini"
         elif (
             cls.is_section_manually_edited(d, "CareOrientationProposal")
             and care_adaptation_suggested is False
@@ -1185,11 +1201,14 @@ class PatientMDTForm:
         @model_validator(mode="after")
         def check_dates_coherence(self):
             now = datetime.now()
+            max_future_date = datetime(now.year + 1, 12, 31, 23, 59, 59)
             if self.date_birth and self.date_birth.year < (now.year - 150):
                 self.date_birth = None
 
-            if self.date_rcp and self.date_rcp.year < (now.year - 5):
-                self.date_rcp = None
+            if self.date_rcp:
+                rcp_naive = self.date_rcp.replace(tzinfo=None)
+                if rcp_naive.year < 1970 or rcp_naive > max_future_date:
+                    self.date_rcp = None
 
             if self.date_birth and self.date_rcp:
                 if self.date_birth.replace(tzinfo=None) > self.date_rcp.replace(
@@ -1209,8 +1228,8 @@ class PatientMDTForm:
             Format all dates strictly as YYYY-MM-DD (e.g. 1956-06-04).
             Ensure dates are coherent:
             1. Date of birth must be less than 150 years ago.
-            2. Date of RCP must be less than 5 years ago.
-            3. Date of birth must be strictly before Date of RCP.
+            2. Date of RCP must be in 1970 or later and no further than next year.
+            3. Date of birth must be before or on Date of RCP.
             """
 
     class ExpertAnswer(default_model):
@@ -1220,7 +1239,7 @@ class PatientMDTForm:
             description="Is your expertise relevant for this patient's case?"
         )
         patient_priority: PatientPriority = Field(  # noqa: F405
-            description="Urgency of the patient's treatment"
+            description="Suggested priority level for pre-MDT review"
         )
         why_relevant: MarkdownStr = Field(
             description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
@@ -1229,12 +1248,12 @@ class PatientMDTForm:
             description="Give the sources of your relevant answer"
         )
         suggestions: list[ExpertSuggestion] = Field(  # noqa: F405
-            description="List of suggestions. Empty if expert is not relevant."
+            description="Pre-MDT orientation options grounded in guidelines. Empty if expert is not relevant."
         )
 
         question: ClassVar[str] = """
-            As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
-            You can use tools multiple times for each element and have more scientific elements.
+            As an expert in your field, assess the suggested priority level for pre-MDT collegial review, determine if your expertise is relevant to this case, and provide pre-MDT orientation options grounded in guidelines.
+            You can use tools multiple times for each element and retrieve supporting scientific references.
             """
 
     class MTDCompleted(default_model):
