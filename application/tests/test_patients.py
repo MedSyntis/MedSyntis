@@ -253,12 +253,12 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             bytes_a = b"%PDF-1.4 Patient A RCP Content"
             bytes_b = b"%PDF-1.4 Patient B Different RCP Content"
 
-            # 1. First import of "fiche_rcp.pdf" -> renamed with hash, not a duplicate
+            # 1. First import of "fiche_rcp.pdf" -> opaque hash filename, not a duplicate
             fname1, is_dup1 = extraction_service.resolve_upload(
                 bytes_a, "fiche_rcp.pdf"
             )
             self.assertFalse(is_dup1)
-            self.assertTrue(fname1.startswith("fiche_rcp_"))
+            self.assertTrue(fname1.startswith("doc_"))
             self.assertTrue(fname1.endswith(".pdf"))
 
             # Simulate writing the file to disk

@@ -291,8 +291,9 @@ class Mongodb:
         fallback_file: str | None = None,
     ) -> dict | None:
         """
-        Find an existing patient by deterministic pseudonymized ID (`last_name + first_name + date_birth`),
-        falling back to `name_key` when `date_birth` was missing on an earlier or current extraction.
+        Find an existing patient strictly by exact `(first_name, last_name, date_birth)` identity
+        (or per-file provisional ID when `date_birth` is missing). Never auto-merges on `name_key` alone
+        to prevent silent homonym collisions under RNIV/HDS identity vigilance rules.
         """
         from src.domain.patient import Patient
 
@@ -302,23 +303,7 @@ class Mongodb:
             date_birth=date_birth,
             fallback_file=fallback_file,
         )
-        found = self.get_patient(exact_id)
-        if found is not None:
-            return found
-
-        name_key = Patient.build_name_key(first_name=first_name, last_name=last_name)
-        if not name_key:
-            return None
-
-        # If date_birth is missing in the newly extracted form, match any existing patient with the same name_key
-        if date_birth is None:
-            return self.get_document("patients", {"name_key": name_key})
-
-        # If date_birth is present, check if a previous patient record was created without date_birth
-        no_dob_id = Patient.build_id(first_name=first_name, last_name=last_name)
-        return self.get_document(
-            "patients", {"name_key": name_key, "date_birth": None}
-        ) or self.get_patient(no_dob_id)
+        return self.get_patient(exact_id)
 
     def upsert_patient(self, patient_data: dict, filename: str | None = None) -> dict:
         """

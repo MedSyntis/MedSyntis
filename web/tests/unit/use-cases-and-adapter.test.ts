@@ -718,7 +718,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
     expect((await adapter.processFullForm("doc.pdf", true, "oncology")).jobId).toBe("job-full-1");
     await adapter.linkFormToPatient("doc.pdf", "P-1", "oncology");
 
-    const pdfBuf = await adapter.getFormPdfBuffer("doc.pdf", "oncology", "bbox");
+    const pdfBuf = await adapter.getFormPdfBuffer("doc.pdf", "oncology");
     expect(pdfBuf).toBeInstanceOf(Buffer);
 
     const chatReply = await adapter.askDossierQuestion(

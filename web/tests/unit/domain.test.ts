@@ -1151,10 +1151,9 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(byKey.get("HepaticStatus.bilirubin_umol_l")?.points.map((p) => p.numericValue)).toEqual([
       85.0, 14.0,
     ]);
-    expect(byKey.get("Chemotherapy.chemotherapy_name")?.points.map((p) => p.displayValue)).toEqual([
-      "FOLFIRINOX",
-      "FOLFIRINOX",
-    ]);
+    expect(
+      byKey.get("ChemotherapyTreament.chemotherapy_name")?.points.map((p) => p.displayValue),
+    ).toEqual(["FOLFIRINOX", "FOLFIRINOX"]);
   });
 
   it("renders patient dashboard panel and ECharts SSR SVG across FR/EN, summary states, bilateral series, and qualitative swimlanes", () => {

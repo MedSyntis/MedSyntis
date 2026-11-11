@@ -107,11 +107,7 @@ export interface MedsyntisApiPort {
     domain: ClinicalDomain,
     editedBy?: string,
   ): Promise<void>;
-  getFormPdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    variant?: "plain" | "bbox",
-  ): Promise<Buffer | null>;
+  getFormPdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null>;
   askDossierQuestion(
     target: { filename?: string; patientId?: string },
     question: string,

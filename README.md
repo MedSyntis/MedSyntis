@@ -57,7 +57,7 @@
   * `expert_grouping`: Clusters cases sharing the same specialists into contiguous passage windows to minimize physician waiting time.
   * `manual`: Full drag/move and pin control by the MDT coordinator or medical secretary.
 * **Specialty Quorum Verification**: Real-time calculation of specialist attendance windows and visual quorum warnings when a required specialist is absent for an enrolled case.
-* **Interactive PDF Source Viewer with Bounding-Box Highlights**: Side-by-side PDF reader that jumps directly to cited pages and highlights extracted clinical evidence (`bbox` overlay) inside the original medical report.
+* **Interactive PDF Source Viewer**: Side-by-side PDF reader with HTTP Byte-Range streaming that jumps directly to cited pages inside the original medical report or clinical guideline.
 * **Unconditional Preservation of Human Edits (`manual_edits`)**: Any correction made by a clinician or medical secretary is explicitly badged, audited, and locked against being overwritten by subsequent AI re-analyses, with one-click section rollback available at any time.
 
 ---

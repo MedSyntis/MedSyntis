@@ -65,10 +65,12 @@ export const SMA_METRIC_SPECS: MetricDescriptorSpec[] = parseMetricCatalog([
   "MotorFunctionStatus.mfm_d3_score|MFM D3 (Motricité distale)|%|higher_is_better|numeric_or_mixed|0|100",
   "MotorFunctionStatus.rulm_score|Score RULM (Membre supérieur)|/ 37|higher_is_better|numeric_or_mixed|0|37",
   "MotorFunctionStatus.chop_intend_score|Score CHOP-INTEND|/ 64|higher_is_better|numeric_or_mixed|0|64",
+  "MotorFunctionStatus.hfmse_score|Score HFMSE|/ 66|higher_is_better|numeric_or_mixed|0|66",
   "RespiratoryFunction.forced_vital_capacity_percent|Capacité Vitale Forcée (CVF)|%|higher_is_better|numeric_or_mixed|0|140",
   "RespiratoryFunction.daily_ventilation_hours|Ventilation quotidienne|h/j|lower_is_better|numeric_or_mixed|0|24",
   "OrthopedicAndSpineStatus.scoliosis_cobb_angle|Angle de Cobb (Scoliose)|°|lower_is_better|numeric_or_mixed|0|120",
   "PatientPerformanceStatus.performance_status|Statut OMS / WHO|/ 4|lower_is_better|numeric_or_mixed|0|4",
+  "MotorFunctionStatus.sma_type|Type clinique SMA||neutral|categorical",
   "MotorFunctionStatus.motor_milestones|Jalons moteurs acquis||neutral|list",
   "RespiratoryFunction.ventilation_type|Support ventilatoire||neutral|categorical",
   "BulbarAndNutritionalStatus.feeding_mode|Mode d'alimentation||neutral|categorical",
@@ -102,8 +104,8 @@ export const ONCOLOGY_METRIC_SPECS: MetricDescriptorSpec[] = parseMetricCatalog(
   "HepaticStatus.child_pugh_score|Score de Child-Pugh||neutral|categorical",
   "HepaticStatus.bclc_stage|Stade BCLC (CHC)||neutral|categorical",
   "NutritionalStatus.nutritional_status|Statut nutritionnel||neutral|categorical",
-  "Chemotherapy.chemotherapy_name|Ligne de chimiothérapie||neutral|categorical",
-  "Chemotherapy.chemotherapy_tolerance|Tolérance du traitement||neutral|categorical",
+  "ChemotherapyTreament.chemotherapy_name|Ligne de chimiothérapie||neutral|categorical",
+  "ChemotherapyTreament.chemotherapy_tolerance|Tolérance du traitement||neutral|categorical",
 ]);
 
 export function getDomainMetricSpecs(domain: ClinicalDomain): MetricDescriptorSpec[] {
@@ -264,14 +266,14 @@ export function buildPatientMetricSeriesFromForms(
 
     chronological.forEach((form, idx) => {
       let sec = form.sections[spec.section];
-      if (!sec && spec.section === "Chemotherapy") {
-        sec = form.sections.ChemotherapyTreament;
+      if (!sec && spec.section === "ChemotherapyTreament") {
+        sec = form.sections.Chemotherapy;
       }
       if (!sec) return;
       let rawVal = sec[spec.field];
       if (
         (rawVal === undefined || rawVal === null || rawVal === "") &&
-        spec.section === "Chemotherapy" &&
+        spec.section === "ChemotherapyTreament" &&
         Array.isArray(sec.chemotherapy_list) &&
         sec.chemotherapy_list.length > 0
       ) {
@@ -298,7 +300,9 @@ export function buildPatientMetricSeriesFromForms(
             ? Math.min(1, Math.max(0, daysSinceFirst / totalSpanDays))
             : idx / (chronological.length - 1);
 
-      const manualMeta = form.manualEdits?.[spec.section];
+      const manualMeta =
+        form.manualEdits?.[spec.section] ??
+        (spec.section === "ChemotherapyTreament" ? form.manualEdits?.Chemotherapy : undefined);
       const isManual = Boolean(manualMeta);
 
       let deltaNumeric: number | null = null;

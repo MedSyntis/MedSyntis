@@ -37,26 +37,7 @@ class InMemoryPatientRepository:
         )
         if exact_id in self._patients:
             return self._patients[exact_id].model_copy(deep=True)
-
-        name_key = Patient.build_name_key(first_name=first_name, last_name=last_name)
-        if not name_key:
-            return None
-
-        if date_birth is None:
-            for p in self._patients.values():
-                if p.name_key == name_key:
-                    return p.model_copy(deep=True)
-            return None
-
-        for p in self._patients.values():
-            if p.name_key == name_key and p.date_birth is None:
-                return p.model_copy(deep=True)
-        no_dob_id = Patient.build_id(first_name=first_name, last_name=last_name)
-        return (
-            self._patients[no_dob_id].model_copy(deep=True)
-            if no_dob_id in self._patients
-            else None
-        )
+        return None
 
     def list_all(self) -> list[Patient]:
         return [p.model_copy(deep=True) for p in self._patients.values()]

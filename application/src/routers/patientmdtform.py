@@ -1,5 +1,5 @@
 import os
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -531,14 +531,18 @@ def upload_mdt_form_file(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Le contenu du fichier n'est pas un PDF valide.",
             )
+        original_name = os.path.basename(
+            (file.filename or "mdt_form.pdf").replace("\\", "/")
+        ).strip()
         extraction_service = _build_extraction_service(config)
         filename, is_duplicate = extraction_service.resolve_upload(
-            file_bytes, file.filename
+            file_bytes, original_name
         )
 
         if is_duplicate:
             return {
                 "filename": filename,
+                "original_filename": original_name,
                 "domain": config.domain,
                 "is_duplicate": True,
                 "batch_id": batch_id,
@@ -551,14 +555,27 @@ def upload_mdt_form_file(
         with open(target_path, "wb") as buffer:
             buffer.write(file_bytes)
 
+        extraction_service.mdt_form_repo.upsert_fields(
+            filename,
+            {"original_filename": original_name},
+            set_on_insert={"file": filename},
+        )
+
         if _is_queue_enabled(config):
             enqueue_res = extraction_service.enqueue_batch(
-                files_payload=[{"filename": filename, "patient_id": patient_id}],
+                files_payload=[
+                    {
+                        "filename": filename,
+                        "original_filename": original_name,
+                        "patient_id": patient_id,
+                    }
+                ],
                 run_full_ai=run_full_ai,
                 batch_id=batch_id,
             )
             return {
                 "filename": filename,
+                "original_filename": original_name,
                 "domain": config.domain,
                 "patient_id": patient_id,
                 "batch_id": enqueue_res["batch_id"],
@@ -581,6 +598,7 @@ def upload_mdt_form_file(
 
         return {
             "filename": filename,
+            "original_filename": original_name,
             "domain": config.domain,
             "is_duplicate": False,
             "batch_id": batch_id,
@@ -745,33 +763,22 @@ def download_mdt_form_pdf(
     inline: Annotated[
         bool, Query(description="Serve PDF inline instead of attachment")
     ] = False,
-    variant: Annotated[
-        Literal["plain", "bbox"] | None,
-        Query(
-            description="PDF variant ('bbox' serves <filename>.bbox if available on disk, falling back to plain PDF)"
-        ),
-    ] = None,
 ):
-    """Download or serve inline the PDF file (or its highlighted `.bbox` variant) for a PatientMDTForm record."""
+    """Download or serve inline the PDF file for a PatientMDTForm record."""
     file_path = _safe_mdt_form_path(config.rcp.path, filename)
-    bbox_path = f"{file_path}.bbox"
-    if variant == "bbox" and os.path.exists(bbox_path):
-        target_path = bbox_path
-    elif os.path.exists(file_path):
-        target_path = file_path
-    else:
+    if not os.path.exists(file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Le fichier '{filename}' n'a pas été trouvé ({config.domain}).",
         )
     if inline:
         return FileResponse(
-            target_path,
+            file_path,
             media_type="application/pdf",
             filename=filename,
             content_disposition_type="inline",
         )
-    return FileResponse(target_path, media_type="application/pdf", filename=filename)
+    return FileResponse(file_path, media_type="application/pdf", filename=filename)
 
 
 @router.patch(

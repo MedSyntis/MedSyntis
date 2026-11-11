@@ -938,24 +938,20 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     }
   }
 
-  async getFormPdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    variant: "plain" | "bbox" = "plain",
-  ): Promise<Buffer | null> {
-    const cacheKey = `${domain}:${variant}:${filename}`;
+  async getFormPdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null> {
+    const cacheKey = `${domain}:${filename}`;
     const now = Date.now();
     const cached = this.pdfBufferCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
       return cached.data;
     }
     try {
-      const url = `${this.baseUrl}/api/v1/patientmdtform/${encodeURIComponent(filename)}/pdf?inline=true&variant=${variant}&domain=${encodeURIComponent(domain)}`;
+      const url = `${this.baseUrl}/api/v1/patientmdtform/${encodeURIComponent(filename)}/pdf?inline=true&domain=${encodeURIComponent(domain)}`;
       const resp = await this.fetchImpl(url, {
         headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
       });
       if (!resp.ok) {
-        if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain, variant);
+        if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain);
         return null;
       }
       const arr = await resp.arrayBuffer();
@@ -972,7 +968,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       }
       return buf;
     } catch (err) {
-      if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain, variant);
+      if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain);
       throw err;
     }
   }

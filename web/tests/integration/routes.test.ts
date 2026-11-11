@@ -1165,11 +1165,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(badFormPdf.statusCode).toBe(400);
 
-    const bboxFormPdf = await app.inject({
+    const plainFormPdf = await app.inject({
       method: "GET",
-      url: "/files/forms/jeanne_fictive_2026_11_06.pdf/pdf?variant=bbox",
+      url: "/files/forms/jeanne_fictive_2026_11_06.pdf/pdf",
     });
-    expect(bboxFormPdf.statusCode).toBe(200);
+    expect(plainFormPdf.statusCode).toBe(200);
 
     const badResPdf = await app.inject({
       method: "GET",
@@ -1285,7 +1285,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(dossierRes.body).toContain('data-testid="patient_dashboard_raw_table"');
     expect(dossierRes.body).toContain("<svg ");
     expect(dossierRes.body).not.toContain(">CancerDescription.tnm_status<");
-    expect(dossierRes.body).not.toContain(">Chemotherapy.chemotherapy_name<");
+    expect(dossierRes.body).not.toContain(">ChemotherapyTreament.chemotherapy_name<");
 
     // 2. Trigger on-demand summary regeneration via POST /patients/A-1042/summary
     const triggerRes = await app.inject({

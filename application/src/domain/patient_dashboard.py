@@ -181,11 +181,12 @@ SMA_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = _parse_metric_descriptor
         "MotorFunctionStatus.mfm_d3_score|MFM D3 (Motricité distale)|Fonction motrice|%|0.0|100.0|higher_is_better|numeric_or_mixed",
         "MotorFunctionStatus.rulm_score|Score RULM (Membre supérieur)|Fonction motrice|/ 37|0.0|37.0|higher_is_better|numeric_or_mixed",
         "MotorFunctionStatus.chop_intend_score|Score CHOP-INTEND|Fonction motrice|/ 64|0.0|64.0|higher_is_better|numeric_or_mixed",
+        "MotorFunctionStatus.hfmse_score|Score HFMSE|Fonction motrice|/ 66|0.0|66.0|higher_is_better|numeric_or_mixed",
         "RespiratoryFunction.forced_vital_capacity_percent|Capacité Vitale Forcée (CVF)|Fonction respiratoire|%|0.0|140.0|higher_is_better|numeric_or_mixed",
         "RespiratoryFunction.daily_ventilation_hours|Ventilation quotidienne|Fonction respiratoire|h/j|0.0|24.0|lower_is_better|numeric_or_mixed",
         "OrthopedicAndSpineStatus.scoliosis_cobb_angle|Angle de Cobb (Scoliose)|Statut orthopédique & Rachis|°|0.0|120.0|lower_is_better|numeric_or_mixed",
         "PatientPerformanceStatus.performance_status|Statut OMS / WHO|État général|/ 4|0.0|4.0|lower_is_better|numeric_or_mixed",
-        "MotorFunctionStatus.best_motor_function|Meilleure fonction motrice|Fonction motrice||||neutral|categorical",
+        "MotorFunctionStatus.sma_type|Type clinique SMA|Fonction motrice||||neutral|categorical",
         "MotorFunctionStatus.motor_milestones|Jalons moteurs acquis|Fonction motrice||||neutral|list",
         "RespiratoryFunction.ventilation_type|Support ventilatoire|Fonction respiratoire||||neutral|categorical",
         "BulbarAndNutritionalStatus.feeding_mode|Mode d'alimentation|Nutrition & Déglutition||||neutral|categorical",
@@ -468,8 +469,8 @@ ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         value_type="categorical",
     ),
     PatientMetricDescriptor(
-        metric_key="Chemotherapy.chemotherapy_name",
-        section="Chemotherapy",
+        metric_key="ChemotherapyTreament.chemotherapy_name",
+        section="ChemotherapyTreament",
         field="chemotherapy_name",
         label="Ligne de chimiothérapie",
         clinical_category="Chirurgie & Traitements",
@@ -478,8 +479,8 @@ ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         value_type="categorical",
     ),
     PatientMetricDescriptor(
-        metric_key="Chemotherapy.chemotherapy_tolerance",
-        section="Chemotherapy",
+        metric_key="ChemotherapyTreament.chemotherapy_tolerance",
+        section="ChemotherapyTreament",
         field="chemotherapy_tolerance",
         label="Tolérance de la chimiothérapie",
         clinical_category="Chirurgie & Traitements",
@@ -683,14 +684,17 @@ def build_patient_metric_series(
 
         for pos, (dt, _, doc) in enumerate(dated_forms):
             sec_data = doc.get(desc.section)
-            if not isinstance(sec_data, dict) and desc.section == "Chemotherapy":
-                sec_data = doc.get("ChemotherapyTreament")
+            if (
+                not isinstance(sec_data, dict)
+                and desc.section == "ChemotherapyTreament"
+            ):
+                sec_data = doc.get("Chemotherapy")
             if not isinstance(sec_data, dict):
                 continue
             raw_val = sec_data.get(desc.field)
             if (
                 (raw_val is None or raw_val == "" or raw_val == [])
-                and desc.section == "Chemotherapy"
+                and desc.section == "ChemotherapyTreament"
                 and isinstance(sec_data.get("chemotherapy_list"), list)
                 and sec_data["chemotherapy_list"]
             ):
@@ -718,6 +722,11 @@ def build_patient_metric_series(
             manual_edits = doc.get("manual_edits")
             manual_meta = (
                 manual_edits.get(desc.section)
+                or (
+                    manual_edits.get("Chemotherapy")
+                    if desc.section == "ChemotherapyTreament"
+                    else None
+                )
                 if isinstance(manual_edits, dict)
                 else None
             )

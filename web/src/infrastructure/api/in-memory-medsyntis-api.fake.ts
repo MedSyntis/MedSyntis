@@ -1382,11 +1382,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     }
   }
 
-  async getFormPdfBuffer(
-    filename: string,
-    _domain: ClinicalDomain,
-    _variant?: "plain" | "bbox",
-  ): Promise<Buffer | null> {
+  async getFormPdfBuffer(filename: string, _domain: ClinicalDomain): Promise<Buffer | null> {
     const form = this.forms.get(filename);
     if (!form) return MINIMAL_PDF_BUFFER;
     const admin = (form.sections.Administrative ?? {}) as Record<string, unknown>;

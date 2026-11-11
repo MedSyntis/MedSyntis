@@ -215,10 +215,10 @@ def test_get_resource_file_serves_pdf_inline_and_validates_path(
 
 
 # ---------------------------------------------------------------------------
-# 4. GET /api/v1/patientmdtform/{filename}/pdf (?inline=true & ?variant=bbox)
+# 4. GET /api/v1/patientmdtform/{filename}/pdf (?inline=true)
 # ---------------------------------------------------------------------------
-def test_download_rcp_pdf_inline_and_bbox_variant(api_app, client, tmp_path):
-    """Verify GET /patientmdtform/{filename}/pdf supports ?inline=true and ?variant=bbox."""
+def test_download_rcp_pdf_attachment_and_inline(api_app, client, tmp_path):
+    """Verify GET /patientmdtform/{filename}/pdf supports attachment and ?inline=true."""
     conf = api_deps.get_base_config().model_copy()
     conf.rcp.path = str(tmp_path)
     plain_pdf = tmp_path / "doc1.pdf"
@@ -236,23 +236,7 @@ def test_download_rcp_pdf_inline_and_bbox_variant(api_app, client, tmp_path):
     resp_inline = client.get("/api/v1/patientmdtform/doc1.pdf/pdf?inline=true")
     assert resp_inline.status_code == 200
     assert "inline" in resp_inline.headers.get("content-disposition", "")
-
-    # Variant bbox fallback when .bbox does not exist yet
-    resp_bbox_fallback = client.get(
-        "/api/v1/patientmdtform/doc1.pdf/pdf?inline=true&variant=bbox"
-    )
-    assert resp_bbox_fallback.status_code == 200
-    assert resp_bbox_fallback.content == b"%PDF-1.4 plain content"
-
-    # Variant bbox when .bbox exists on disk
-    bbox_pdf = tmp_path / "doc1.pdf.bbox"
-    bbox_pdf.write_bytes(b"%PDF-1.4 highlighted bbox content")
-    resp_bbox = client.get(
-        "/api/v1/patientmdtform/doc1.pdf/pdf?inline=true&variant=bbox"
-    )
-    assert resp_bbox.status_code == 200
-    assert resp_bbox.content == b"%PDF-1.4 highlighted bbox content"
-    assert "inline" in resp_bbox.headers.get("content-disposition", "")
+    assert resp_inline.content == b"%PDF-1.4 plain content"
 
 
 # ---------------------------------------------------------------------------

@@ -299,32 +299,6 @@ def _resolve_resource_pdf_path(
     if matched_resource:
         return matched_resource, os.path.join(base_dir, matched_resource)
 
-    # 3. Check if the citation or fallback `form_file` resolves to a patient PDF in `config.rcp.path`
-    rcp_dir = str(config.rcp.path)
-    try:
-        rcp_files = [
-            f
-            for f in os.listdir(rcp_dir)
-            if f.lower().endswith(".pdf") and os.path.isfile(os.path.join(rcp_dir, f))
-        ]
-    except OSError:
-        rcp_files = []
-    rcp_lower_map = {f.lower(): f for f in rcp_files}
-    for cand in exact_candidates:
-        if cand.lower() in rcp_lower_map:
-            matched = rcp_lower_map[cand.lower()]
-            return matched, os.path.join(rcp_dir, matched)
-
-    matched_rcp = _best_token_match(raw_name, rcp_files)
-    if matched_rcp:
-        return matched_rcp, os.path.join(rcp_dir, matched_rcp)
-
-    if form_file:
-        clean_form = os.path.basename(form_file.strip().replace("\\", "/"))
-        if clean_form and ".." not in form_file and clean_form.lower() in rcp_lower_map:
-            matched = rcp_lower_map[clean_form.lower()]
-            return matched, os.path.join(rcp_dir, matched)
-
     return None
 
 

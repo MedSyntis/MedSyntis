@@ -763,6 +763,10 @@ export async function buildServer({
     const session = resolveSession(req);
     const body = AgendaScheduleBodySchema.parse(req.body ?? {});
 
+    const deferIncompleteFiles =
+      body.deferIncompleteFilesPresent === "true"
+        ? body.deferIncompleteFiles === "true"
+        : undefined;
     const attendingExperts = normalizeFormStringList(
       body.attendingExpertsPresent,
       body.attendingExperts,
@@ -773,7 +777,7 @@ export async function buildServer({
       {
         sessionDate: body.sessionDate,
         sortStrategy: body.sortStrategy,
-        deferIncompleteFiles: false,
+        deferIncompleteFiles,
         attendingExperts,
         patientIds,
         resetEnrolledPatients: true,
@@ -1406,9 +1410,7 @@ export async function buildServer({
     if (!isSafeFilename(filename)) {
       return reply.code(400).send("Nom de fichier invalide");
     }
-    const query = (req.query ?? {}) as Record<string, string | undefined>;
-    const variant = query.variant === "bbox" ? "bbox" : "plain";
-    const buf = await api.getFormPdfBuffer(filename, session.domain, variant);
+    const buf = await api.getFormPdfBuffer(filename, session.domain);
     if (!buf) {
       return reply.code(404).send("PDF introuvable");
     }
