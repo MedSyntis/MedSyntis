@@ -293,4 +293,8 @@
   <symbol id="ic-expand" viewBox="0 0 24 24">
     <path d="M15 4h5v5M9 20H4v-5M20 4l-6 6M4 20l6-6"/>
   </symbol>
+  <symbol id="ic-contrast" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="M12 3.5a8.5 8.5 0 0 1 0 17V3.5Z" fill="currentColor" stroke="none"/>
+  </symbol>
 </svg>

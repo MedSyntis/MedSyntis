@@ -1,4 +1,4 @@
-import { CLINICAL_TRANSLATIONS_FR } from "./i18n.js";
+import { CLINICAL_TRANSLATIONS_EN, CLINICAL_TRANSLATIONS_FR } from "./i18n.js";
 import type { ClinicalDomain, Language } from "./types.js";
 
 export interface SectionPresentationMeta {
@@ -354,7 +354,9 @@ export function getSectionPresentation(
     };
   }
   const fallbackTitle =
-    lang === "fr" ? (CLINICAL_TRANSLATIONS_FR[sectionName] ?? sectionName) : sectionName;
+    lang === "fr"
+      ? (CLINICAL_TRANSLATIONS_FR[sectionName] ?? sectionName)
+      : (CLINICAL_TRANSLATIONS_EN[sectionName] ?? sectionName);
   return {
     name: sectionName,
     title: fallbackTitle,
@@ -371,6 +373,9 @@ export function getSectionPresentation(
 export function formatFieldLabel(fieldKey: string, lang: Language = "fr"): string {
   if (lang === "fr" && CLINICAL_TRANSLATIONS_FR[fieldKey]) {
     return CLINICAL_TRANSLATIONS_FR[fieldKey]!;
+  }
+  if (lang === "en" && CLINICAL_TRANSLATIONS_EN[fieldKey]) {
+    return CLINICAL_TRANSLATIONS_EN[fieldKey]!;
   }
   return fieldKey.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }

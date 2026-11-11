@@ -8,7 +8,7 @@ import type {
 import type { QueueDashboardView } from "../application/use-cases/queue-admin.use-case.js";
 import type { WorklistViewResult } from "../application/use-cases/worklist.use-case.js";
 import { getAgentPresentation, getDomainQuickPrompts } from "../domain/catalog.js";
-import { t } from "../domain/i18n.js";
+import { t, tr } from "../domain/i18n.js";
 import {
   deriveCompletenessInfo,
   deriveOrientationInfo,
@@ -35,6 +35,7 @@ import {
 } from "./components/ai-chat.component.js";
 import { renderPatientDashboardPanel } from "./components/patient-dashboard.component.js";
 import {
+  ASSET_VERSION,
   deriveRcpTone,
   esc,
   escapeHtml,
@@ -54,6 +55,7 @@ import {
 import { renderStatusPage, type StatusPageOptions } from "./views/status.view.js";
 
 export {
+  ASSET_VERSION,
   deriveRcpTone,
   esc,
   escapeHtml,
@@ -184,7 +186,9 @@ export function deriveFormProcessingState(
   const stepLabel =
     runningJob?.step ||
     processingStep ||
-    (runningJob?.section ? `Rubrique : ${runningJob.section}` : null) ||
+    (runningJob?.section
+      ? tr(lang, `Rubrique : ${runningJob.section}`, `Section: ${runningJob.section}`)
+      : null) ||
     pendingJob?.step ||
     null;
 
@@ -212,6 +216,13 @@ export function deriveFormProcessingState(
   };
 }
 
+export interface DeleteDialogPatientInfo {
+  displayName: string;
+  metaSuffix: string;
+  actionUrl: string;
+  isFormOnly: boolean;
+}
+
 export function formatDeleteDialogPatientInfo(
   patientName: string | null | undefined,
   id: string,
@@ -219,15 +230,12 @@ export function formatDeleteDialogPatientInfo(
   patientId: string | null | undefined,
   domainParam: string,
   viewMode: string | undefined,
-): {
-  displayName: string;
-  metaSuffix: string;
-  actionUrl: string;
-  isFormOnly: boolean;
-} {
+  lang: Language = "fr",
+): DeleteDialogPatientInfo {
   const rawName = (patientName ?? "").trim();
+  const rawLower = rawName.toLowerCase();
   const cleanName =
-    rawName && rawName.toLowerCase() !== "inconnu" && rawName !== file
+    rawName && rawLower !== "inconnu" && rawLower !== "unknown" && rawName !== file
       ? rawName.replace(/_/g, " ")
       : id && !id.toLowerCase().endsWith(".pdf")
         ? id
@@ -247,7 +255,7 @@ export function formatDeleteDialogPatientInfo(
 
   const metaParts: string[] = [];
   if (shortCode) metaParts.push(shortCode);
-  if (dob) metaParts.push(`né(e) le ${dob}`);
+  if (dob) metaParts.push(tr(lang, `né(e) le ${dob}`, `born ${dob}`));
   const metaSuffix = metaParts.length > 0 ? ` (${metaParts.join(" · ")})` : "";
 
   const isFormOnly = viewMode === "rcp" || (!patientId && id.toLowerCase().endsWith(".pdf"));
@@ -374,8 +382,11 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           })
           .join("");
 
+  const contrastPref = session.contrast ?? "auto";
+  const effectiveContrast = contrastPref === "high" ? "high" : "standard";
+
   const html = `<!doctype html>
-<html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}">
+<html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}" data-contrast="${effectiveContrast}" data-contrast-pref="${contrastPref}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
@@ -527,6 +538,18 @@ export function renderLayout(opts: ShellLayoutOptions): string {
               <button type="button" class="ds-menu__item ${session.theme === "dark" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${session.theme === "dark" ? "true" : "false"}" data-menu-action="set-theme" data-theme-value="dark" data-testid="btn_theme_dark">
                 ${iconSvg("ic-moon")}
                 <span>${esc(t("topbar.theme.dark", lang))}</span>
+              </button>
+            </div>
+            <hr class="ds-menu__divider">
+            <div class="ds-menu__header">${esc(t("topbar.contrast.heading", lang))}</div>
+            <div role="group" aria-label="${esc(t("topbar.contrast.heading", lang))}" data-testid="contrast-selector">
+              <button type="button" class="ds-menu__item ${contrastPref !== "high" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${contrastPref !== "high" ? "true" : "false"}" data-menu-action="set-contrast" data-contrast-value="standard" data-testid="btn_contrast_standard">
+                ${iconSvg("ic-contrast")}
+                <span>${esc(t("topbar.contrast.standard", lang))}</span>
+              </button>
+              <button type="button" class="ds-menu__item ${contrastPref === "high" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${contrastPref === "high" ? "true" : "false"}" data-menu-action="set-contrast" data-contrast-value="high" data-testid="btn_contrast_high">
+                ${iconSvg("ic-contrast")}
+                <span>${esc(t("topbar.contrast.high", lang))}</span>
               </button>
             </div>
             <hr class="ds-menu__divider">

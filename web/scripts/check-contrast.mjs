@@ -20,6 +20,8 @@ function block(selector) {
 
 const light = block(":root");
 const dark = { ...light, ...block(':root[data-theme="dark"]') };
+const lightHigh = { ...light, ...block(':root[data-theme="light"][data-contrast="high"]') };
+const darkHigh = { ...dark, ...block(':root[data-theme="dark"][data-contrast="high"]') };
 
 function resolve(vars, name, depth = 0) {
   let v = vars[name];
@@ -90,9 +92,16 @@ const pairs = [
 ];
 
 let failures = 0;
-for (const [theme, vars] of [["light", light], ["dark", dark]]) {
+const schemes = [
+  ["light", light, 1],
+  ["dark", dark, 1],
+  ["light-high-contrast (M3 +1.0 / WCAG AAA)", lightHigh, "high"],
+  ["dark-high-contrast (M3 +1.0 / WCAG AAA)", darkHigh, "high"],
+];
+for (const [theme, vars, mode] of schemes) {
   console.log(`\n## ${theme}`);
-  for (const [fg, bg, min] of pairs) {
+  for (const [fg, bg, baseMin] of pairs) {
+    const min = mode === "high" ? (baseMin === TEXT ? 7 : 4.5) : baseMin;
     const f = resolve(vars, fg), b = resolve(vars, bg);
     const r = ratio(f, b);
     const ok = r >= min;

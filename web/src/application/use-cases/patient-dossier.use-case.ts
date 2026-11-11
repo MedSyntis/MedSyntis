@@ -472,7 +472,7 @@ export class PatientDossierUseCase {
       return [
         {
           key: "sma_type",
-          label: "Type SMA",
+          label: lang === "fr" ? "Type SMA" : "SMA Type",
           value: translateValue(mot.sma_type, lang),
           isMissing: !mot.sma_type,
           targetSection: "MotorFunctionStatus",
@@ -480,7 +480,7 @@ export class PatientDossierUseCase {
         },
         {
           key: "smn2_copy_count",
-          label: "Copies SMN2",
+          label: lang === "fr" ? "Copies SMN2" : "SMN2 Copies",
           value: translateValue(gen.smn2_copy_count, lang),
           isMissing: gen.smn2_copy_count == null,
           targetSection: "GeneticDiagnosis",
@@ -521,7 +521,7 @@ export class PatientDossierUseCase {
         },
         {
           key: "forced_vital_capacity_percent",
-          label: "CVF",
+          label: lang === "fr" ? "CVF" : "FVC",
           value:
             resp.forced_vital_capacity_percent != null
               ? `${resp.forced_vital_capacity_percent} %`
@@ -533,7 +533,7 @@ export class PatientDossierUseCase {
         },
         {
           key: "scoliosis_cobb_angle",
-          label: "Rachis / Cobb",
+          label: lang === "fr" ? "Rachis / Cobb" : "Spine / Cobb",
           value:
             ortho.scoliosis_cobb_angle != null
               ? `${ortho.scoliosis_cobb_angle}°`
@@ -562,7 +562,7 @@ export class PatientDossierUseCase {
     return [
       {
         key: "tumor_location",
-        label: "Organe / Tumeur",
+        label: lang === "fr" ? "Organe / Tumeur" : "Organ / Tumor",
         value: translateValue(loc.tumor_location, lang),
         isMissing: !loc.tumor_location,
         targetSection: "TumorLocation",
@@ -570,7 +570,7 @@ export class PatientDossierUseCase {
       },
       {
         key: "ca19_9",
-        label: "Biologie / MSI",
+        label: lang === "fr" ? "Biologie / MSI" : "Biology / MSI",
         value: translateValue(bio.ca19_9 ?? bio.msi_state, lang),
         isMissing: !bio.ca19_9 && !bio.msi_state,
         targetSection: "TumorBiology",
@@ -578,7 +578,7 @@ export class PatientDossierUseCase {
       },
       {
         key: "performance_status",
-        label: "OMS / ECOG",
+        label: lang === "fr" ? "OMS / ECOG" : "WHO / ECOG",
         value: translateValue(perf.performance_status, lang),
         isMissing: perf.performance_status === undefined,
         targetSection: "PatientPerformanceStatus",
@@ -587,7 +587,7 @@ export class PatientDossierUseCase {
       },
       {
         key: "chemotherapy_name",
-        label: "Traitement systémique",
+        label: lang === "fr" ? "Traitement systémique" : "Systemic Treatment",
         value: translateValue(firstChemoName, lang),
         isMissing: !firstChemoName && chemo.chemotherapy === undefined,
         targetSection: chemoSectionName,
@@ -629,7 +629,7 @@ export class PatientDossierUseCase {
           : null,
         rawObj.ace !== undefined && rawObj.ace !== null ? `ACE: ${rawObj.ace} ng/mL` : null,
         rawObj.dpd_uracilemia !== undefined && rawObj.dpd_uracilemia !== null
-          ? `Uracilémie: ${rawObj.dpd_uracilemia} ng/mL`
+          ? `${lang === "fr" ? "Uracilémie" : "Uracilemia"}: ${rawObj.dpd_uracilemia} ng/mL`
           : null,
       ].filter((v): v is string => Boolean(v));
       return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
@@ -654,7 +654,9 @@ export class PatientDossierUseCase {
         rawObj.weight_loss_percent !== undefined && rawObj.weight_loss_percent !== null
           ? `-${rawObj.weight_loss_percent} %`
           : null,
-        rawObj.bmi !== undefined && rawObj.bmi !== null ? `IMC ${rawObj.bmi}` : null,
+        rawObj.bmi !== undefined && rawObj.bmi !== null
+          ? `${lang === "fr" ? "IMC" : "BMI"} ${rawObj.bmi}`
+          : null,
       ].filter((v): v is string => Boolean(v));
       return parts.join(" · ") || translateValue(null, lang);
     }
@@ -670,7 +672,7 @@ export class PatientDossierUseCase {
     if (sectionName === "PatientPerformanceStatus") {
       const ps = rawObj.performance_status;
       if (ps === undefined || ps === null || ps === "") return translateValue(null, lang);
-      return `OMS ${stripMarkdown(translateValue(ps, lang))}`;
+      return `${lang === "fr" ? "OMS" : "WHO"} ${stripMarkdown(translateValue(ps, lang))}`;
     }
     if (sectionName === "RadiologicExams" || sectionName === "RadiologicalExams") {
       if (subCards.length === 0) return lang === "fr" ? "Aucun examen" : "No exam";
@@ -927,10 +929,10 @@ export class PatientDossierUseCase {
                 .join(" → ");
               subCards.push({
                 title: String(ch.chemotherapy_name ?? formatFieldLabel("chemotherapy_name", lang)),
-                badge: "Chimiothérapie",
+                badge: lang === "fr" ? "Chimiothérapie" : "Chemotherapy",
                 subtitle: dates || null,
                 body: ch.chemotherapy_tolerance
-                  ? `Tolérance : ${translateValue(ch.chemotherapy_tolerance, lang)}`
+                  ? `${lang === "fr" ? "Tolérance" : "Tolerance"} : ${translateValue(ch.chemotherapy_tolerance, lang)}`
                   : translateValue(null, lang),
               });
             }

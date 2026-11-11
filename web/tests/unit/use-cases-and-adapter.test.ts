@@ -593,6 +593,53 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
 
     expect((await adapter.listRcpCards("oncology")).length).toBe(1);
     expect((await adapter.listPatients("oncology", true)).length).toBe(1);
+    // Second call hits in-memory patientsListCache without a network round-trip
+    expect((await adapter.listPatients("oncology", true)).length).toBe(1);
+
+    // Wrapper `{ patients: [...] }` shape with Not_given placeholders and rcp_count fallback
+    const wrappedAdapter = new HttpMedsyntisApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            patients: [
+              {
+                id: "P-WRAP",
+                first_name: "Not_given",
+                last_name: "Not_given",
+                patient: "FALLBACK_NAME",
+                born_name: "Not_given",
+                gender: "Not_given",
+                rcp_count: 4,
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ unexpected: true }),
+        })
+        .mockRejectedValueOnce(new Error("Down")) as unknown as typeof fetch,
+      cacheTtlMs: 0,
+    });
+    const wrappedPatients = await wrappedAdapter.listPatients("oncology", false);
+    expect(wrappedPatients).toEqual([
+      {
+        id: "P-WRAP",
+        firstName: "",
+        lastName: "FALLBACK_NAME",
+        bornName: null,
+        dateBirth: null,
+        gender: null,
+        rcpCount: 4,
+      },
+    ]);
+    expect(await wrappedAdapter.listPatients("oncology", true)).toEqual([]);
+    await expect(wrappedAdapter.listPatients("sma", false)).rejects.toThrow("Down");
     await adapter.deletePatient("P-1", "oncology");
     await adapter.deleteForm("doc.pdf", "oncology");
 

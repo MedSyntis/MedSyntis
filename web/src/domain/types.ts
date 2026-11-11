@@ -4,6 +4,7 @@ export type CompletenessStatus = "complete" | "incomplete";
 export type OrientationStatus = "adapt" | "standard" | "pending";
 export type Language = "fr" | "en";
 export type ThemeMode = "auto" | "light" | "dark";
+export type ContrastMode = "auto" | "standard" | "high";
 
 export interface UserSession {
   userId: string;
@@ -14,6 +15,7 @@ export interface UserSession {
   allowedDomains: ClinicalDomain[];
   language: Language;
   theme: ThemeMode;
+  contrast?: ContrastMode;
   expertMode: boolean;
 }
 

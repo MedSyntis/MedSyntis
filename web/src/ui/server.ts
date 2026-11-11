@@ -18,7 +18,13 @@ import { PatientDossierUseCase } from "../application/use-cases/patient-dossier.
 import { QueueAdminUseCase } from "../application/use-cases/queue-admin.use-case.js";
 import { WorklistUseCase } from "../application/use-cases/worklist.use-case.js";
 import type { WebAppConfig } from "../config.js";
-import type { ClinicalDomain, Language, ThemeMode, UserSession } from "../domain/types.js";
+import type {
+  ClinicalDomain,
+  ContrastMode,
+  Language,
+  ThemeMode,
+  UserSession,
+} from "../domain/types.js";
 import { bffRequestContext } from "../infrastructure/api/http-medsyntis-api.adapter.js";
 import {
   AgendaEnrollBodySchema,
@@ -461,6 +467,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const rawTheme = (query.theme || cookies.ds_theme || config.defaultTheme).toLowerCase();
     const theme: ThemeMode = rawTheme === "dark" ? "dark" : rawTheme === "light" ? "light" : "auto";
 
+    const rawContrast = (query.contrast || cookies.ds_contrast || "auto").toLowerCase();
+    const contrast: ContrastMode =
+      rawContrast === "high" ? "high" : rawContrast === "standard" ? "standard" : "auto";
+
     const expertMode = cookies.ds_expert === "true" || query.expert === "true";
 
     const headerUser = trustIdentityHeaders
@@ -503,6 +513,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       allowedDomains: config.allowedDomains,
       language,
       theme,
+      contrast,
       expertMode,
     };
   }
@@ -550,6 +561,9 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (body.theme) {
       reply.setCookie("ds_theme", body.theme, cookieOpts);
     }
+    if (body.contrast) {
+      reply.setCookie("ds_contrast", body.contrast, cookieOpts);
+    }
     if (body.language) {
       reply.setCookie("ds_lang", body.language, cookieOpts);
     }
@@ -560,7 +574,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       reply.setCookie("ds_expert", body.expertMode, cookieOpts);
     }
 
-    if (req.headers["hx-request"] === "true" && body.theme && !body.domain && !body.language) {
+    if (
+      req.headers["hx-request"] === "true" &&
+      (body.theme || body.contrast) &&
+      !body.domain &&
+      !body.language
+    ) {
       return reply.code(204).send();
     }
 

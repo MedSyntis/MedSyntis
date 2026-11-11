@@ -248,13 +248,14 @@ export function renderMultiMetricSeriesEChartsSvg(
     }
     const sessions = Array.from(sessionMap.values());
 
+    const dayPrefix = lang === "fr" ? "J" : "D";
     const xLabels = sessions.map((sess, idx) => {
       const base =
         sess.formDateLabel || (lang === "fr" ? `Séance #${idx + 1}` : `Session #${idx + 1}`);
       return sessions.length > 1 && sess.daysSinceFirstRcp > 0
-        ? `${base}\n(J+${sess.daysSinceFirstRcp})`
+        ? `${base}\n(${dayPrefix}+${sess.daysSinceFirstRcp})`
         : idx === 0 && sessions.length > 1
-          ? `${base}\n(J0)`
+          ? `${base}\n(${dayPrefix}0)`
           : base;
     });
 
@@ -972,6 +973,7 @@ function renderRawMatrixTable(
     <div class="ds-card__body">
       <div class="ds-table-wrap">
         <table class="ds-table">
+          <caption class="ds-sr-only">${lang === "fr" ? "Tableau comparatif brut multi-RCP" : "Multi-MDT Raw Comparative Matrix"}</caption>
           <thead>
             <tr>
               <th scope="col">${lang === "fr" ? "Paramètre clinique" : "Clinical parameter"}</th>

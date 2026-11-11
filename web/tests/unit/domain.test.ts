@@ -655,6 +655,168 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       clinical_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
     });
 
+    // Priority select aliases & CareOrientationProposal priority branches
+    const priorityOptions = [
+      { value: "high", labelFr: "Priorité haute", labelEn: "High" },
+      { value: "medium", labelFr: "Priorité modérée", labelEn: "Medium" },
+      { value: "low", labelFr: "Priorité standard", labelEn: "Low" },
+      { value: "none", labelFr: "Non renseigné", labelEn: "None" },
+    ];
+    expect(coerceSelectValue("Patient must be treated urgently", priorityOptions, "none")).toBe(
+      "high",
+    );
+    expect(coerceSelectValue("High-priority pre-MDT review", priorityOptions, "none")).toBe("high");
+    expect(coerceSelectValue("urgent case", priorityOptions, "none")).toBe("high");
+    expect(coerceSelectValue("semi-urgent review", priorityOptions, "none")).toBe("medium");
+    expect(coerceSelectValue("as soon as possible", priorityOptions, "none")).toBe("medium");
+    expect(coerceSelectValue("priorité modérée", priorityOptions, "none")).toBe("medium");
+    expect(coerceSelectValue("Patient is not urgent", priorityOptions, "none")).toBe("low");
+    expect(coerceSelectValue("standard", priorityOptions, "none")).toBe("low");
+    expect(coerceSelectValue("not_given", priorityOptions, "high")).toBe("none");
+    expect(coerceSelectValue("no answer", priorityOptions, "high")).toBe("none");
+
+    const careMedium = coerceSectionUpdatePayload(
+      "CareOrientationProposal",
+      {
+        suggested_priority: "semi-urgent",
+        priority_reason: "Non renseigné",
+        proposed_care_type: "Non renseigné",
+        clinical_rationale: "Surveillance rapprochée",
+      },
+      { care_adaptation_suggested: true },
+    );
+    expect(careMedium).toEqual({
+      care_adaptation_suggested: true,
+      suggested_priority: "medium",
+      priority_reason: null,
+      proposed_care_type: null,
+      orientation_rationale: "Surveillance rapprochée",
+    });
+
+    const careLowFromExisting = coerceSectionUpdatePayload(
+      "CareOrientationProposal",
+      {},
+      {
+        care_adaptation_suggested: false,
+        suggested_priority: "Priorité standard",
+        priority_reason: "Stable",
+        proposed_care_type: "Suivi",
+        clinical_rationale: "Rationnel existant",
+      },
+    );
+    expect(careLowFromExisting).toEqual({
+      care_adaptation_suggested: false,
+      suggested_priority: "low",
+      priority_reason: "Stable",
+      proposed_care_type: "Suivi",
+      orientation_rationale: "Rationnel existant",
+    });
+
+    const careNone = coerceSectionUpdatePayload("CareOrientationProposal", {
+      suggested_priority: "unknown",
+      orientation_rationale: "Non renseigné",
+    });
+    expect(careNone.suggested_priority).toBe("none");
+    expect(careNone.orientation_rationale).toBeNull();
+
+    const preMdtSchema = {
+      domain: "oncology" as const,
+      enums: {},
+      sections: [
+        {
+          name: "CareOrientationProposal",
+          description: "Orientation",
+          question: "",
+          multi_agent: false,
+          collaborative: true,
+          agents: [],
+          editable: true,
+          json_schema: {
+            type: "object",
+            properties: {
+              care_adaptation_suggested: { type: "boolean" },
+              suggested_priority: {
+                enum: [
+                  "High-priority pre-MDT review suggested",
+                  "Semi-urgent pre-MDT review suggested",
+                  "Patient is not urgent",
+                  "no answer",
+                ],
+              },
+              priority_reason: { type: "string" },
+              proposed_care_type: { type: "string" },
+              orientation_rationale: { type: "string" },
+              clinical_rationale: { type: "string" },
+            },
+          },
+        },
+      ],
+    };
+    expect(
+      buildStrictBackendSectionPayload("CareOrientationProposal", careMedium, preMdtSchema),
+    ).toMatchObject({
+      suggested_priority: "Semi-urgent pre-MDT review suggested",
+    });
+    expect(
+      buildStrictBackendSectionPayload(
+        "CareOrientationProposal",
+        careLowFromExisting,
+        preMdtSchema,
+      ),
+    ).toMatchObject({
+      suggested_priority: "Patient is not urgent",
+    });
+    expect(
+      buildStrictBackendSectionPayload("CareOrientationProposal", careNone, preMdtSchema),
+    ).toMatchObject({
+      suggested_priority: "no answer",
+    });
+
+    const legacyUrgentSchema = {
+      domain: "oncology" as const,
+      enums: {},
+      sections: [
+        {
+          name: "CareOrientationProposal",
+          description: "Orientation",
+          question: "",
+          multi_agent: false,
+          collaborative: true,
+          agents: [],
+          editable: true,
+          json_schema: {
+            type: "object",
+            properties: {
+              suggested_priority: {
+                enum: [
+                  "Patient must be treated urgently",
+                  "Patient must be treated as soon as possible",
+                  "Patient is not urgent",
+                  "no answer",
+                ],
+              },
+            },
+          },
+        },
+      ],
+    };
+    expect(
+      buildStrictBackendSectionPayload("CareOrientationProposal", careCoerced, legacyUrgentSchema),
+    ).toEqual({ suggested_priority: "Patient must be treated urgently" });
+    expect(
+      buildStrictBackendSectionPayload("CareOrientationProposal", careMedium, legacyUrgentSchema),
+    ).toEqual({ suggested_priority: "Patient must be treated as soon as possible" });
+    expect(
+      buildStrictBackendSectionPayload(
+        "CareOrientationProposal",
+        careLowFromExisting,
+        legacyUrgentSchema,
+      ),
+    ).toEqual({ suggested_priority: "Patient is not urgent" });
+    expect(
+      buildStrictBackendSectionPayload("CareOrientationProposal", careNone, legacyUrgentSchema),
+    ).toEqual({ suggested_priority: "no answer" });
+
     // Deleting all dynamic radiology/chemotherapy rows saves [] instead of resurrecting stale rows
     const clearedExams = coerceSectionUpdatePayload(
       "RadiologicExams",

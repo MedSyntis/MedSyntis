@@ -17,3 +17,7 @@ dist/docker/compose/volumes/*
 .env.local
 application/config/*
 .vscode
+.coverage
+coverage.xml
+application/coverage.xml
+web/coverage/

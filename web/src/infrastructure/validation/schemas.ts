@@ -50,6 +50,7 @@ export const EnvConfigSchema = z.object({
  */
 export const PreferencesBodySchema = z.object({
   theme: z.enum(["auto", "light", "dark"]).optional().catch(undefined),
+  contrast: z.enum(["auto", "standard", "high"]).optional().catch(undefined),
   language: z.enum(["fr", "en"]).optional().catch(undefined),
   domain: z.enum(["oncology", "sma"]).optional().catch(undefined),
   expertMode: z.enum(["true", "false"]).optional().catch(undefined),

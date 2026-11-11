@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import { bffRequestContext } from "../../src/infrastructure/api/http-medsyntis-api.adapter.js";
 import { InMemoryMedsyntisApiFake } from "../../src/infrastructure/api/in-memory-medsyntis-api.fake.js";
+import {
+  cleanNullableString,
+  formatCleanIsoDate,
+} from "../../src/infrastructure/validation/schemas.js";
 import { validateStartupConfig } from "../../src/main.js";
 import {
   renderChatLogMessagePartial,
@@ -369,14 +373,37 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
         "content-type": "application/x-www-form-urlencoded",
         referer: "/worklist?domain=oncology",
       },
-      payload: "theme=dark&language=en&expertMode=true",
+      payload: "theme=dark&contrast=high&language=en&expertMode=true",
     });
     expect(prefRes.statusCode).toBe(302);
     const setCookies = prefRes.headers["set-cookie"];
     const cookieStr = Array.isArray(setCookies) ? setCookies.join("; ") : String(setCookies ?? "");
     expect(cookieStr).toContain("ds_theme=dark");
+    expect(cookieStr).toContain("ds_contrast=high");
     expect(cookieStr).toContain("ds_lang=en");
     expect(cookieStr).toContain("ds_expert=true");
+
+    const hxContrastRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: { "hx-request": "true" },
+      payload: { contrast: "high" },
+    });
+    expect(hxContrastRes.statusCode).toBe(204);
+    const contrastCookie = hxContrastRes.cookies.find((c) => c.name === "ds_contrast");
+    expect(contrastCookie?.value).toBe("high");
+
+    const worklistRes = await app.inject({
+      method: "GET",
+      url: "/worklist",
+      cookies: { ds_contrast: "high", ds_theme: "dark" },
+    });
+    expect(worklistRes.statusCode).toBe(200);
+    expect(worklistRes.body).toContain('data-contrast="high"');
+    expect(worklistRes.body).toContain('data-contrast-pref="high"');
+    expect(worklistRes.body).toContain('data-testid="contrast-selector"');
+    expect(worklistRes.body).toContain('data-testid="btn_contrast_high"');
+    expect(worklistRes.body).toContain('data-testid="btn_contrast_standard"');
     await app.close();
   });
 
@@ -1589,6 +1616,197 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       },
     });
     expect(statusHtml).toContain('href="/" data-testid="btn_status_retry"');
+
+    // Status page EN / SMA / high-contrast & all status kinds + validation cleaners
+    for (const kind of ["forbidden", "not_found", "maintenance", "server_error"] as const) {
+      const enSmaHtml = renderStatusPage({
+        statusCode: kind === "forbidden" ? 403 : kind === "not_found" ? 404 : 500,
+        kind,
+        retryHref: "/agenda",
+        session: {
+          userId: "dr.smith",
+          userName: "Dr Smith",
+          domain: "sma",
+          allowedDomains: ["sma"],
+          hostBoundDomain: true,
+          language: "en",
+          theme: "dark",
+          contrast: "high",
+          expertMode: true,
+          isAdmin: false,
+        },
+      });
+      expect(enSmaHtml).toContain("Rare Diseases MDT");
+      expect(enSmaHtml).toContain('data-contrast="high"');
+    }
+    expect(formatCleanIsoDate(null)).toBeNull();
+    expect(formatCleanIsoDate("Not_given")).toBeNull();
+    expect(formatCleanIsoDate("2026-11-06T12:30:00Z")).toBe("2026-11-06");
+    expect(formatCleanIsoDate("2026-11-06")).toBe("2026-11-06");
+    expect(cleanNullableString(undefined)).toBeNull();
+    expect(cleanNullableString("Non spécifié")).toBeNull();
+    expect(cleanNullableString("  Pancréas  ")).toBe("Pancréas");
+
+    // sanitizeLocalRedirect edge cases
+    expect(sanitizeLocalRedirect(undefined, "/fallback")).toBe("/fallback");
+    expect(sanitizeLocalRedirect("//evil.example/path", "/fallback")).toBe("/fallback");
+    expect(sanitizeLocalRedirect("/\\evil.example/path", "/fallback")).toBe("/fallback");
+    expect(sanitizeLocalRedirect("/patients/A-1042?domain=oncology", "/fallback")).toBe(
+      "/patients/A-1042?domain=oncology",
+    );
+    expect(sanitizeLocalRedirect("https://medsyntis.local/queue?domain=sma#top", "/fallback")).toBe(
+      "/queue?domain=sma#top",
+    );
+    expect(sanitizeLocalRedirect("https://medsyntis.local//double", "/fallback")).toBe("/fallback");
+    expect(sanitizeLocalRedirect("not a valid url", "/fallback")).toBe("/fallback");
+
+    // Admin app with explicit APP_ADMIN_USERS for privileged feedback deletion checks
+    const adminApp = await buildServer({
+      config: loadConfig({
+        APP_DEV_MODE: "false",
+        APP_AUTH_MODE: "oauth_proxy",
+        APP_PROXY_SECRET: "prod-secret",
+        APP_API_TOKEN: "prod-token",
+        APP_ADMIN_USERS: "admin.ops",
+        APP_DOMAIN: "oncology",
+        APP_ALLOWED_DOMAINS: "oncology,sma",
+      }),
+      api,
+    });
+    const adminHeaders = {
+      "x-proxy-secret": "prod-secret",
+      "x-forwarded-user": "admin.ops",
+      host: "medsyntis.chu.local",
+      origin: "https://medsyntis.chu.local",
+    };
+
+    // Non-admin DELETE /feedback/:bugId returns 403 JSON
+    const nonAdminDeleteBug = await app.inject({
+      method: "DELETE",
+      url: "/feedback/BUG-001?domain=oncology",
+      headers: {
+        ...nonAdminHeaders,
+        host: "medsyntis.chu.local",
+        origin: "https://medsyntis.chu.local",
+      },
+    });
+    expect(nonAdminDeleteBug.statusCode).toBe(403);
+
+    // Admin POST /feedback/:bugId/delete redirects 302 and DELETE /feedback/:bugId returns 200
+    const createdBug1 = await api.createBug({
+      title: "Temp bug 1",
+      description: "Desc",
+      category: "ui",
+      severity: "low",
+      domain: "oncology",
+      patientOrFile: null,
+      author: "admin.ops",
+    });
+    const adminPostDeleteBug = await adminApp.inject({
+      method: "POST",
+      url: `/feedback/${createdBug1.id}/delete?domain=oncology`,
+      headers: adminHeaders,
+    });
+    expect(adminPostDeleteBug.statusCode).toBe(302);
+
+    const createdBug2 = await api.createBug({
+      title: "Temp bug 2",
+      description: "Desc",
+      category: "ui",
+      severity: "low",
+      domain: "oncology",
+      patientOrFile: null,
+      author: "admin.ops",
+    });
+    const adminDeleteBug = await adminApp.inject({
+      method: "DELETE",
+      url: `/feedback/${createdBug2.id}?domain=oncology`,
+      headers: adminHeaders,
+    });
+    expect(adminDeleteBug.statusCode).toBe(200);
+    expect(adminDeleteBug.json()).toEqual({ deleted: createdBug2.id });
+    await adminApp.close();
+
+    // Non-admin section mutation headers (with valid CSRF same-origin headers)
+    const mutationHeaders = {
+      ...nonAdminHeaders,
+      host: "medsyntis.chu.local",
+      origin: "https://medsyntis.chu.local",
+    };
+
+    // PDF ETag 304 and HTTP Range 206 partial content support
+    const cards = await api.listPatientCards("oncology");
+    const samplePdfFile = cards[0]!.file;
+    const pdfFullRes = await app.inject({
+      method: "GET",
+      url: `/files/forms/${encodeURIComponent(samplePdfFile)}/pdf?domain=oncology`,
+      headers: nonAdminHeaders,
+    });
+    expect(pdfFullRes.statusCode).toBe(200);
+    const etag = pdfFullRes.headers.etag as string;
+    expect(etag).toBeTruthy();
+
+    const pdf304Res = await app.inject({
+      method: "GET",
+      url: `/files/forms/${encodeURIComponent(samplePdfFile)}/pdf?domain=oncology`,
+      headers: { ...nonAdminHeaders, "if-none-match": etag },
+    });
+    expect(pdf304Res.statusCode).toBe(304);
+
+    const pdf206Res = await app.inject({
+      method: "GET",
+      url: `/files/forms/${encodeURIComponent(samplePdfFile)}/pdf?domain=oncology`,
+      headers: { ...nonAdminHeaders, range: "bytes=0-3" },
+    });
+    expect(pdf206Res.statusCode).toBe(206);
+    expect(pdf206Res.headers["content-range"]).toMatch(/^bytes 0-3\/\d+$/);
+
+    // Section mutation error handling: JSON (422 validation & 502 upstream) vs full-page HTML redirect
+    const jsonValidationErrRes = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(samplePdfFile)}/sections/PatientAdministrative?domain=oncology`,
+      headers: {
+        ...mutationHeaders,
+        accept: "application/json",
+      },
+      payload: {
+        first_name: "Jeanne",
+        last_name: "Fictive",
+        date_birth: "2028-01-01",
+        date_rcp: "2026-11-06",
+      },
+    });
+    expect(jsonValidationErrRes.statusCode).toBe(422);
+    expect(jsonValidationErrRes.json().ok).toBe(false);
+
+    const htmlValidationErrRes = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(samplePdfFile)}/sections/PatientAdministrative?domain=oncology`,
+      headers: {
+        ...mutationHeaders,
+        accept: "text/html,application/xhtml+xml",
+      },
+      payload: {
+        first_name: "Jeanne",
+        last_name: "Fictive",
+        date_birth: "2028-01-01",
+        date_rcp: "2026-11-06",
+      },
+    });
+    expect(htmlValidationErrRes.statusCode).toBe(302);
+    expect(htmlValidationErrRes.headers.location).toContain("save_error=");
+
+    const rollbackSpy = vi
+      .spyOn(api, "rollbackSection")
+      .mockRejectedValueOnce(new Error("MedSyntis API HTTP 502 on POST /rollback: Gateway down"));
+    const rollbackErrRes = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(samplePdfFile)}/sections/TumorBiology/rollback?domain=oncology`,
+      headers: { ...mutationHeaders, accept: "application/json" },
+    });
+    expect(rollbackErrRes.statusCode).toBe(502);
+    expect(rollbackErrRes.json()).toEqual({ ok: false, error: "Gateway down" });
+    rollbackSpy.mockRestore();
 
     await app.close();
   });
