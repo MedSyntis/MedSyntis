@@ -300,8 +300,8 @@ textarea,
   margin: var(--ds-space-1) var(--ds-space-1) var(--ds-space-2);
   padding: 0 var(--ds-space-4);
   border-radius: var(--ds-radius-lg); /* M3 16px FAB corner radius */
-  background: var(--ds-color-primary-container);
-  color: var(--ds-color-on-primary-container);
+  background: var(--ds-fab-bg);
+  color: var(--ds-fab-fg);
   border: 0;
   box-shadow: var(--ds-shadow-sm);
   text-decoration: none;
@@ -312,8 +312,8 @@ textarea,
     box-shadow var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-rail__fab:hover {
-  background: color-mix(in srgb, var(--ds-color-on-primary-container) 10%, var(--ds-color-primary-container));
-  color: var(--ds-color-on-primary-container);
+  background: color-mix(in srgb, var(--ds-fab-fg) 12%, var(--ds-fab-bg));
+  color: var(--ds-fab-fg);
   box-shadow: var(--ds-shadow-md);
   text-decoration: none;
 }
@@ -1219,8 +1219,8 @@ textarea,
   padding: 0 var(--ds-space-5);
   border: 0;
   border-radius: var(--ds-radius-lg); /* M3 16px Large corner */
-  background: var(--ds-color-primary-container);
-  color: var(--ds-color-on-primary-container);
+  background: var(--ds-fab-bg);
+  color: var(--ds-fab-fg);
   font: inherit;
   font-size: var(--ds-text-sm);
   font-weight: var(--ds-weight-semibold);
@@ -1230,7 +1230,8 @@ textarea,
   transition: background var(--ds-duration-normal) var(--ds-ease), box-shadow var(--ds-duration-normal) var(--ds-ease), transform var(--ds-duration-normal) var(--ds-ease-spring);
 }
 .ds-fab:hover {
-  background: color-mix(in srgb, var(--ds-color-on-primary-container) 10%, var(--ds-color-primary-container));
+  background: color-mix(in srgb, var(--ds-fab-fg) 12%, var(--ds-fab-bg));
+  color: var(--ds-fab-fg);
   box-shadow: var(--ds-shadow-lg);
   transform: translateY(-1px);
   text-decoration: none;

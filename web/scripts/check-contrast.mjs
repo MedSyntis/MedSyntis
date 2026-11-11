@@ -170,6 +170,7 @@ const pairs = [
   ["--ds-sidebar-active-text", "--ds-sidebar-active-bg", "TEXT"],
   ["--ds-sidebar-text", "--ds-sidebar-bg-hover", "TEXT"],
   ["--ds-sidebar-brand-accent", "--ds-sidebar-bg", "TEXT"],
+  ["--ds-fab-fg", "--ds-fab-bg", "TEXT"],
   ["--ds-color-text", "--ds-menu-bg", "TEXT"],
   ["--ds-color-primary-text", "--ds-menu-bg", "TEXT"],
   ["--ds-color-text", "--ds-menu-item-hover", "TEXT"],
@@ -314,7 +315,14 @@ for (const [label, vars, level, polarity] of schemes) {
       cardVsNested >= 1.16,
       `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-surface-nested (${nestedHex}) = ${cardVsNested.toFixed(2)}:1 (need ≥1.16 in ${label})`,
     );
-    schemePass += 3;
+    const fabHex = resolve(vars, "--ds-fab-bg");
+    const railHex = resolve(vars, "--ds-sidebar-bg");
+    const fabVsRail = ratio(fabHex, railHex);
+    check(
+      fabVsRail >= 3.0,
+      `RAIL_FAB_CONTRAST --ds-fab-bg (${fabHex}) vs --ds-sidebar-bg (${railHex}) = ${fabVsRail.toFixed(2)}:1 (need ≥3.00 in ${label})`,
+    );
+    schemePass += 4;
   }
 
   if (polarity === "dark") {
@@ -323,6 +331,14 @@ for (const [label, vars, level, polarity] of schemes) {
       canvasHex !== "#000000",
       `ANTI_HALATION --ds-color-canvas must not be #000000 in ${label} (got ${canvasHex})`,
     );
+    const fabHex = resolve(vars, "--ds-fab-bg");
+    const railHex = resolve(vars, "--ds-sidebar-bg");
+    const fabVsRail = ratio(fabHex, railHex);
+    check(
+      fabVsRail >= 1.5,
+      `RAIL_FAB_CONTRAST --ds-fab-bg (${fabHex}) vs --ds-sidebar-bg (${railHex}) = ${fabVsRail.toFixed(2)}:1 (need ≥1.50 in ${label})`,
+    );
+    schemePass += 2;
   }
 
   console.log(`PASS  ${schemePass} checks verified in ${label}`);

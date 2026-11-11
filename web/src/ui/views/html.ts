@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Marked, type Tokens } from "marked";
 import type { Language } from "../../domain/types.js";
 
-export const ASSET_VERSION = "38";
+export const ASSET_VERSION = "39";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ICONS_SVG_PATH = path.resolve(__dirname, "../../../public/img/icons.svg");

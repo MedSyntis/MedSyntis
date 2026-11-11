@@ -622,6 +622,8 @@
   --ds-sidebar-active-text: var(--ds-color-on-secondary-container);
   --ds-sidebar-border: transparent;
   --ds-sidebar-brand-accent: var(--md-ref-palette-primary-32);
+  --ds-fab-bg: var(--ds-color-primary);
+  --ds-fab-fg: var(--ds-color-on-primary);
   --ds-table-header-bg: var(--md-ref-palette-neutral-93);
   --ds-table-header-text: var(--md-ref-palette-neutral-12);
   --ds-menu-bg: var(--md-ref-palette-neutral-100);
@@ -822,6 +824,8 @@
   --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-22);
   --ds-sidebar-border: transparent;
   --ds-sidebar-brand-accent: var(--md-ref-palette-primary-28);
+  --ds-fab-bg: var(--ds-color-primary);
+  --ds-fab-fg: var(--ds-color-on-primary);
   --ds-table-header-bg: var(--md-ref-palette-neutral-92);
   --ds-table-header-text: var(--md-ref-palette-neutral-6);
   --ds-menu-bg: var(--md-ref-palette-neutral-100);
@@ -942,6 +946,8 @@
   --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-15);
   --ds-sidebar-border: transparent;
   --ds-sidebar-brand-accent: var(--md-ref-palette-primary-20);
+  --ds-fab-bg: var(--ds-color-primary);
+  --ds-fab-fg: var(--ds-color-on-primary);
   --ds-table-header-bg: var(--md-ref-palette-neutral-88);
   --ds-table-header-text: var(--md-ref-palette-neutral-0);
   --ds-menu-bg: var(--md-ref-palette-neutral-100);
@@ -1061,6 +1067,8 @@
     --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-15);
     --ds-sidebar-border: transparent;
     --ds-sidebar-brand-accent: var(--md-ref-palette-primary-20);
+    --ds-fab-bg: var(--ds-color-primary);
+    --ds-fab-fg: var(--ds-color-on-primary);
     --ds-table-header-bg: var(--md-ref-palette-neutral-88);
     --ds-table-header-text: var(--md-ref-palette-neutral-0);
     --ds-menu-bg: var(--md-ref-palette-neutral-100);
@@ -1181,6 +1189,8 @@
   --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-75);
   --ds-sidebar-border: transparent;
   --ds-sidebar-brand-accent: var(--md-ref-palette-primary-80);
+  --ds-fab-bg: var(--ds-color-primary-container);
+  --ds-fab-fg: var(--ds-color-on-primary-container);
   --ds-table-header-bg: var(--md-ref-palette-neutral-14);
   --ds-table-header-text: var(--md-ref-palette-neutral-93);
   --ds-menu-bg: var(--md-ref-palette-neutral-14);
@@ -1300,6 +1310,8 @@
     --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-75);
     --ds-sidebar-border: transparent;
     --ds-sidebar-brand-accent: var(--md-ref-palette-primary-80);
+    --ds-fab-bg: var(--ds-color-primary-container);
+    --ds-fab-fg: var(--ds-color-on-primary-container);
     --ds-table-header-bg: var(--md-ref-palette-neutral-14);
     --ds-table-header-text: var(--md-ref-palette-neutral-93);
     --ds-menu-bg: var(--md-ref-palette-neutral-14);
@@ -1421,6 +1433,8 @@
   --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-86);
   --ds-sidebar-border: transparent;
   --ds-sidebar-brand-accent: var(--md-ref-palette-primary-85);
+  --ds-fab-bg: var(--ds-color-primary-container);
+  --ds-fab-fg: var(--ds-color-on-primary-container);
   --ds-table-header-bg: var(--md-ref-palette-neutral-16);
   --ds-table-header-text: var(--md-ref-palette-neutral-98);
   --ds-menu-bg: var(--md-ref-palette-neutral-16);
@@ -1540,6 +1554,8 @@
     --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-86);
     --ds-sidebar-border: transparent;
     --ds-sidebar-brand-accent: var(--md-ref-palette-primary-85);
+    --ds-fab-bg: var(--ds-color-primary-container);
+    --ds-fab-fg: var(--ds-color-on-primary-container);
     --ds-table-header-bg: var(--md-ref-palette-neutral-16);
     --ds-table-header-text: var(--md-ref-palette-neutral-98);
     --ds-menu-bg: var(--md-ref-palette-neutral-16);
@@ -1661,6 +1677,8 @@
   --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-94);
   --ds-sidebar-border: transparent;
   --ds-sidebar-brand-accent: var(--md-ref-palette-primary-90);
+  --ds-fab-bg: var(--ds-color-primary-container);
+  --ds-fab-fg: var(--ds-color-on-primary-container);
   --ds-table-header-bg: var(--md-ref-palette-neutral-16);
   --ds-table-header-text: var(--md-ref-palette-neutral-100);
   --ds-menu-bg: var(--md-ref-palette-neutral-17);
@@ -1780,6 +1798,8 @@
     --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-94);
     --ds-sidebar-border: transparent;
     --ds-sidebar-brand-accent: var(--md-ref-palette-primary-90);
+    --ds-fab-bg: var(--ds-color-primary-container);
+    --ds-fab-fg: var(--ds-color-on-primary-container);
     --ds-table-header-bg: var(--md-ref-palette-neutral-16);
     --ds-table-header-text: var(--md-ref-palette-neutral-100);
     --ds-menu-bg: var(--md-ref-palette-neutral-17);
@@ -1902,6 +1922,8 @@
     --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-94);
     --ds-sidebar-border: transparent;
     --ds-sidebar-brand-accent: var(--md-ref-palette-primary-90);
+    --ds-fab-bg: var(--ds-color-primary-container);
+    --ds-fab-fg: var(--ds-color-on-primary-container);
     --ds-table-header-bg: var(--md-ref-palette-neutral-16);
     --ds-table-header-text: var(--md-ref-palette-neutral-100);
     --ds-menu-bg: var(--md-ref-palette-neutral-17);
@@ -2024,6 +2046,8 @@
     --ds-sidebar-text-muted: var(--md-ref-palette-neutral-variant-94);
     --ds-sidebar-border: transparent;
     --ds-sidebar-brand-accent: var(--md-ref-palette-primary-90);
+    --ds-fab-bg: var(--ds-color-primary-container);
+    --ds-fab-fg: var(--ds-color-on-primary-container);
     --ds-table-header-bg: var(--md-ref-palette-neutral-16);
     --ds-table-header-text: var(--md-ref-palette-neutral-100);
     --ds-menu-bg: var(--md-ref-palette-neutral-17);
