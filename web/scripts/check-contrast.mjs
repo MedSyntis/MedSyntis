@@ -91,7 +91,6 @@ const CURVE = {
   TEXT: { standard: 4.5, medium: 6.0, high: 7.0 },
   UI: { standard: 3.0, medium: 4.5, high: 7.0 },
   OUTLINE: { standard: 3.0, medium: 4.5, high: 7.0 },
-  OUTLINE_VAR: { standard: 1.35, medium: 3.0, high: 4.5 },
 };
 
 const pairs = [
@@ -113,10 +112,9 @@ const pairs = [
   ["--ds-color-text-subtle", "--ds-color-surface", "TEXT"],
   ["--ds-color-text-subtle", "--ds-color-surface-sunken", "TEXT"],
 
-  // M3 Outline & Outline-Variant
+  // M3 Form Control Outline (--ds-color-border-strong; structural borders on cards/menus/rail are 0)
   ["--ds-color-border-strong", "--ds-color-surface", "OUTLINE"],
   ["--ds-color-border-strong", "--ds-color-surface-sunken", "OUTLINE"],
-  ["--ds-color-border", "--ds-color-surface", "OUTLINE_VAR"],
 
   // M3 Inverse roles (Snackbars / Tooltips)
   ["--ds-inverse-on-surface", "--ds-inverse-surface", "TEXT"],
@@ -244,9 +242,11 @@ for (const [label, vars, level, polarity] of schemes) {
     check(ok, `${r.toFixed(2).padStart(5)}:1 (need ≥${min})  ${fg} ${f}  on  ${bg} ${b}`);
   }
 
-  // Verify M3 Tonal Container Inversion contrast against surfaces in Medium (+0.5) & High (+1.0)
+  // Verify M3 Tonal Container progression:
+  // - Medium (+0.5): reinforced pastel containers (visibly distinct >= 1.25:1 vs surface, zero harsh dark inversion)
+  // - High (+1.0): full AAA tonal inversion (>= 4.5:1 vs surface)
   if (level === "medium" || level === "high") {
-    const minContainer = level === "high" ? 4.5 : 3.0;
+    const minContainer = level === "high" ? 4.5 : 1.25;
     for (const [containerTok, surfaceTok] of invertedContainers) {
       const cHex = resolve(vars, containerTok);
       const sHex = resolve(vars, surfaceTok);
@@ -258,6 +258,20 @@ for (const [label, vars, level, polarity] of schemes) {
         `CONTAINER ${r.toFixed(2).padStart(5)}:1 (need ≥${minContainer})  ${containerTok} ${cHex}  vs  ${surfaceTok} ${sHex}`,
       );
     }
+  }
+
+  // Verify Zero Structural Borders invariant across all 6 schemes
+  for (const borderTok of [
+    "--ds-sidebar-border",
+    "--ds-menu-border",
+    "--ds-rcp-green-border",
+    "--ds-rcp-orange-border",
+    "--ds-rcp-red-border",
+  ]) {
+    const val = resolve(vars, borderTok);
+    const ok = val === "transparent";
+    if (ok) schemePass++;
+    check(ok, `ZERO_BORDER ${borderTok} must be transparent in ${label} (got ${val})`);
   }
 
   // Verify 5-step Surface Container monotonicity + Dark anti-halation

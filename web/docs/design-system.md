@@ -52,12 +52,12 @@ The dark and contrast token blocks are **intentionally duplicated** (explicit at
 
 All semantic tokens in `public/css/tokens.css` derive from `:root` M3 HCT tonal palettes (`--md-ref-palette-{primary,secondary,tertiary,neutral,neutral-variant,error,success,warning,manual,cerulean}-{tone}`):
 
-- **5-step surface container hierarchy**: `--ds-surface-container-lowest` → `-low` → `container` → `-high` → `-highest`, with **anti-halation dark canvases** (`neutral-6` `#0f1417` in Standard/Medium Dark, `neutral-4` `#0a0f11` in High Dark — never `#000000` pure black).
-- **Unified Danger / Error seed**: MedSyntis Rose (`#B83B5E`) across all 6 schemes (never diverging to neon scarlet).
-- **Strict M3 Container vs Surface-Text separation**:
-  - **`*Container` + `on*Container` pairs** (`--ds-color-primary-soft` + `--ds-color-on-primary-container`, `--ds-color-{success,warning,danger,info,neutral}-bg` + `-fg`, clinical urgency/orientation/domain badges): light pastel with dark text in Standard (`Tone 90` / `Tone 30` Light, `Tone 28` / `Tone 90` Dark), **tonally inverted** in Medium (`Tone 38` / `Tone 100` Light, `Tone 62` / `Tone 0` Dark) and High (`Tone 26` / `Tone 100` Light, `Tone 80` / `Tone 0` Dark) so badges and active pills stand out `≥ 3.0:1` (Medium) / `≥ 4.5:1` (High) against cards while keeping `≥ 7.0:1` internal text contrast.
+- **Pure M3 Neutral 5-step surface hierarchy (Zero Structural Borders)**: `--ds-surface-container-lowest` → `-low` → `container` → `-high` → `-highest` use neutral grey tones (`#FFFFFF` cards on `#F2F4F6` canvas, `#ECEEF1` rail, `#F8F9FC` floating menu; Dark anti-halation `#121315` / `#0D0E10` canvas, `#1A1C1D` cards — never `#000000` pure black). Cards, KPIs, rail, topbar, toolbars, RCP headers, and menus have **zero structural borders** (`border: 0` / `transparent`), separating purely by tonal elevation and soft M3 shadows across all 6 schemes.
+- **Unified Danger / Error seed**: MedSyntis Rose (`#B83B5E`) across all 6 schemes (soft blush `#FFE5E9` in Standard, never neon scarlet).
+- **Smooth M3 Container Progression**:
+  - **`*Container` + `on*Container` pairs** (`--ds-color-primary-soft` + `--ds-color-on-secondary-container`, `--ds-color-{success,warning,danger,info,neutral}-bg` + `-fg`, clinical urgency/orientation/domain badges): **soft pastel** in Standard (`0.0`), **reinforced pastel** in Medium (`+0.5` — `≥ 6.0:1` text without harsh dark menu blocks), and **tonally inverted AAA** in High (`+1.0` — `Tone 25` / `Tone 100` Light, `Tone 82` / `Tone 0` Dark, `≥ 7.0:1` internal text and `≥ 4.5:1` container-vs-surface).
   - **Surface-safe accent text** (`--ds-color-primary-text`, `--ds-color-{success,warning,danger,info}-text`, `--ds-manual-text`): guaranteed readable on `--ds-color-surface` and `--ds-color-canvas` across all 6 schemes. Never pair `-text` tokens onto `-bg`/`-soft` containers (enforced by `scripts/check-contrast.mjs`).
-  - **Non-inverting surface washes** (`--ds-surface-tint-{primary,warning,manual}`): subtle card/dropzone/callout backgrounds safe with `--ds-color-text` and `--ds-color-*-text` in every contrast mode.
+  - **Non-inverting surface washes** (`--ds-surface-tint-{primary,warning,danger,manual}`): subtle card/dropzone/callout backgrounds safe with `--ds-color-text` in every contrast mode.
 
 | Role | Token | Light Standard | Dark Standard | Contrast (Light / Dark Std) |
 | :--- | :--- | :--- | :--- | :--- |
