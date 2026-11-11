@@ -315,47 +315,54 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     return undefined;
   }
 
-  // Zero-Trust Proxy Secret Verification + State-Changing CSRF Guard
-  app.addHook("onRequest", async (req, reply) => {
+  function validateStateChangingCsrf(req: FastifyRequest): string | null {
     const methodUpper = req.method.toUpperCase();
     if (
-      methodUpper === "POST" ||
-      methodUpper === "PUT" ||
-      methodUpper === "PATCH" ||
-      methodUpper === "DELETE"
+      methodUpper !== "POST" &&
+      methodUpper !== "PUT" &&
+      methodUpper !== "PATCH" &&
+      methodUpper !== "DELETE"
     ) {
-      const secFetchSite = String(req.headers["sec-fetch-site"] ?? "")
-        .trim()
-        .toLowerCase();
-      if (secFetchSite === "cross-site") {
-        return reply
-          .code(403)
-          .type("text/plain; charset=utf-8")
-          .send("Requête cross-site refusée (CSRF).");
-      }
-      const rawOrigin = req.headers.origin;
-      if (typeof rawOrigin === "string" && rawOrigin.trim().length > 0) {
-        let originHost = "";
-        try {
-          originHost = new URL(rawOrigin.trim()).host.toLowerCase();
-        } catch {
-          return reply
-            .code(403)
-            .type("text/plain; charset=utf-8")
-            .send("En-tête Origin invalide (CSRF).");
-        }
-        const expectedHost =
-          String(req.headers.host ?? "")
-            .split(",")[0]
-            ?.trim()
-            .toLowerCase() ?? "";
-        if (!originHost || !expectedHost || originHost !== expectedHost) {
-          return reply
-            .code(403)
-            .type("text/plain; charset=utf-8")
-            .send("Origine non autorisée (CSRF).");
-        }
-      }
+      return null;
+    }
+    const secFetchSite = String(req.headers["sec-fetch-site"] ?? "")
+      .trim()
+      .toLowerCase();
+    if (secFetchSite === "cross-site") {
+      return "Requête cross-site refusée (CSRF).";
+    }
+    const rawOrigin = req.headers.origin;
+    if (typeof rawOrigin !== "string" || rawOrigin.trim().length === 0) {
+      return null;
+    }
+    const trimmedOrigin = rawOrigin.trim();
+    if (trimmedOrigin.toLowerCase() === "null") {
+      // Browsers serialize Origin as "null" on native <form method="post"> when Referrer-Policy is "no-referrer".
+      // Accept it only when the browser-controlled Fetch Metadata header attests exact same-origin initiation.
+      return secFetchSite === "same-origin" ? null : "En-tête Origin invalide (CSRF).";
+    }
+    let originHost = "";
+    try {
+      originHost = new URL(trimmedOrigin).host.toLowerCase();
+    } catch {
+      return "En-tête Origin invalide (CSRF).";
+    }
+    const expectedHost =
+      String(req.headers.host ?? "")
+        .split(",")[0]
+        ?.trim()
+        .toLowerCase() ?? "";
+    if (!originHost || !expectedHost || originHost !== expectedHost) {
+      return "Origine non autorisée (CSRF).";
+    }
+    return null;
+  }
+
+  // Zero-Trust Proxy Secret Verification + State-Changing CSRF Guard
+  app.addHook("onRequest", async (req, reply) => {
+    const csrfError = validateStateChangingCsrf(req);
+    if (csrfError) {
+      return reply.code(403).type("text/plain; charset=utf-8").send(csrfError);
     }
 
     if (req.url === "/health" || req.url.startsWith("/public/")) {

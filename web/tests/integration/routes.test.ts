@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import { bffRequestContext } from "../../src/infrastructure/api/http-medsyntis-api.adapter.js";
@@ -1425,6 +1427,68 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       payload: { theme: "dark" },
     });
     expect(csrfSameOriginRes.statusCode).toBe(204);
+
+    // Same-origin HTML <form method="post"> under Referrer-Policy: no-referrer sends Origin: "null" + Sec-Fetch-Site: "same-origin"
+    const csrfNullOriginSameOriginFetchSiteRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        ...nonAdminHeaders,
+        host: "medsyntis.chu.local",
+        origin: "null",
+        "sec-fetch-site": "same-origin",
+        "hx-request": "true",
+      },
+      payload: { theme: "dark" },
+    });
+    expect(csrfNullOriginSameOriginFetchSiteRes.statusCode).toBe(204);
+
+    // Unattested Origin: "null" without Sec-Fetch-Site: "same-origin" (e.g. sandboxed iframe) must still be rejected
+    const csrfNullOriginUnattestedRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        ...nonAdminHeaders,
+        host: "medsyntis.chu.local",
+        origin: "null",
+      },
+      payload: { theme: "dark" },
+    });
+    expect(csrfNullOriginUnattestedRes.statusCode).toBe(403);
+
+    const csrfNullOriginSameSiteRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        ...nonAdminHeaders,
+        host: "medsyntis.chu.local",
+        origin: "null",
+        "sec-fetch-site": "same-site",
+      },
+      payload: { theme: "dark" },
+    });
+    expect(csrfNullOriginSameSiteRes.statusCode).toBe(403);
+
+    const csrfMalformedOriginRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        ...nonAdminHeaders,
+        host: "medsyntis.chu.local",
+        origin: "not-a-valid-url",
+        "sec-fetch-site": "same-origin",
+      },
+      payload: { theme: "dark" },
+    });
+    expect(csrfMalformedOriginRes.statusCode).toBe(403);
+
+    // Production Caddyfile must align Referrer-Policy with "same-origin" so HTML <form method="post"> preserves Origin
+    const caddyfilePath = path.resolve(process.cwd(), "../dist/docker/compose/Caddyfile");
+    if (fs.existsSync(caddyfilePath)) {
+      const caddyfileContent = fs.readFileSync(caddyfilePath, "utf8");
+      expect(caddyfileContent).toContain('Referrer-Policy "same-origin"');
+      expect(caddyfileContent).not.toContain('Referrer-Policy "no-referrer"');
+    }
 
     // Non-admin user receives HTTP 403 on all destructive admin routes
     for (const route of [
