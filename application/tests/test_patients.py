@@ -26,16 +26,13 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         self.assertEqual(len(pid1), 20)
         self.assertNotIn("heremont", pid1)
         self.assertEqual(pid1, pid2)
-        self.assertEqual(
-            Patient.build_legacy_id("Jean-Pierre", "D'Hérémont", datetime(1958, 3, 14)),
-            "d_heremont_jean_pierre_1958_03_14",
-        )
+        self.assertTrue(Patient.is_pseudonymized_id(pid1))
 
     def test_build_patient_id_without_birth_date(self):
         pid = Patient.build_id("Marie", "Curie", None)
         self.assertTrue(pid.startswith("pat_"))
         self.assertNotIn("curie", pid)
-        self.assertEqual(Patient.build_legacy_id("Marie", "Curie", None), "curie_marie")
+        self.assertTrue(Patient.is_pseudonymized_id(pid))
 
     def test_from_administrative_and_labels(self):
         admin = PatientMDTForm.PatientAdministrative(
@@ -109,8 +106,9 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         mdt_form_repo = InMemoryPatientMDTFormRepository()
         cache_repo = InMemoryDocumentCacheRepository()
 
+        expected_paul_id = Patient.build_id("Paul", "Durand", datetime(1955, 11, 2))
         existing_patient = Patient(
-            patient_id="durand_paul_1955_11_02",
+            patient_id=expected_paul_id,
             first_name="Paul",
             last_name="Durand",
             born_name=None,
@@ -159,7 +157,7 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         patient_obj = extraction_service.process_patient_association(
             form=form,
             reader=mock_reader,
-            target_patient_id="durand_paul_1955_11_02",
+            target_patient_id=expected_paul_id,
         )
 
         extraction_service.extract_section.assert_called_once()
@@ -170,8 +168,8 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         self.assertEqual(admin_saved["date_birth"], "1955-11-02")
         self.assertEqual(admin_saved["date_rcp"], datetime(2026, 4, 10))
         self.assertEqual(admin_saved["age"], 70)
-        self.assertEqual(form.patient_id, "durand_paul_1955_11_02")
-        self.assertEqual(patient_obj.patient_id, "durand_paul_1955_11_02")
+        self.assertEqual(form.patient_id, expected_paul_id)
+        self.assertEqual(patient_obj.patient_id, expected_paul_id)
 
     def test_build_patients_cards_and_resolve_record_for_unlinked_forms(self):
         legacy_doc_1 = {
@@ -232,13 +230,12 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         self.assertEqual(len(patient_rcps), 2)
         self.assertEqual(selected_file, "rcp_latest.pdf")
 
+        # Legacy cleartext slug lookup is rejected at runtime (requires explicit migration)
         legacy_obj, _, _ = record_service.resolve_patient_record(
             patient_id_param="roussel_marion_1970_05_12",
             file_param=None,
         )
-        self.assertIsNotNone(legacy_obj)
-        assert legacy_obj is not None
-        self.assertEqual(legacy_obj.patient_id, expected_pid)
+        self.assertIsNone(legacy_obj)
 
     def test_resolve_upload_hash_and_duplicate_detection(self):
         with tempfile.TemporaryDirectory() as tmpdir:

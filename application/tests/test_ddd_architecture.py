@@ -165,7 +165,8 @@ class TestPureDomainEntitiesAndValueObjects:
         assert pid.startswith("pat_")
         assert len(pid) == 20
         assert "heremont" not in pid
-        assert identity.build_legacy_patient_id() == "d_heremont_jean_pierre_1958_03_14"
+        assert Patient.is_pseudonymized_id(pid)
+        assert not Patient.is_pseudonymized_id("d_heremont_jean_pierre_1958_03_14")
         assert "14-03-1958" in identity.display_label
 
         with pytest.raises(Exception):

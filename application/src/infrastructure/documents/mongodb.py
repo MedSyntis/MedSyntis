@@ -291,8 +291,8 @@ class Mongodb:
         fallback_file: str | None = None,
     ) -> dict | None:
         """
-        Finds an existing patient by normalized identity (last_name + first_name + date_birth),
-        falling back to legacy slug IDs and (last_name + first_name) when date_birth is missing.
+        Find an existing patient by deterministic pseudonymized ID (`last_name + first_name + date_birth`),
+        falling back to `name_key` when `date_birth` was missing on an earlier or current extraction.
         """
         from src.domain.patient import Patient
 
@@ -306,17 +306,6 @@ class Mongodb:
         if found is not None:
             return found
 
-        legacy_id = Patient.build_legacy_id(
-            first_name=first_name,
-            last_name=last_name,
-            date_birth=date_birth,
-            fallback_file=fallback_file,
-        )
-        if legacy_id and legacy_id != exact_id:
-            found_legacy = self.get_patient(legacy_id)
-            if found_legacy is not None:
-                return found_legacy
-
         name_key = Patient.build_name_key(first_name=first_name, last_name=last_name)
         if not name_key:
             return None
@@ -327,11 +316,9 @@ class Mongodb:
 
         # If date_birth is present, check if a previous patient record was created without date_birth
         no_dob_id = Patient.build_id(first_name=first_name, last_name=last_name)
-        return (
-            self.get_document("patients", {"name_key": name_key, "date_birth": None})
-            or self.get_patient(no_dob_id)
-            or self.get_patient(name_key)
-        )
+        return self.get_document(
+            "patients", {"name_key": name_key, "date_birth": None}
+        ) or self.get_patient(no_dob_id)
 
     def upsert_patient(self, patient_data: dict, filename: str | None = None) -> dict:
         """
@@ -353,19 +340,6 @@ class Mongodb:
             )
 
         existing = self.get_patient(patient_id)
-        migrated_legacy_id: str | None = None
-        if existing is None:
-            legacy_id = Patient.build_legacy_id(
-                first_name=patient_data.get("first_name"),
-                last_name=patient_data.get("last_name"),
-                date_birth=patient_data.get("date_birth"),
-                fallback_file=filename,
-            )
-            if legacy_id and legacy_id != patient_id:
-                legacy_existing = self.get_patient(legacy_id)
-                if legacy_existing is not None:
-                    existing = legacy_existing
-                    migrated_legacy_id = legacy_id
 
         files: list[str] = []
         if existing and isinstance(existing.get("files"), list):
@@ -411,8 +385,6 @@ class Mongodb:
             filter={"patient_id": patient_id},
             upsertable_data=upsertable,
         )
-        if migrated_legacy_id and migrated_legacy_id != patient_id:
-            self.delete_docs(["patients"], {"patient_id": migrated_legacy_id})
         return upsertable
 
     def remove_file_from_patient(self, filename: str) -> None:

@@ -59,33 +59,53 @@ def client(api_app):
 
 
 # ---------------------------------------------------------------------------
-# 1. Pseudonymized Patient.build_id, zero PII leakage, patient_ prefix & legacy fallback
+# 1. Pseudonymized Patient.build_id, zero legacy fallback, and migrate_patient_ids script
 # ---------------------------------------------------------------------------
-class TestPseudonymizedPatientIdentifiers:
-    """Verify SHA-256 pseudonymized patient IDs and legacy slug backward compatibility."""
+class _FakeMongoCollection:
+    """Minimal in-memory PyMongo collection double for testing `migrate_database_patient_ids`."""
 
-    def test_build_id_is_deterministic_and_leaks_zero_pii(self):
+    def __init__(self, initial_docs: list[dict] | None = None) -> None:
+        self._docs: list[dict] = []
+        for idx, doc in enumerate(initial_docs or [], start=1):
+            copy_doc = dict(doc)
+            copy_doc.setdefault("_id", f"oid_{idx}")
+            self._docs.append(copy_doc)
+
+    def find(self, _query: dict | None = None):
+        return [dict(d) for d in self._docs]
+
+    def update_one(self, flt: dict, update: dict) -> None:
+        target_oid = flt.get("_id")
+        set_fields = update.get("$set", {})
+        for d in self._docs:
+            if d.get("_id") == target_oid:
+                d.update(set_fields)
+                break
+
+    def delete_one(self, flt: dict) -> None:
+        target_oid = flt.get("_id")
+        self._docs = [d for d in self._docs if d.get("_id") != target_oid]
+
+
+class TestPseudonymizedPatientIdentifiers:
+    """Verify SHA-256 pseudonymized patient IDs, zero legacy runtime fallback, and CLI migration."""
+
+    def test_build_id_is_deterministic_leaks_zero_pii_and_removes_legacy_helpers(self):
         pid_a = Patient.build_id("Jean-Pierre", "Dupont", "1964-08-19")
         pid_b = Patient.build_id("  jean pierre ", "DUPONT", datetime(1964, 8, 19))
         assert pid_a == pid_b
         assert pid_a.startswith("pat_")
         assert len(pid_a) == 20
+        assert Patient.is_pseudonymized_id(pid_a) is True
+        assert Patient.is_pseudonymized_id("dupont_jean_pierre_1964_08_19") is False
+        assert hasattr(Patient, "build_legacy_id") is False
+        assert hasattr(PatientIdentity, "build_legacy_id") is False
+        assert hasattr(PatientIdentity, "build_legacy_patient_id") is False
 
         lower_id = pid_a.lower()
         for pii_token in ("jean", "pierre", "dupont", "1964", "08", "19"):
             if len(pii_token) >= 4:
                 assert pii_token not in lower_id
-
-        legacy_id = Patient.build_legacy_id("Jean-Pierre", "Dupont", "1964-08-19")
-        assert legacy_id == "dupont_jean_pierre_1964_08_19"
-        assert (
-            PatientIdentity(
-                first_name="Jean-Pierre",
-                last_name="Dupont",
-                date_birth=datetime(1964, 8, 19),
-            ).build_legacy_patient_id()
-            == "dupont_jean_pierre_1964_08_19"
-        )
 
     def test_unidentified_fallback_keeps_patient_prefix_and_hides_filename_pii(self):
         fallback_pid = Patient.build_id(
@@ -96,44 +116,16 @@ class TestPseudonymizedPatientIdentifiers:
         )
         assert fallback_pid.startswith("patient_")
         assert len(fallback_pid) == len("patient_") + 16
+        assert Patient.is_pseudonymized_id(fallback_pid) is True
         assert "dupont" not in fallback_pid
         assert "marie" not in fallback_pid
         assert "1975" not in fallback_pid
-
-        legacy_fallback = Patient.build_legacy_id(
-            first_name="",
-            last_name="",
-            date_birth=None,
-            fallback_file="compte_rendu_dupont_marie_1975.pdf",
+        assert (
+            Patient.is_pseudonymized_id("patient_compte_rendu_dupont_marie_1975_pdf")
+            is False
         )
-        assert legacy_fallback.startswith("patient_compte_rendu_dupont_marie_1975")
 
-    def test_in_memory_and_mongo_repositories_fallback_to_legacy_slug(self):
-        # 1. InMemoryPatientRepository legacy record lookup & find_by_identity
-        legacy_patient = Patient(
-            patient_id="dupont_jean_1964_08_19",
-            first_name="Jean",
-            last_name="Dupont",
-            date_birth=datetime(1964, 8, 19),
-            gender=Gender.male,
-            files=["legacy_rcp.pdf"],
-        )
-        mem_repo = InMemoryPatientRepository([legacy_patient])
-        new_pid = Patient.build_id("Jean", "Dupont", "1964-08-19")
-
-        found_by_new_id = mem_repo.get_by_id(new_pid)
-        assert found_by_new_id is not None
-        assert found_by_new_id.files == ["legacy_rcp.pdf"]
-
-        found_by_identity = mem_repo.find_by_identity(
-            first_name="Jean",
-            last_name="Dupont",
-            date_birth="1964-08-19",
-        )
-        assert found_by_identity is not None
-        assert found_by_identity.patient_id == "dupont_jean_1964_08_19"
-
-        # Also check reverse lookup: persisted pat_<16hex> queried by legacy slug
+    def test_repositories_do_not_resolve_legacy_cleartext_slugs(self):
         modern_patient = Patient.from_administrative(
             {
                 "first_name": "Claire",
@@ -142,12 +134,10 @@ class TestPseudonymizedPatientIdentifiers:
             },
             filename="modern_rcp.pdf",
         )
-        mem_repo.save(modern_patient)
-        found_by_legacy_slug = mem_repo.get_by_id("moreau_claire_1982_09_20")
-        assert found_by_legacy_slug is not None
-        assert found_by_legacy_slug.patient_id == modern_patient.patient_id
+        mem_repo = InMemoryPatientRepository([modern_patient])
+        assert mem_repo.get_by_id(modern_patient.patient_id) is not None
+        assert mem_repo.get_by_id("moreau_claire_1982_09_20") is None
 
-        # 2. MongoPatientRepository / Mongodb legacy fallback on find_patient_by_identity & upsert
         close_all_mongo_clients()
         try:
             with patch("src.infrastructure.documents.mongodb.MongoClient"):
@@ -156,41 +146,173 @@ class TestPseudonymizedPatientIdentifiers:
                 mock_conf.mongodb.port = "27017"
                 mock_conf.mongodb.user = ""
                 mock_conf.mongodb.password = ""
-                mock_conf.mongodb.database = "TestLegacyFallback"
+                mock_conf.mongodb.database = "TestNoLegacyFallback"
                 mock_conf.set_logger.return_value = MagicMock()
 
                 db = Mongodb(mock_conf)
                 mock_database = MagicMock()
                 col = MagicMock()
+                col.find_one.return_value = None
                 mock_database.__getitem__.return_value = col
                 db.database = mock_database
 
-                legacy_doc = {
-                    "patient_id": "dupont_jean_1964_08_19",
-                    "name_key": "dupont_jean",
-                    "first_name": "Jean",
-                    "last_name": "Dupont",
-                    "date_birth": "1964-08-19",
-                    "gender": "Male",
-                    "files": ["old_2021.pdf"],
-                }
-
-                def fake_find_one(flt):
-                    if flt == {"patient_id": "dupont_jean_1964_08_19"}:
-                        return dict(legacy_doc)
-                    return None
-
-                col.find_one.side_effect = fake_find_one
                 mongo_repo = MongoPatientRepository(db)
-                matched = mongo_repo.find_by_identity(
-                    first_name="Jean",
-                    last_name="Dupont",
-                    date_birth="1964-08-19",
-                )
-                assert matched is not None
-                assert matched.files == ["old_2021.pdf"]
+                assert mongo_repo.get_by_id("moreau_claire_1982_09_20") is None
         finally:
             close_all_mongo_clients()
+
+    def test_migrate_patient_ids_script_migrates_merges_and_is_idempotent(self):
+        from scripts.migrate_patient_ids import migrate_database_patient_ids
+
+        expected_jean = Patient.build_id("Jean", "Dupont", "1964-08-19")
+        expected_claire = Patient.build_id("Claire", "Moreau", "1982-09-20")
+        expected_unid = Patient.build_id("", "", None, fallback_file="scan_inconnu_pdf")
+
+        fake_db = {
+            "patients": _FakeMongoCollection(
+                [
+                    {
+                        "_id": "p_jean_legacy",
+                        "patient_id": "dupont_jean_1964_08_19",
+                        "first_name": "Jean",
+                        "last_name": "Dupont",
+                        "date_birth": "1964-08-19",
+                        "files": ["jean_2024.pdf"],
+                    },
+                    # Collision case: both legacy and pseudonymized Claire exist
+                    {
+                        "_id": "p_claire_modern",
+                        "patient_id": expected_claire,
+                        "first_name": "Claire",
+                        "last_name": "Moreau",
+                        "date_birth": "1982-09-20",
+                        "files": ["claire_2026.pdf"],
+                    },
+                    {
+                        "_id": "p_claire_legacy",
+                        "patient_id": "moreau_claire_1982_09_20",
+                        "first_name": "Claire",
+                        "last_name": "Moreau",
+                        "date_birth": "1982-09-20",
+                        "files": ["claire_2023.pdf"],
+                        "record_summary": {"content": {"overview": "Legacy summary"}},
+                    },
+                    {
+                        "_id": "p_unid_legacy",
+                        "patient_id": "patient_scan_inconnu_pdf",
+                        "first_name": "",
+                        "last_name": "",
+                        "date_birth": None,
+                        "files": [],
+                    },
+                ]
+            ),
+            "rcp_info": _FakeMongoCollection(
+                [
+                    {
+                        "_id": "f1",
+                        "file": "jean_2024.pdf",
+                        "patient_id": "dupont_jean_1964_08_19",
+                    },
+                    {
+                        "_id": "f2",
+                        "file": "claire_2023.pdf",
+                        "patient_id": "moreau_claire_1982_09_20",
+                    },
+                ]
+            ),
+            "mdt_agendas": _FakeMongoCollection(
+                [
+                    {
+                        "_id": "ag1",
+                        "agenda_id": "next_mdt_oncology",
+                        "entries": [
+                            {
+                                "patient_id": "dupont_jean_1964_08_19",
+                                "filename": "jean_2024.pdf",
+                                "manual_order": 0,
+                            },
+                            {
+                                "patient_id": expected_claire,
+                                "filename": "claire_2026.pdf",
+                                "manual_order": 1,
+                            },
+                            {
+                                "patient_id": "moreau_claire_1982_09_20",
+                                "filename": "claire_2023.pdf",
+                                "manual_order": 2,
+                            },
+                        ],
+                    }
+                ]
+            ),
+            "bug_reports": _FakeMongoCollection(
+                [
+                    {
+                        "_id": "b1",
+                        "bug_id": "bug_001",
+                        "patient_id": "dupont_jean_1964_08_19",
+                    }
+                ]
+            ),
+        }
+
+        # 1. Dry-run computes exact stats without mutating collections
+        dry_stats = migrate_database_patient_ids(fake_db, dry_run=True)
+        assert dry_stats == {
+            "patients_already_pseudonymized": 1,
+            "patients_migrated": 2,
+            "patients_merged": 1,
+            "forms_migrated": 2,
+            "agendas_updated": 1,
+            "bugs_migrated": 1,
+        }
+        assert len(fake_db["patients"].find()) == 4
+
+        # 2. Live migration updates all collections and merges duplicate Claire record
+        live_stats = migrate_database_patient_ids(fake_db, dry_run=False)
+        assert live_stats == dry_stats
+
+        patients_after = {d["patient_id"]: d for d in fake_db["patients"].find()}
+        assert set(patients_after.keys()) == {
+            expected_jean,
+            expected_claire,
+            expected_unid,
+        }
+        assert patients_after[expected_claire]["files"] == [
+            "claire_2026.pdf",
+            "claire_2023.pdf",
+        ]
+        assert patients_after[expected_claire]["record_summary"] == {
+            "content": {"overview": "Legacy summary"}
+        }
+
+        forms_after = {d["file"]: d["patient_id"] for d in fake_db["rcp_info"].find()}
+        assert forms_after == {
+            "jean_2024.pdf": expected_jean,
+            "claire_2023.pdf": expected_claire,
+        }
+
+        agenda_entries = fake_db["mdt_agendas"].find()[0]["entries"]
+        assert [e["patient_id"] for e in agenda_entries] == [
+            expected_jean,
+            expected_claire,
+        ]
+        assert [e["manual_order"] for e in agenda_entries] == [0, 1]
+
+        bug_after = fake_db["bug_reports"].find()[0]
+        assert bug_after["patient_id"] == expected_jean
+
+        # 3. Idempotent re-run performs zero mutations
+        rerun_stats = migrate_database_patient_ids(fake_db, dry_run=False)
+        assert rerun_stats == {
+            "patients_already_pseudonymized": 3,
+            "patients_migrated": 0,
+            "patients_merged": 0,
+            "forms_migrated": 0,
+            "agendas_updated": 0,
+            "bugs_migrated": 0,
+        }
 
 
 # ---------------------------------------------------------------------------

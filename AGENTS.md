@@ -48,6 +48,7 @@ All commands below are designed to execute cleanly from the **repository root** 
 | **Web UI Lint & WCAG** | `npm --prefix web run lint` | Run Biome, TypeScript typecheck, and WCAG 2.2 AA contrast check |
 | **Web UI Unit/Int Tests**| `npm --prefix web run test` | Run Vitest unit & Fastify BFF integration tests |
 | **Web UI E2E Tests** | `npm --prefix web run e2e` | Run Playwright E2E clinical & mobile journeys |
+| **Migrate Patient IDs** | `make patient-id-migrate` | Migrate legacy cleartext `patient_id` slugs in MongoDB to SHA-256 IDs (`DRY_RUN=1` to preview) |
 
 ---
 

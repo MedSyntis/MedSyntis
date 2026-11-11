@@ -585,10 +585,7 @@ class PatientRecordService:
         if target_patient is None:
             all_forms = self.mdt_form_repo.list_all()
             for candidate in self._collect_patients_including_unlinked(all_forms):
-                if (
-                    candidate.patient_id == target_patient_id
-                    or candidate.identity.build_legacy_patient_id() == target_patient_id
-                ):
+                if candidate.patient_id == target_patient_id:
                     target_patient = candidate
                     break
         if target_patient is None:
@@ -793,10 +790,7 @@ class PatientRecordService:
         if patient is None:
             all_forms = self.mdt_form_repo.list_all()
             for candidate in self._collect_patients_including_unlinked(all_forms):
-                if (
-                    candidate.patient_id == patient_id
-                    or candidate.identity.build_legacy_patient_id() == patient_id
-                ):
+                if candidate.patient_id == patient_id:
                     patient = candidate
                     break
         if not patient:
