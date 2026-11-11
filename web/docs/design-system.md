@@ -52,7 +52,7 @@ The dark and contrast token blocks are **intentionally duplicated** (explicit at
 
 All semantic tokens in `public/css/tokens.css` derive from `:root` M3 HCT tonal palettes (`--md-ref-palette-{primary,secondary,tertiary,neutral,neutral-variant,error,success,warning,manual,cerulean}-{tone}`):
 
-- **Pure M3 Neutral 5-step surface hierarchy (Zero Structural Borders)**: `--ds-surface-container-lowest` → `-low` → `container` → `-high` → `-highest` use neutral grey tones (`#FFFFFF` cards on `#F2F4F6` canvas, `#ECEEF1` rail, `#F8F9FC` floating menu; Dark anti-halation `#121315` / `#0D0E10` canvas, `#1A1C1D` cards — never `#000000` pure black). Cards, KPIs, rail, topbar, toolbars, RCP headers, and menus have **zero structural borders** (`border: 0` / `transparent`), separating purely by tonal elevation and soft M3 shadows across all 6 schemes.
+- **Pure M3 Neutral 5-step surface hierarchy (Zero Structural Borders)**: `--ds-surface-container-lowest` → `-low` → `container` → `-high` → `-highest` use neutral grey tones (`#FFFFFF` cards on `#E9EBEE` canvas, `#E1E2E5` rail, `#FFFFFF` floating menu; Dark anti-halation `#121315` / `#0D0E10` canvas, `#1A1C1D` cards — never `#000000` pure black). Cards, KPIs, rail, topbar, toolbars, RCP headers, and menus have **zero structural borders** (`border: 0` / `transparent`), separating purely by tonal elevation (`≥ 1.18:1` card-to-canvas step in Light Standard) and soft M3 shadows across all 6 schemes.
 - **Unified Danger / Error seed**: MedSyntis Rose (`#B83B5E`) across all 6 schemes (soft blush `#FFE5E9` in Standard, never neon scarlet).
 - **Smooth M3 Container Progression**:
   - **`*Container` + `on*Container` pairs** (`--ds-color-primary-soft` + `--ds-color-on-secondary-container`, `--ds-color-{success,warning,danger,info,neutral}-bg` + `-fg`, clinical urgency/orientation/domain badges): **soft pastel** in Standard (`0.0`), **reinforced pastel** in Medium (`+0.5` — `≥ 6.0:1` text without harsh dark menu blocks), and **tonally inverted AAA** in High (`+1.0` — `Tone 25` / `Tone 100` Light, `Tone 82` / `Tone 0` Dark, `≥ 7.0:1` internal text and `≥ 4.5:1` container-vs-surface).
@@ -61,9 +61,9 @@ All semantic tokens in `public/css/tokens.css` derive from `:root` M3 HCT tonal 
 
 | Role | Token | Light Standard | Dark Standard | Contrast (Light / Dark Std) |
 | :--- | :--- | :--- | :--- | :--- |
-| Workspace canvas | `--ds-color-canvas` | `#f5fafc` | `#0f1417` | — |
-| Card surface | `--ds-color-surface` | `#ffffff` | `#171c1f` | — |
-| Sunken surface | `--ds-color-surface-sunken` | `#eff4f7` | `#1b2023` | — |
+| Workspace canvas | `--ds-color-canvas` | `#E9EBEE` | `#121315` | — |
+| Card surface | `--ds-color-surface` | `#FFFFFF` | `#1A1C1D` | — |
+| Sunken surface | `--ds-color-surface-sunken` | `#E7E8EB` | `#1E2021` | — |
 | Primary text | `--ds-color-text` | `#171c1f` | `#dfe3e7` | ≥ 14.5 / ≥ 13.0 on surface |
 | Secondary text | `--ds-color-text-muted` | `#40484c` | `#bfc8cc` | ≥ 9.0 / ≥ 9.5 on surface |
 | Subtle text | `--ds-color-text-subtle` | `#586064` | `#a4adb1` | ≥ 6.0 / ≥ 6.8 on surface |

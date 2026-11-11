@@ -1470,9 +1470,9 @@ textarea,
   z-index: calc(var(--ds-z-topbar, 30) - 1);
 }
 .ds-card--elevated {
-  background: var(--ds-surface-container-low);
+  background: var(--ds-color-surface);
   border: 0;
-  box-shadow: var(--ds-shadow-sm);
+  box-shadow: var(--ds-shadow-md);
 }
 .ds-card--filled,
 .ds-card--tonal {

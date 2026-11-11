@@ -293,6 +293,30 @@ for (const [label, vars, level, polarity] of schemes) {
     );
   }
 
+  if (polarity === "light") {
+    // Borderless Light hierarchy requires clear luminance steps between cards (#FFFFFF), canvas, and rail
+    const surfHex = resolve(vars, "--ds-color-surface");
+    const canvasHex = resolve(vars, "--ds-color-canvas");
+    const sunkenHex = resolve(vars, "--ds-color-surface-sunken");
+    const nestedHex = resolve(vars, "--ds-surface-nested");
+    const cardVsCanvas = ratio(surfHex, canvasHex);
+    const cardVsSunken = ratio(surfHex, sunkenHex);
+    const cardVsNested = ratio(surfHex, nestedHex);
+    check(
+      cardVsCanvas >= 1.16,
+      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-color-canvas (${canvasHex}) = ${cardVsCanvas.toFixed(2)}:1 (need ≥1.16 in ${label})`,
+    );
+    check(
+      cardVsSunken >= 1.2,
+      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-color-surface-sunken (${sunkenHex}) = ${cardVsSunken.toFixed(2)}:1 (need ≥1.20 in ${label})`,
+    );
+    check(
+      cardVsNested >= 1.16,
+      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-surface-nested (${nestedHex}) = ${cardVsNested.toFixed(2)}:1 (need ≥1.16 in ${label})`,
+    );
+    schemePass += 3;
+  }
+
   if (polarity === "dark") {
     const canvasHex = resolve(vars, "--ds-color-canvas");
     check(
