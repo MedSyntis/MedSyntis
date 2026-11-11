@@ -280,7 +280,7 @@ services:
 
   # ─── Unified LiteLLM Gateway (Chat + Embeddings, zero external telemetry) ───
   litellm:
-    image: ghcr.io/berriai/litellm:v1.108.4
+    image: ghcr.io/berriai/litellm:v1.109.0
     container_name: litellm-proxy
     restart: unless-stopped
     logging: *default-logging
@@ -473,7 +473,7 @@ services:
 
   # ─── TLS Reverse Proxy (Caddy — Automatic TLS + Zero-Trust Header Injection) ──
   caddy:
-    image: caddy:2.11.7-alpine
+    image: caddy:2.11.9-alpine
     container_name: medsyntis-caddy
     restart: unless-stopped
     logging: *default-logging
