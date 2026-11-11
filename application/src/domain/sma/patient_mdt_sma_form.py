@@ -70,22 +70,76 @@ class PatientMDTSmaForm(PatientMDTForm):
         motor_milestones: list[MarkdownStr] = Field(
             description="Achieved motor milestones (e.g. head control, sitting unsupported, standing, independent walking)"
         )
-        hfmse_score: Optional[int | float | str] = Field(
+        mfm_scale_version: Optional[str] = Field(
             default=None,
-            description="Hammersmith Functional Motor Scale Expanded (HFMSE) raw score (0-66, ratio, bilateral, or clinical note)",
+            description="Motor Function Measure (MFM) scale version used: MFM-32 (≥ 6 years, /96) or MFM-20 (2 to < 6 years, /60)",
         )
-        chop_intend_score: Optional[int | float | str] = Field(
+        mfm_total_score: Optional[int | float | str] = Field(
             default=None,
-            description="CHOP INTEND raw score (usually for Type 1 infants, 0-64, ratio, or clinical note)",
+            description="Motor Function Measure (MFM) total score in % of maximum possible score (0-100%, ratio, or clinical note)",
+        )
+        mfm_d1_score: Optional[int | float | str] = Field(
+            default=None,
+            description="MFM D1 subscore (Standing and transfers) in % of maximum possible score (0-100%, ratio, or clinical note)",
+        )
+        mfm_d2_score: Optional[int | float | str] = Field(
+            default=None,
+            description="MFM D2 subscore (Axial and proximal motor function) in % of maximum possible score (0-100%, ratio, or clinical note)",
+        )
+        mfm_d3_score: Optional[int | float | str] = Field(
+            default=None,
+            description="MFM D3 subscore (Distal motor function) in % of maximum possible score (0-100%, ratio, or clinical note)",
         )
         rulm_score: Optional[int | float | str] = Field(
             default=None,
             description="Revised Upper Limb Module (RULM) raw score (0-37, ratio, bilateral D/G, or clinical note)",
         )
+        chop_intend_score: Optional[int | float | str] = Field(
+            default=None,
+            description="CHOP INTEND raw score (usually for Type 1 infants, 0-64, ratio, or clinical note)",
+        )
+        hfmse_score: Optional[int | float | str] = Field(
+            default=None,
+            description="Hammersmith Functional Motor Scale Expanded (HFMSE) raw score (0-66, ratio, bilateral, or clinical note)",
+        )
 
         @staticmethod
+        def _check_motor_bounds(
+            num: float, min_val: float, max_val: float, label: str
+        ) -> None:
+            """Raise ValueError if a numeric motor scale value is outside [min_val, max_val]."""
+            if num < min_val or num > max_val:
+                raise ValueError(
+                    f"{label} score must be between {min_val:g} and {max_val:g}."
+                )
+
+        @classmethod
+        def _parse_motor_scale_string(
+            cls, raw_str: str, min_val: float, max_val: float, label: str
+        ) -> int | float | str | None:
+            """Parse a string motor scale value (ratio, percentage, number, or clinical note)."""
+            cleaned = raw_str.strip()
+            if not cleaned:
+                return None
+            first_token = cleaned.split()[0]
+            if "/" in first_token:
+                return first_token
+            candidate = (
+                first_token[:-1].replace(",", ".")
+                if first_token.endswith("%")
+                else cleaned
+            )
+            try:
+                num = float(candidate)
+            except ValueError:
+                return cleaned
+            cls._check_motor_bounds(num, min_val, max_val, label)
+            has_decimal = "." in candidate or "," in first_token
+            return int(num) if num.is_integer() and not has_decimal else num
+
+        @classmethod
         def _validate_raw_motor_scale(
-            value: Any, min_val: float, max_val: float, label: str
+            cls, value: Any, min_val: float, max_val: float, label: str
         ) -> int | float | str | None:
             """Validate a motor scale value while stripping verbose LLM commentary and preserving raw scores."""
             if value is None:
@@ -93,49 +147,46 @@ class PatientMDTSmaForm(PatientMDTForm):
             if isinstance(value, bool):
                 raise ValueError(f"{label} cannot be a boolean.")
             if isinstance(value, (int, float)):
-                if float(value) < min_val or float(value) > max_val:
-                    raise ValueError(
-                        f"{label} score must be between {min_val:g} and {max_val:g}."
-                    )
+                cls._check_motor_bounds(float(value), min_val, max_val, label)
                 return value
             if isinstance(value, str):
-                cleaned = value.strip()
-                if not cleaned:
-                    return None
-                first_token = cleaned.split()[0]
-                if "/" in first_token:
-                    return first_token
-                try:
-                    num = float(cleaned)
-                except ValueError:
-                    return cleaned
-                if num < min_val or num > max_val:
-                    raise ValueError(
-                        f"{label} score must be between {min_val:g} and {max_val:g}."
-                    )
-                return int(num) if num.is_integer() and "." not in cleaned else num
+                return cls._parse_motor_scale_string(value, min_val, max_val, label)
             raise ValueError(f"Unsupported type for {label}.")
 
-        @field_validator("hfmse_score", mode="before")
+        @field_validator(
+            "mfm_total_score",
+            "mfm_d1_score",
+            "mfm_d2_score",
+            "mfm_d3_score",
+            mode="before",
+        )
         @classmethod
-        def validate_hfmse_score(cls, v: Any) -> int | float | str | None:
-            return cls._validate_raw_motor_scale(v, 0, 66, "HFMSE")
-
-        @field_validator("chop_intend_score", mode="before")
-        @classmethod
-        def validate_chop_intend_score(cls, v: Any) -> int | float | str | None:
-            return cls._validate_raw_motor_scale(v, 0, 64, "CHOP INTEND")
+        def validate_mfm_scores(cls, v: Any) -> int | float | str | None:
+            return cls._validate_raw_motor_scale(v, 0, 100, "MFM")
 
         @field_validator("rulm_score", mode="before")
         @classmethod
         def validate_rulm_score(cls, v: Any) -> int | float | str | None:
             return cls._validate_raw_motor_scale(v, 0, 37, "RULM")
 
+        @field_validator("chop_intend_score", mode="before")
+        @classmethod
+        def validate_chop_intend_score(cls, v: Any) -> int | float | str | None:
+            return cls._validate_raw_motor_scale(v, 0, 64, "CHOP INTEND")
+
+        @field_validator("hfmse_score", mode="before")
+        @classmethod
+        def validate_hfmse_score(cls, v: Any) -> int | float | str | None:
+            return cls._validate_raw_motor_scale(v, 0, 66, "HFMSE")
+
         question: ClassVar[str] = (
             "Determine the SMA clinical type (1, 2, 3, or 4), list the patient's current motor milestones, "
-            "and extract any standardized motor scale scores found in the clinical records (HFMSE, CHOP INTEND, RULM). "
-            "IMPORTANT: For hfmse_score, chop_intend_score, and rulm_score, output ONLY the raw score value itself "
-            "(e.g. 9, '9/66', '18/37', or '28 (D) / 30 (G)'). Do NOT include dates, deltas, comparisons to baseline, or progression history."
+            "and extract standardized motor scale scores found in the clinical records, prioritizing the French reference "
+            "MFM (Mesure de la Fonction Motrice: scale version MFM-32 or MFM-20, total score in %, and D1 standing/transfers, "
+            "D2 axial/proximal, D3 distal subscores in %), as well as RULM and CHOP INTEND (or HFMSE if explicitly documented). "
+            "IMPORTANT: For mfm_total_score, mfm_d1_score, mfm_d2_score, mfm_d3_score, rulm_score, chop_intend_score, and hfmse_score, "
+            "output ONLY the raw score value itself (e.g. 64.6, '64.6%', '18/37', '9/66', or '28 (D) / 30 (G)'). "
+            "Do NOT include dates, deltas, comparisons to baseline, or progression history."
         )
 
     class RespiratoryFunction(PatientMDTForm.default_model):
@@ -279,7 +330,7 @@ class PatientMDTSmaForm(PatientMDTForm):
             Determine if an initiation or adaptation of therapeutic, respiratory, nutritional, orthopedic, or rehabilitative care should be discussed for this SMA patient.
             If yes, specify:
             1. The suggested priority level (`suggested_priority`) for the MDT discussion.
-               CRITICAL SAFETY RULE: In Spinal Muscular Atrophy, motor neuron loss is irreversible ("Time is Motoneuron") and respiratory/bulbar decompensations are life-threatening. Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate flags the case as urgent or high priority (e.g., infant SMA Type 1 or pre-symptomatic newborn needing immediate disease-modifying therapy, rapid motor regression on HFMSE/CHOP-INTEND/RULM, respiratory insufficiency requiring NIV/Cough Assist, dysphagia with aspiration pneumonia risk, or rapidly progressing scoliosis compromising lung function), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
+               CRITICAL SAFETY RULE: In Spinal Muscular Atrophy, motor neuron loss is irreversible ("Time is Motoneuron") and respiratory/bulbar decompensations are life-threatening. Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate flags the case as urgent or high priority (e.g., infant SMA Type 1 or pre-symptomatic newborn needing immediate disease-modifying therapy, rapid motor regression on MFM/RULM/CHOP-INTEND, respiratory insufficiency requiring NIV/Cough Assist, dysphagia with aspiration pneumonia risk, or rapidly progressing scoliosis compromising lung function), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
             2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., SMN-targeted disease-modifying therapy initiation/switch [nusinersen, risdiplam, onasemnogene abeparvovec], NIV/BiPAP or Cough Assist adaptation, nutritional/gastrostomy support, orthopedic spine management/arthrodesis, or specialized rehabilitation).
             Provide a clear `clinical_rationale` detailing the positions of the experts and French PNDS SMA guidelines, especially highlighting any divergence in opinions regarding urgency.
             """

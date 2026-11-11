@@ -83,7 +83,8 @@ textarea,
   outline-offset: 2px;
 }
 :focus:not(:focus-visible),
-[data-href]:focus:not(:focus-visible) {
+[data-href]:focus:not(:focus-visible),
+[data-jump-section]:focus:not(:focus-visible) {
   outline: none;
 }
 
@@ -1282,6 +1283,9 @@ textarea,
 .ds-badge > .ds-icon {
   flex-shrink: 0;
 }
+.ds-badge[data-tooltip]:not(.ds-badge--truncate) {
+  overflow: visible;
+}
 .ds-badge--sm { min-height: 1.375rem; font-size: var(--ds-text-xs); padding: 0.1rem 0.5rem; }
 .ds-badge--outline { box-shadow: inset 0 0 0 1px currentColor; }
 
@@ -1448,11 +1452,13 @@ textarea,
     background-color var(--ds-duration-short4) var(--ds-ease-standard),
     box-shadow var(--ds-duration-short4) var(--ds-ease-standard);
 }
-.ds-card:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
-.ds-section:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
-.ds-opinion:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
-.ds-synoptic:has(.ds-menu[open], .ds-popover[open], .ds-hovercard:hover, .ds-hovercard:focus-within) {
-  z-index: var(--ds-z-popover, 60);
+.ds-card:not(.ds-synoptic):has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible),
+.ds-section:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible),
+.ds-opinion:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible) {
+  z-index: 5;
+}
+.ds-synoptic:has(.ds-menu[open], .ds-popover[open], .ds-hovercard:hover, .ds-hovercard:focus-within, [data-tooltip]:hover, [data-tooltip]:focus-visible) {
+  z-index: calc(var(--ds-z-topbar, 30) - 1);
 }
 .ds-card--elevated {
   background: var(--ds-surface-container-low);
@@ -1671,6 +1677,47 @@ a.ds-kpi:hover {
   }
 }
 .ds-markers dt { font-size: var(--ds-text-xs); font-weight: var(--ds-weight-medium); color: var(--ds-color-text-muted); }
+.ds-markers__item--interactive {
+  cursor: pointer;
+  border: 0;
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short4) var(--ds-ease-standard);
+}
+.ds-markers__item--interactive:hover {
+  background: color-mix(in srgb, var(--ds-color-text) 8%, var(--ds-surface-nested));
+  box-shadow: var(--ds-shadow-sm);
+}
+.ds-markers__item--interactive:active {
+  background: color-mix(in srgb, var(--ds-color-text) 12%, var(--ds-surface-nested));
+}
+[data-jump-section] {
+  cursor: pointer;
+}
+.ds-badge--interactive {
+  cursor: pointer;
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short4) var(--ds-ease-standard);
+}
+.ds-badge--interactive:hover,
+.ds-hovercard:hover > .ds-badge--interactive,
+.ds-hovercard:focus-within > .ds-badge--interactive {
+  background: color-mix(in srgb, var(--_fg) 10%, var(--_bg));
+  box-shadow: var(--ds-shadow-xs);
+}
+.ds-badge--interactive:active {
+  background: color-mix(in srgb, var(--_fg) 16%, var(--_bg));
+}
+.ds-section.is-jump-target,
+.ds-opinion.is-jump-target {
+  outline: 2px solid var(--ds-color-focus);
+  outline-offset: 2px;
+  box-shadow: var(--ds-shadow-md);
+  transition:
+    outline-color var(--ds-duration-medium1) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-medium1) var(--ds-ease-standard);
+}
 .ds-markers dd { margin: 0; font-weight: var(--ds-weight-semibold); display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); overflow-wrap: anywhere; }
 .ds-markers dd.is-missing { color: var(--ds-color-text-subtle); font-weight: var(--ds-weight-regular); font-style: italic; }
 
@@ -1692,7 +1739,7 @@ a.ds-kpi:hover {
   border: 0;
   box-shadow: none;
 }
-.ds-patient-header:has(.ds-hovercard:hover, .ds-hovercard:focus-within, .ds-menu[open], .ds-popover[open]) {
+.ds-patient-header:has(.ds-hovercard:hover, .ds-hovercard:focus-within, .ds-menu[open], .ds-popover[open], [data-tooltip]:hover, [data-tooltip]:focus-visible) {
   z-index: var(--ds-z-popover, 60);
 }
 .ds-patient-header__top {
@@ -4758,6 +4805,13 @@ a.ds-timeline__link:hover {
   flex-direction: column;
   gap: var(--ds-space-1);
 }
+.ds-hovercard__list li[data-jump-section] {
+  transition: color var(--ds-duration-short3) var(--ds-ease-standard);
+}
+.ds-hovercard__list li[data-jump-section]:hover {
+  color: var(--ds-color-primary-text);
+  text-decoration: underline;
+}
 .ds-hovercard__footer {
   display: flex;
   justify-content: flex-end;
@@ -6148,15 +6202,30 @@ a.ds-timeline__link:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--ds-space-4);
+  align-items: stretch;
 }
 @media (min-width: 64rem) {
   .ds-metric-charts-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-.ds-metric-chart-card__canvas {
+.ds-metric-chart-card > .ds-card__header > div {
+  min-width: 0;
   width: 100%;
-  overflow-x: auto;
+}
+.ds-metric-chart-card .ds-card__title,
+.ds-metric-chart-card .ds-card__subtitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-metric-chart-card .ds-card__subtitle {
+  display: block;
+}
+.ds-metric-chart-card__canvas {
+  position: relative;
+  width: 100%;
+  overflow: visible;
   border-radius: var(--ds-radius-md);
   background: var(--ds-surface-container-lowest);
   border: 1px solid var(--ds-color-border);
@@ -6167,6 +6236,66 @@ a.ds-timeline__link:hover {
   width: 100%;
   max-width: 100%;
   height: auto;
+  overflow: visible;
+}
+
+/* Interactive SVG Chart Point Hit Targets & Hover Halo */
+.ds-chart-point {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 3px;
+  cursor: pointer;
+  outline: none;
+  transition:
+    fill var(--ds-duration-short3) var(--ds-ease-standard),
+    stroke var(--ds-duration-short3) var(--ds-ease-standard);
+}
+.ds-chart-point:hover,
+.ds-chart-point:focus-visible,
+.ds-chart-point.is-active {
+  fill: color-mix(in srgb, var(--chart-point-color, var(--ds-color-primary)) 22%, transparent);
+  stroke: var(--chart-point-color, var(--ds-color-primary));
+}
+
+.ds-chart-legend__dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--legend-color, var(--ds-color-primary));
+  flex-shrink: 0;
+}
+.ds-raw-pill__series {
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-color-text);
+}
+
+/* M3 Plain Tooltip for Chart Points (matches [data-tooltip]::after: inverse surface, no border) */
+.ds-chart-tooltip {
+  position: absolute;
+  z-index: var(--ds-z-toast);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border: 0;
+  border-radius: var(--ds-radius-xs);
+  background: var(--ds-inverse-surface);
+  color: var(--ds-inverse-on-surface);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  margin-top: -0.5rem;
+}
+.ds-chart-tooltip[hidden] {
+  display: none;
+}
+.ds-chart-tooltip[data-placement="bottom"] {
+  transform: translate(-50%, 0);
+  margin-top: 0.5rem;
 }
 .ds-metric-points-strip {
   display: flex;
@@ -6187,6 +6316,35 @@ a.ds-timeline__link:hover {
 .ds-raw-pill--annotative {
   background: var(--ds-color-warning-bg);
   color: var(--ds-color-warning-fg);
+}
+.ds-raw-pill[data-jump-section] {
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    border-color var(--ds-duration-short4) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short4) var(--ds-ease-standard);
+}
+.ds-raw-pill[data-jump-section]:hover {
+  background: color-mix(in srgb, var(--ds-color-text) 8%, var(--ds-surface-nested));
+  border-color: var(--ds-color-border-strong);
+  box-shadow: var(--ds-shadow-xs);
+}
+.ds-raw-pill[data-jump-section]:active {
+  background: color-mix(in srgb, var(--ds-color-text) 12%, var(--ds-surface-nested));
+}
+.ds-raw-pill--annotative[data-jump-section]:hover {
+  background: color-mix(in srgb, var(--ds-color-warning-fg) 10%, var(--ds-color-warning-bg));
+}
+.ds-metric-chart-card > .ds-card__header[data-jump-section] .ds-card__title {
+  transition: color var(--ds-duration-short3) var(--ds-ease-standard);
+}
+.ds-metric-chart-card > .ds-card__header[data-jump-section]:hover .ds-card__title {
+  color: var(--ds-color-primary-text);
+}
+.ds-table__primary-cell[data-jump-section] strong {
+  transition: color var(--ds-duration-short3) var(--ds-ease-standard);
+}
+.ds-table__primary-cell[data-jump-section]:hover strong {
+  color: var(--ds-color-primary-text);
 }
 .ds-raw-pill__date {
   color: var(--ds-color-text-muted);
@@ -6209,6 +6367,18 @@ a.ds-timeline__link:hover {
   grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
   align-items: center;
   gap: var(--ds-space-3);
+}
+.ds-swimlane-row[data-jump-section] {
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short4) var(--ds-ease-standard);
+}
+.ds-swimlane-row[data-jump-section]:hover {
+  background: color-mix(in srgb, var(--ds-color-text) 8%, var(--ds-surface-nested));
+  box-shadow: var(--ds-shadow-sm);
+}
+.ds-swimlane-row[data-jump-section]:active {
+  background: color-mix(in srgb, var(--ds-color-text) 12%, var(--ds-surface-nested));
 }
 @media (max-width: 48rem) {
   .ds-swimlane-row {

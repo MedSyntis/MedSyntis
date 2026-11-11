@@ -139,6 +139,17 @@ def test_strip_markdown_inline_and_expander_summaries():
     )
     assert motor_summary == " — Type 1 (Werdnig-Hoffmann)"
 
+    motor_summary_with_mfm = _extract_section_header_summary(
+        "MotorFunctionStatus",
+        {"sma_type": "Type 2", "mfm_total_score": 64.6},
+    )
+    assert motor_summary_with_mfm == " — Type 2 · MFM 64.6 %"
+    assert translate("mfm_total_score") == "Score MFM Total (%)"
+    assert translate("mfm_d1_score") == "MFM D1 — Debout & transferts (%)"
+    assert translate("mfm_d2_score") == "MFM D2 — Axial & proximal (%)"
+    assert translate("mfm_d3_score") == "MFM D3 — Distal (%)"
+    assert translate("hfmse_score") == "Score HFMSE (secondaire)"
+
 
 def test_render_field_multiline_markdown_block():
     st.session_state["language"] = "Français"

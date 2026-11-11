@@ -66,6 +66,12 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await page.getByTestId("btn_pdf_expand").click();
     await expect(page.getByTestId("split-view")).not.toHaveClass(/ds-split--pdf-expanded/);
 
+    // Click on highlighted synoptic clinical metric to directly expand the corresponding detail section
+    await expect(page.getByTestId("section-TumorBiology")).not.toHaveAttribute("open", "");
+    await page.getByTestId("marker-ca19_9").click();
+    await expect(page.getByTestId("section-TumorBiology")).toHaveAttribute("open", "");
+    await page.getByTestId("section-TumorBiology").locator("summary").first().click();
+
     // Expand clinical sections (collapsed by default)
     await page.getByTestId("btn_toggle_all_sections").click();
     await expect(page.getByTestId("reasoning-TumorLocation")).toBeVisible();
@@ -117,8 +123,30 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await expect(page.getByTestId("worklist-table")).toContainText("EXEMPLE Léo");
 
     await page.getByTestId("btn_open_S-0007").click();
-    await expect(page.getByTestId("synoptic-card")).toContainText("42/66");
-    await expect(page.getByTestId("synoptic-card")).toContainText("+2 vs 2026-05-18");
+    await expect(page.getByTestId("synoptic-card")).toContainText("65.6 %");
+    await expect(page.getByTestId("synoptic-card")).toContainText("+3.1 vs 2026-05-18");
+
+    // Open Patient Dashboard tab: verify combined MFM chart, single bottom legend, absence of HFMSE, and point hover tooltip
+    await page.locator("#tab-patient-dashboard").click();
+    const mfmCard = page.getByTestId("metric_chart_MotorFunctionStatus.mfm_total_score");
+    await expect(mfmCard).toBeVisible();
+    await expect(mfmCard).toHaveAttribute("data-mfm-combined", "true");
+    await expect(mfmCard.getByTestId("mfm_chart_legend")).toHaveCount(1);
+    await expect(page.getByTestId("mfm_chart_legend")).toBeVisible();
+    await expect(page.getByTestId("mfm_chart_legend")).toContainText("MFM Total");
+    await expect(page.getByTestId("mfm_chart_legend")).toContainText("MFM D1");
+    await expect(page.getByTestId("mfm_chart_legend")).toContainText("MFM D2");
+    await expect(page.getByTestId("mfm_chart_legend")).toContainText("MFM D3");
+    await expect(page.getByTestId("metric_chart_MotorFunctionStatus.hfmse_score")).toHaveCount(0);
+
+    const firstMfmPoint = mfmCard
+      .locator('[data-chart-point="true"][data-point-value="65.6 %"]')
+      .first();
+    await firstMfmPoint.hover({ force: true });
+    const mfmTooltip = mfmCard.getByTestId("chart_point_tooltip");
+    await expect(mfmTooltip).toBeVisible();
+    await expect(mfmTooltip).toContainText("MFM Total");
+    await expect(mfmTooltip).toContainText("65.6 %");
 
     // Navigate to Guidelines & Agents for SMA
     await page.getByTestId("nav-guidelines").click();

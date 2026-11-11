@@ -516,9 +516,19 @@ export function coerceSectionUpdatePayload(
       case "integer_select": {
         const isRawMotorScale =
           canonical === "MotorFunctionStatus" &&
-          (fieldSchema.key === "rulm_score" ||
+          (fieldSchema.key === "mfm_total_score" ||
+            fieldSchema.key === "mfm_d1_score" ||
+            fieldSchema.key === "mfm_d2_score" ||
+            fieldSchema.key === "mfm_d3_score" ||
+            fieldSchema.key === "rulm_score" ||
             fieldSchema.key === "hfmse_score" ||
             fieldSchema.key === "chop_intend_score");
+        if (isRawMotorScale && typeof rawVal === "number" && !Number.isInteger(rawVal)) {
+          const min = fieldSchema.min ?? 0;
+          const max = fieldSchema.max ?? 100;
+          out[fieldSchema.key] = Math.min(max, Math.max(min, rawVal));
+          break;
+        }
         if (
           isRawMotorScale &&
           typeof rawVal === "string" &&
@@ -526,8 +536,12 @@ export function coerceSectionUpdatePayload(
           !/^[-+]?\d+$/.test(rawVal.trim())
         ) {
           const trimmed = rawVal.trim();
-          if (/^[-+]?\d+[.,]\d+$/.test(trimmed)) {
-            const floatVal = Number(trimmed.replace(",", "."));
+          const pctStripped = trimmed.endsWith("%") ? trimmed.slice(0, -1).trim() : trimmed;
+          if (
+            /^[-+]?\d+[.,]\d+$/.test(pctStripped) ||
+            (trimmed.endsWith("%") && /^[-+]?\d+$/.test(pctStripped))
+          ) {
+            const floatVal = Number(pctStripped.replace(",", "."));
             const min = fieldSchema.min ?? 0;
             const max = fieldSchema.max ?? 100;
             out[fieldSchema.key] = Math.min(max, Math.max(min, floatVal));

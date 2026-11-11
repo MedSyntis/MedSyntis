@@ -356,47 +356,21 @@ export function computeLongitudinalDeltas(
   const prevDate = previousForm.mdtDate ?? "RCP préc.";
 
   // Compare key numeric/clinical markers across sections
-  const trackedKeys: Array<{
-    section: string;
-    field: string;
-    higherIsWorse: boolean;
-  }> = [
-    {
-      section: "PatientPerformanceStatus",
-      field: "performance_status",
-      higherIsWorse: true,
-    },
-    {
-      section: "MotorFunctionStatus",
-      field: "hfmse_score",
-      higherIsWorse: false,
-    },
-    {
-      section: "MotorFunctionStatus",
-      field: "rulm_score",
-      higherIsWorse: false,
-    },
-    {
-      section: "MotorFunctionStatus",
-      field: "chop_intend_score",
-      higherIsWorse: false,
-    },
-    {
-      section: "RespiratoryFunction",
-      field: "forced_vital_capacity_percent",
-      higherIsWorse: false,
-    },
-    {
-      section: "RespiratoryFunction",
-      field: "daily_ventilation_hours",
-      higherIsWorse: true,
-    },
-    {
-      section: "OrthopedicAndSpineStatus",
-      field: "scoliosis_cobb_angle",
-      higherIsWorse: true,
-    },
-  ];
+  const trackedKeys = (
+    [
+      ["PatientPerformanceStatus", "performance_status", true],
+      ["MotorFunctionStatus", "mfm_total_score", false],
+      ["MotorFunctionStatus", "mfm_d1_score", false],
+      ["MotorFunctionStatus", "mfm_d2_score", false],
+      ["MotorFunctionStatus", "mfm_d3_score", false],
+      ["MotorFunctionStatus", "rulm_score", false],
+      ["MotorFunctionStatus", "chop_intend_score", false],
+      ["MotorFunctionStatus", "hfmse_score", false],
+      ["RespiratoryFunction", "forced_vital_capacity_percent", false],
+      ["RespiratoryFunction", "daily_ventilation_hours", true],
+      ["OrthopedicAndSpineStatus", "scoliosis_cobb_angle", true],
+    ] as const
+  ).map(([section, field, higherIsWorse]) => ({ section, field, higherIsWorse }));
 
   for (const item of trackedKeys) {
     const curSec = currentForm.sections[item.section];
@@ -418,7 +392,7 @@ export function computeLongitudinalDeltas(
     const curNum = curMatch ? Number(curMatch[0]) : Number.NaN;
     const prevNum = prevMatch ? Number(prevMatch[0]) : Number.NaN;
     if (!Number.isNaN(curNum) && !Number.isNaN(prevNum)) {
-      const diff = curNum - prevNum;
+      const diff = Math.round((curNum - prevNum) * 100) / 100;
       if (diff === 0) {
         deltas.push({
           key: item.field,

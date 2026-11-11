@@ -595,6 +595,9 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       "MotorFunctionStatus",
       {
         best_motor_function: "Sitter",
+        mfm_scale_version: "MFM-32",
+        mfm_total_score: "64.6%",
+        mfm_d1_score: "15.4",
         rulm_score: "34/37",
         hfmse_score: "31.5",
         chop_intend_score: "Non testable (fatigue)",
@@ -602,11 +605,15 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       {},
       smaSchema,
     );
+    expect(coercedRatio.mfm_scale_version).toBe("MFM-32");
+    expect(coercedRatio.mfm_total_score).toBe(64.6);
+    expect(coercedRatio.mfm_d1_score).toBe(15.4);
     expect(coercedRatio.rulm_score).toBe("34/37");
     expect(coercedRatio.hfmse_score).toBe(31.5);
     expect(coercedRatio.chop_intend_score).toBe("Non testable (fatigue)");
 
-    const rulmSpec = SMA_METRIC_SPECS[0]!;
+    expect(SMA_METRIC_SPECS[0]?.field).toBe("mfm_total_score");
+    const rulmSpec = SMA_METRIC_SPECS.find((s) => s.field === "rulm_score")!;
     const obsRatio = parseRawMetricObservation("34/37", rulmSpec);
     expect(obsRatio.numericValue).toBe(34);
     expect(obsRatio.displayValue).toBe("34/37");
@@ -957,15 +964,15 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
           ],
         },
         {
-          metricKey: "MotorFunctionStatus.hfmse_score",
+          metricKey: "MotorFunctionStatus.mfm_total_score",
           section: "MotorFunctionStatus",
-          field: "hfmse_score",
-          label: "Score HFMSE",
-          unit: "/66",
+          field: "mfm_total_score",
+          label: "Score MFM Total",
+          unit: "%",
           valueType: "numeric_or_mixed" as const,
           polarity: "higher_is_better" as const,
-          scaleMin: null,
-          scaleMax: null,
+          scaleMin: 0,
+          scaleMax: 100,
           points: [
             {
               formId: "f1.pdf",
@@ -973,9 +980,9 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
               formDateLabel: "2026-01-10",
               daysSinceFirstRcp: 0,
               xRatio: 0,
-              rawValue: 40,
-              displayValue: "40/66",
-              numericValue: 40,
+              rawValue: 62.5,
+              displayValue: "62.5 %",
+              numericValue: 62.5,
               subValues: null,
               isManual: false,
               editedBy: null,
@@ -990,15 +997,62 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
               formDateLabel: "2026-02-10",
               daysSinceFirstRcp: 31,
               xRatio: 1,
-              rawValue: 42,
-              displayValue: "42/66",
-              numericValue: 42,
+              rawValue: 65.6,
+              displayValue: "65.6 %",
+              numericValue: 65.6,
               subValues: null,
               isManual: false,
               editedBy: null,
               editedAt: null,
-              deltaNumeric: 2,
-              deltaDisplay: "+2",
+              deltaNumeric: 3.1,
+              deltaDisplay: "+3.1",
+              isAnnotativeOnly: false,
+            },
+          ],
+        },
+        {
+          metricKey: "MotorFunctionStatus.mfm_d1_score",
+          section: "MotorFunctionStatus",
+          field: "mfm_d1_score",
+          label: "MFM D1",
+          unit: "%",
+          valueType: "numeric_or_mixed" as const,
+          polarity: "higher_is_better" as const,
+          scaleMin: 0,
+          scaleMax: 100,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2026-01-10",
+              formDateLabel: "2026-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: 15.4,
+              displayValue: "15.4 %",
+              numericValue: 15.4,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2026-02-10",
+              formDateLabel: "2026-02-10",
+              daysSinceFirstRcp: 31,
+              xRatio: 1,
+              rawValue: 17.9,
+              displayValue: "17.9 %",
+              numericValue: 17.9,
+              subValues: null,
+              isManual: true,
+              editedBy: "Dr. Martin",
+              editedAt: "2026-02-11T10:00:00Z",
+              deltaNumeric: 2.5,
+              deltaDisplay: "+2.5",
               isAnnotativeOnly: false,
             },
           ],
@@ -1084,6 +1138,12 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(frHtml).toContain("2025-06-15 : Poursuite Risdiplam");
     expect(frHtml).toContain("<svg");
     expect(frHtml).toContain("D: 18°, G: 14°");
+    expect(frHtml).toContain('data-mfm-combined="true"');
+    expect(frHtml).toContain('data-testid="mfm_chart_legend"');
+    expect(frHtml).toContain('data-chart-point="true"');
+    expect(frHtml).toContain('data-point-value="65.6 %"');
+    expect(frHtml).toContain('data-point-value="17.9 %"');
+    expect(frHtml).not.toContain('data-testid="metric_chart_MotorFunctionStatus.mfm_d1_score"');
 
     // Test EN rendering with up-to-date summary and modified-only obsolete branch
     const enHtml = renderPatientDashboardPanel(

@@ -59,8 +59,11 @@ function parseMetricCatalog(entries: readonly string[]): MetricDescriptorSpec[] 
 }
 
 export const SMA_METRIC_SPECS: MetricDescriptorSpec[] = parseMetricCatalog([
+  "MotorFunctionStatus.mfm_total_score|Score MFM Total (Fonction motrice)|%|higher_is_better|numeric_or_mixed|0|100",
+  "MotorFunctionStatus.mfm_d1_score|MFM D1 (Debout & transferts)|%|higher_is_better|numeric_or_mixed|0|100",
+  "MotorFunctionStatus.mfm_d2_score|MFM D2 (Motricité axiale & proximale)|%|higher_is_better|numeric_or_mixed|0|100",
+  "MotorFunctionStatus.mfm_d3_score|MFM D3 (Motricité distale)|%|higher_is_better|numeric_or_mixed|0|100",
   "MotorFunctionStatus.rulm_score|Score RULM (Membre supérieur)|/ 37|higher_is_better|numeric_or_mixed|0|37",
-  "MotorFunctionStatus.hfmse_score|Score HFMSE (Fonction motrice)|/ 66|higher_is_better|numeric_or_mixed|0|66",
   "MotorFunctionStatus.chop_intend_score|Score CHOP-INTEND|/ 64|higher_is_better|numeric_or_mixed|0|64",
   "RespiratoryFunction.forced_vital_capacity_percent|Capacité Vitale Forcée (CVF)|%|higher_is_better|numeric_or_mixed|0|140",
   "RespiratoryFunction.daily_ventilation_hours|Ventilation quotidienne|h/j|lower_is_better|numeric_or_mixed|0|24",

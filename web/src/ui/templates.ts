@@ -380,8 +380,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — MedSyntis</title>
   <link rel="icon" href="/public/img/medsyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=30">
-  <link rel="stylesheet" href="/public/css/components.css?v=30">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=33">
+  <link rel="stylesheet" href="/public/css/components.css?v=33">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -623,7 +623,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=30"></script>
+  <script src="/public/js/app.js?v=33"></script>
 </body>
 </html>`;
   return session.hostBoundDomain ? stripDomainQuery(html) : html;
@@ -643,14 +643,21 @@ function renderPriorityBadgeHtml(
     reasons?: string[];
     testId?: string;
     lang?: Language;
+    jumpSection?: string;
+    jumpTab?: "clinical" | "opinions";
   },
 ): string {
   const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
-  const badgeHtml = `<span class="ds-badge ${prio.badgeClass} ds-badge--sm"${testIdAttr}>${iconSvg(prio.icon)} ${esc(prio.label)}</span>`;
+  const jumpAttrs = options?.jumpSection
+    ? ` data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
+    : "";
+  const interactiveCls = options?.jumpSection ? " ds-badge--interactive" : "";
   const rawReasons =
     options?.reasons && options.reasons.length > 0 ? options.reasons : (prio.reasons ?? []);
   const rawReason = options?.reason ?? prio.reason ?? null;
   const reasons = rawReasons.length > 0 ? rawReasons : rawReason ? [rawReason] : [];
+  const badgeTabIndex = options?.jumpSection && reasons.length === 0 ? ' tabindex="0"' : "";
+  const badgeHtml = `<span class="ds-badge ${prio.badgeClass} ds-badge--sm${interactiveCls}"${testIdAttr}${jumpAttrs}${badgeTabIndex}>${iconSvg(prio.icon)} ${esc(prio.label)}</span>`;
   if (reasons.length === 0) {
     return badgeHtml;
   }
@@ -659,7 +666,7 @@ function renderPriorityBadgeHtml(
     reasons.length > 1
       ? `<ul class="ds-hovercard__list">${reasons.map((r) => `<li class="ds-markdown-inline">${renderSafeInlineMarkdown(r)}</li>`).join("")}</ul>`
       : `<div class="ds-markdown">${renderSafeMarkdown(reasons[0] ?? "")}</div>`;
-  return `<div class="ds-hovercard" tabindex="0">
+  return `<div class="ds-hovercard"${jumpAttrs} tabindex="0">
     ${badgeHtml}
     <div class="ds-hovercard__panel" role="tooltip">
       <span class="ds-hovercard__title">${iconSvg(prio.icon)} ${esc(titleLabel)}</span>
@@ -1789,7 +1796,7 @@ export function renderDossierPage(
       const deltaHtml = m.delta
         ? ` <span class="ds-delta ds-delta--${m.delta.direction}">${iconSvg(m.delta.icon, "ds-icon--xs")} ${esc(m.delta.deltaText)}</span>`
         : "";
-      return `<div class="ds-markers__item">
+      return `<div class="ds-markers__item ds-markers__item--interactive" data-jump-section="${esc(m.targetSection)}" data-jump-tab="${esc(m.targetTab)}" data-testid="marker-${esc(m.key)}" tabindex="0">
         <dt>${esc(m.label)}</dt>
         <dd class="${m.isMissing ? "is-missing" : ""}">${esc(m.value)}${deltaHtml}</dd>
       </div>`;
@@ -2197,9 +2204,14 @@ export function renderDossierPage(
 
           <div class="ds-patient-header__badges">
             ${dossierProcBadgeHtml}
-            ${renderPriorityBadgeHtml(dossier.priorityBadge, { lang })}
-            <div class="ds-hovercard" tabindex="0">
-              <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm">
+            ${renderPriorityBadgeHtml(dossier.priorityBadge, {
+              lang,
+              testId: "badge-priority",
+              jumpSection: "CareOrientationProposal",
+              jumpTab: "opinions",
+            })}
+            <div class="ds-hovercard" data-jump-section="MTDCompleted" data-jump-tab="opinions" tabindex="0">
+              <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="MTDCompleted" data-jump-tab="opinions" data-testid="badge-completeness">
                 ${iconSvg(dossier.completenessBadge.icon)} ${esc(dossier.completenessBadge.label)}
               </span>
               ${
@@ -2215,8 +2227,8 @@ export function renderDossierPage(
             </div>
             ${
               dossier.careProposal?.proposedCareType || dossier.careProposal?.clinicalRationale
-                ? `<div class="ds-hovercard" tabindex="0">
-                    <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm" data-testid="badge-orientation-adapt">
+                ? `<div class="ds-hovercard" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" tabindex="0">
+                    <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt">
                       ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
                     </span>
                     <div class="ds-hovercard__panel" role="tooltip">
@@ -2225,23 +2237,23 @@ export function renderDossierPage(
                       ${dossier.careProposal.clinicalRationale ? `<div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(dossier.careProposal.clinicalRationale)}</div>` : ""}
                     </div>
                   </div>`
-                : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm" data-testid="badge-orientation-adapt">
+                : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt" tabindex="0">
                     ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
                   </span>`
             }
             ${
               dossier.specialties.length === 1 && dossier.specialties[0]
-                ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
+                ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate ds-badge--interactive" data-jump-section="${esc(dossier.specialties[0].name)}" data-jump-tab="opinions" data-testid="badge-specialties" tabindex="0">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
                 : ""
             }
             ${
               dossier.specialties.length > 1
-                ? `<div class="ds-hovercard" tabindex="0">
-                    <span class="ds-badge ds-badge--specialty ds-badge--sm">${iconSvg("ic-stethoscope")} ${dossier.specialties.length} ${lang === "fr" ? "spécialités" : "specialties"}</span>
+                ? `<div class="ds-hovercard" data-jump-section="ExpertAnswer" data-jump-tab="opinions" tabindex="0">
+                    <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="ExpertAnswer" data-jump-tab="opinions" data-testid="badge-specialties">${iconSvg("ic-stethoscope")} ${dossier.specialties.length} ${lang === "fr" ? "spécialités" : "specialties"}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-stethoscope")} ${lang === "fr" ? "Spécialités mobilisées" : "Involved specialties"} (${dossier.specialties.length})</span>
                       <ul class="ds-hovercard__list">
-                        ${dossier.specialties.map((s) => `<li>${esc(s.label)}</li>`).join("")}
+                        ${dossier.specialties.map((s) => `<li data-jump-section="${esc(s.name)}" data-jump-tab="opinions">${esc(s.label)}</li>`).join("")}
                       </ul>
                     </div>
                   </div>`

@@ -532,6 +532,35 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     };
 
     // 3. SMA: Léo EXEMPLE (#S-0007) — 2 longitudinal sessions
+    const buildLeoCoreSections = (
+      dateRcp: string,
+      milestone: string,
+      scores: [number, number, number, number, number],
+    ) => ({
+      PatientAdministrative: {
+        first_name: "Léo",
+        last_name: "EXEMPLE",
+        date_birth: "2018-04-12",
+        date_rcp: dateRcp,
+        gender: "Male",
+      },
+      GeneticDiagnosis: {
+        smn1_deletion_confirmed: true,
+        smn2_copy_count: 3,
+        other_genetic_variants: "None",
+      },
+      MotorFunctionStatus: {
+        sma_type: "Type 2",
+        motor_milestones: [milestone],
+        mfm_scale_version: "MFM-32",
+        mfm_total_score: scores[0],
+        mfm_d1_score: scores[1],
+        mfm_d2_score: scores[2],
+        mfm_d3_score: scores[3],
+        rulm_score: scores[4],
+      },
+    });
+
     const leo1: MdtFormDetail = {
       file: "leo_exemple_2026_05_18.pdf",
       patientId: "S-0007",
@@ -541,24 +570,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       processingStep: null,
       processingProgressPct: 100,
       sections: {
-        PatientAdministrative: {
-          first_name: "Léo",
-          last_name: "EXEMPLE",
-          date_birth: "2018-04-12",
-          date_rcp: "2026-05-18",
-          gender: "Male",
-        },
-        GeneticDiagnosis: {
-          smn1_deletion_confirmed: true,
-          smn2_copy_count: 3,
-          other_genetic_variants: "None",
-        },
-        MotorFunctionStatus: {
-          sma_type: "Type 2",
-          motor_milestones: ["Sitting unsupported"],
-          hfmse_score: 40,
-          rulm_score: 26,
-        },
+        ...buildLeoCoreSections("2026-05-18", "Sitting unsupported", [62.5, 15.4, 77.8, 90.5, 26]),
         RespiratoryFunction: {
           requires_ventilation_support: false,
           ventilation_type: "None",
@@ -594,24 +606,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       processingStep: null,
       processingProgressPct: 100,
       sections: {
-        PatientAdministrative: {
-          first_name: "Léo",
-          last_name: "EXEMPLE",
-          date_birth: "2018-04-12",
-          date_rcp: "2026-11-12",
-          gender: "Male",
-        },
-        GeneticDiagnosis: {
-          smn1_deletion_confirmed: true,
-          smn2_copy_count: 3,
-          other_genetic_variants: "None",
-        },
-        MotorFunctionStatus: {
-          sma_type: "Type 2",
-          motor_milestones: ["Position assise autonome stable"],
-          hfmse_score: 42,
-          rulm_score: 28,
-        },
+        ...buildLeoCoreSections(
+          "2026-11-12",
+          "Position assise autonome stable",
+          [65.6, 17.9, 80.6, 95.2, 28],
+        ),
         RespiratoryFunction: {
           requires_ventilation_support: false,
           ventilation_type: "None",
@@ -634,17 +633,17 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           "neurologist expert": {
             expert_relevant: true,
             patient_priority: "Patient is not urgent",
-            why_relevant: "Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).",
+            why_relevant: "Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
             suggestions: [
               {
                 suggestion:
                   "Poursuivre le schéma d'entretien par nusinersen et maintenir la kinésithérapie motrice tri-hebdomadaire.",
-                why: "Gain fonctionnel de +2 points au score HFMSE (42/66) et +2 points au RULM (28/37).",
+                why: "Gain fonctionnel de +3.1 % au score MFM-32 (65.6 %) et +2 points au RULM (28/37).",
                 references: [
                   {
                     name: "PNDS Amyotrophie Spinale 2025 §6.1",
                     page: 24,
-                    excerpt: "Évaluation HFMSE et RULM semestrielle sous traitement modificateur.",
+                    excerpt: "Évaluation MFM et RULM semestrielle sous traitement modificateur.",
                   },
                 ],
               },
@@ -671,7 +670,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           suggested_priority: "low",
           proposed_care_type: "Suivi habituel sous nusinersen + kinésithérapie",
           clinical_rationale:
-            "Évolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+            "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
         },
       },
       manualEdits: {},
@@ -683,11 +682,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       metrics: {
         priority_level: "low",
         urgency_reason:
-          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).\n\n**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).\n\nÉvolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).\n\n**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).\n\nÉvolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
         urgency_reasons: [
-          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+2 pts HFMSE).",
+          "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
           "**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).",
-          "Évolution motrice favorable (+2 pts HFMSE) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
+          "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
         ],
         is_complete: true,
         missing_count: 0,

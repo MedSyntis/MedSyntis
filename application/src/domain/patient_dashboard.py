@@ -142,142 +142,56 @@ class PatientRecordSummaryContent(BaseModel):
     )
 
 
-SMA_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
-    PatientMetricDescriptor(
-        metric_key="MotorFunctionStatus.rulm_score",
-        section="MotorFunctionStatus",
-        field="rulm_score",
-        label="Score RULM (Membre supérieur)",
-        clinical_category="Fonction motrice",
-        unit="/ 37",
-        scale_min=0.0,
-        scale_max=37.0,
-        polarity="higher_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
-        metric_key="MotorFunctionStatus.hfmse_score",
-        section="MotorFunctionStatus",
-        field="hfmse_score",
-        label="Score HFMSE (Fonction motrice)",
-        clinical_category="Fonction motrice",
-        unit="/ 66",
-        scale_min=0.0,
-        scale_max=66.0,
-        polarity="higher_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
-        metric_key="MotorFunctionStatus.chop_intend_score",
-        section="MotorFunctionStatus",
-        field="chop_intend_score",
-        label="Score CHOP-INTEND",
-        clinical_category="Fonction motrice",
-        unit="/ 64",
-        scale_min=0.0,
-        scale_max=64.0,
-        polarity="higher_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
-        metric_key="RespiratoryFunction.forced_vital_capacity_percent",
-        section="RespiratoryFunction",
-        field="forced_vital_capacity_percent",
-        label="Capacité Vitale Forcée (CVF)",
-        clinical_category="Fonction respiratoire",
-        unit="%",
-        scale_min=0.0,
-        scale_max=140.0,
-        polarity="higher_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
-        metric_key="RespiratoryFunction.daily_ventilation_hours",
-        section="RespiratoryFunction",
-        field="daily_ventilation_hours",
-        label="Ventilation quotidienne",
-        clinical_category="Fonction respiratoire",
-        unit="h/j",
-        scale_min=0.0,
-        scale_max=24.0,
-        polarity="lower_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
-        metric_key="OrthopedicAndSpineStatus.scoliosis_cobb_angle",
-        section="OrthopedicAndSpineStatus",
-        field="scoliosis_cobb_angle",
-        label="Angle de Cobb (Scoliose)",
-        clinical_category="Statut orthopédique & Rachis",
-        unit="°",
-        scale_min=0.0,
-        scale_max=120.0,
-        polarity="lower_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
-        metric_key="PatientPerformanceStatus.performance_status",
-        section="PatientPerformanceStatus",
-        field="performance_status",
-        label="Statut OMS / WHO",
-        clinical_category="État général",
-        unit="/ 4",
-        scale_min=0.0,
-        scale_max=4.0,
-        polarity="lower_is_better",
-        value_type="numeric_or_mixed",
-    ),
-    PatientMetricDescriptor(
-        metric_key="MotorFunctionStatus.best_motor_function",
-        section="MotorFunctionStatus",
-        field="best_motor_function",
-        label="Meilleure fonction motrice",
-        clinical_category="Fonction motrice",
-        unit="",
-        polarity="neutral",
-        value_type="categorical",
-    ),
-    PatientMetricDescriptor(
-        metric_key="MotorFunctionStatus.motor_milestones",
-        section="MotorFunctionStatus",
-        field="motor_milestones",
-        label="Jalons moteurs acquis",
-        clinical_category="Fonction motrice",
-        unit="",
-        polarity="neutral",
-        value_type="list",
-    ),
-    PatientMetricDescriptor(
-        metric_key="RespiratoryFunction.ventilation_type",
-        section="RespiratoryFunction",
-        field="ventilation_type",
-        label="Support ventilatoire",
-        clinical_category="Fonction respiratoire",
-        unit="",
-        polarity="neutral",
-        value_type="categorical",
-    ),
-    PatientMetricDescriptor(
-        metric_key="BulbarAndNutritionalStatus.feeding_mode",
-        section="BulbarAndNutritionalStatus",
-        field="feeding_mode",
-        label="Mode d'alimentation",
-        clinical_category="Nutrition & Déglutition",
-        unit="",
-        polarity="neutral",
-        value_type="categorical",
-    ),
-    PatientMetricDescriptor(
-        metric_key="BulbarAndNutritionalStatus.nutritional_status",
-        section="BulbarAndNutritionalStatus",
-        field="nutritional_status",
-        label="Statut nutritionnel",
-        clinical_category="Nutrition & Déglutition",
-        unit="",
-        polarity="neutral",
-        value_type="categorical",
-    ),
-]
+def _parse_metric_descriptors(entries: list[str]) -> list[PatientMetricDescriptor]:
+    """Parse compact pipe-delimited metric catalog entries into PatientMetricDescriptor objects."""
+    descriptors: list[PatientMetricDescriptor] = []
+    for entry in entries:
+        parts = entry.split("|")
+        metric_key = parts[0]
+        section, field = metric_key.split(".", 1)
+        label = parts[1]
+        clinical_category = parts[2]
+        unit = parts[3]
+        raw_min = parts[4]
+        raw_max = parts[5]
+        polarity = parts[6]
+        value_type = parts[7]
+        descriptors.append(
+            PatientMetricDescriptor(
+                metric_key=metric_key,
+                section=section,
+                field=field,
+                label=label,
+                clinical_category=clinical_category,
+                unit=unit,
+                scale_min=float(raw_min) if raw_min != "" else None,
+                scale_max=float(raw_max) if raw_max != "" else None,
+                polarity=polarity,  # type: ignore[arg-type]
+                value_type=value_type,  # type: ignore[arg-type]
+            )
+        )
+    return descriptors
+
+
+SMA_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = _parse_metric_descriptors(
+    [
+        "MotorFunctionStatus.mfm_total_score|Score MFM Total (Fonction motrice)|Fonction motrice|%|0.0|100.0|higher_is_better|numeric_or_mixed",
+        "MotorFunctionStatus.mfm_d1_score|MFM D1 (Debout & transferts)|Fonction motrice|%|0.0|100.0|higher_is_better|numeric_or_mixed",
+        "MotorFunctionStatus.mfm_d2_score|MFM D2 (Motricité axiale & proximale)|Fonction motrice|%|0.0|100.0|higher_is_better|numeric_or_mixed",
+        "MotorFunctionStatus.mfm_d3_score|MFM D3 (Motricité distale)|Fonction motrice|%|0.0|100.0|higher_is_better|numeric_or_mixed",
+        "MotorFunctionStatus.rulm_score|Score RULM (Membre supérieur)|Fonction motrice|/ 37|0.0|37.0|higher_is_better|numeric_or_mixed",
+        "MotorFunctionStatus.chop_intend_score|Score CHOP-INTEND|Fonction motrice|/ 64|0.0|64.0|higher_is_better|numeric_or_mixed",
+        "RespiratoryFunction.forced_vital_capacity_percent|Capacité Vitale Forcée (CVF)|Fonction respiratoire|%|0.0|140.0|higher_is_better|numeric_or_mixed",
+        "RespiratoryFunction.daily_ventilation_hours|Ventilation quotidienne|Fonction respiratoire|h/j|0.0|24.0|lower_is_better|numeric_or_mixed",
+        "OrthopedicAndSpineStatus.scoliosis_cobb_angle|Angle de Cobb (Scoliose)|Statut orthopédique & Rachis|°|0.0|120.0|lower_is_better|numeric_or_mixed",
+        "PatientPerformanceStatus.performance_status|Statut OMS / WHO|État général|/ 4|0.0|4.0|lower_is_better|numeric_or_mixed",
+        "MotorFunctionStatus.best_motor_function|Meilleure fonction motrice|Fonction motrice||||neutral|categorical",
+        "MotorFunctionStatus.motor_milestones|Jalons moteurs acquis|Fonction motrice||||neutral|list",
+        "RespiratoryFunction.ventilation_type|Support ventilatoire|Fonction respiratoire||||neutral|categorical",
+        "BulbarAndNutritionalStatus.feeding_mode|Mode d'alimentation|Nutrition & Déglutition||||neutral|categorical",
+        "BulbarAndNutritionalStatus.nutritional_status|Statut nutritionnel|Nutrition & Déglutition||||neutral|categorical",
+    ]
+)
 
 ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
     PatientMetricDescriptor(

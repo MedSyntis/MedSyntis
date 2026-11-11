@@ -825,8 +825,16 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
             return f" — {_truncate(' · '.join(parts))}"
     elif model_name == "MotorFunctionStatus":
         stype = model_data.get("sma_type")
+        mfm_tot = model_data.get("mfm_total_score")
+        parts = []
         if stype:
-            return f" — {_truncate(stype)}"
+            parts.append(_truncate(stype))
+        if mfm_tot is not None and str(mfm_tot).strip() != "":
+            clean_mfm = _strip_markdown_inline(str(mfm_tot)).strip()
+            suffix = "" if clean_mfm.endswith("%") else " %"
+            parts.append(f"MFM {clean_mfm}{suffix}")
+        if parts:
+            return f" — {' · '.join(parts)}"
     return ""
 
 
@@ -2177,14 +2185,18 @@ def _compute_longitudinal_deltas(
     if c_chemo > p_chemo:
         deltas.append(f":violet-badge[💊 +{c_chemo - p_chemo} ligne(s) de chimio.]")
 
-    # 5. SMA motor scores evolution (HFMSE / CHOP-INTEND / RULM)
+    # 5. SMA motor scores evolution (MFM prioritized over RULM / CHOP-INTEND / HFMSE)
     if isinstance(current_doc.get("MotorFunctionStatus"), dict) and isinstance(
         prev_doc.get("MotorFunctionStatus"), dict
     ):
-        for field_key, label_short in (
-            ("hfmse_score", "HFMSE"),
-            ("chop_intend_score", "CHOP-INTEND"),
-            ("rulm_score", "RULM"),
+        for field_key, label_short, unit_suffix in (
+            ("mfm_total_score", "MFM", "%"),
+            ("mfm_d1_score", "MFM D1", "%"),
+            ("mfm_d2_score", "MFM D2", "%"),
+            ("mfm_d3_score", "MFM D3", "%"),
+            ("rulm_score", "RULM", ""),
+            ("chop_intend_score", "CHOP-INTEND", ""),
+            ("hfmse_score", "HFMSE", ""),
         ):
             c_sc = current_doc["MotorFunctionStatus"].get(field_key)
             p_sc = prev_doc["MotorFunctionStatus"].get(field_key)
@@ -2193,11 +2205,13 @@ def _compute_longitudinal_deltas(
                 and isinstance(p_sc, (int, float))
                 and c_sc != p_sc
             ):
-                diff = c_sc - p_sc
+                diff = round(c_sc - p_sc, 1)
+                if isinstance(c_sc, int) and isinstance(p_sc, int):
+                    diff = c_sc - p_sc
                 sign = "+" if diff > 0 else ""
                 b_col = "green" if diff > 0 else "orange"
                 deltas.append(
-                    f":{b_col}-badge[🦿 {label_short} : {p_sc} → {c_sc} ({sign}{diff})]"
+                    f":{b_col}-badge[🦿 {label_short} : {p_sc}{unit_suffix} → {c_sc}{unit_suffix} ({sign}{diff}{unit_suffix})]"
                 )
 
     # 6. Completeness resolution
@@ -2265,32 +2279,41 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
             return "Non renseigné"
         return s
 
-    # Extract synoptic clinical markers (Oncology & SMA) as (label, value) pairs
-    marker_pairs: list[tuple[str, str]] = []
+    # Extract synoptic clinical markers (Oncology & SMA) as (label, value, target_section) tuples
+    marker_pairs: list[tuple[str, str, str]] = []
     if isinstance(data.get("TumorLocation"), dict):
         loc = data["TumorLocation"].get("tumor_location")
         if loc:
-            marker_pairs.append(("🎯 Organe primitif", _clean_marker_val(loc)))
+            marker_pairs.append(
+                ("🎯 Organe primitif", _clean_marker_val(loc), "TumorLocation")
+            )
     if isinstance(data.get("PatientPerformanceStatus"), dict):
         ps = data["PatientPerformanceStatus"].get("performance_status")
         if ps is not None:
-            marker_pairs.append(("🏃 Score OMS", f"OMS {ps}"))
+            marker_pairs.append(
+                ("🏃 Score OMS", f"OMS {ps}", "PatientPerformanceStatus")
+            )
     if isinstance(data.get("TumorBiology"), dict):
         msi = data["TumorBiology"].get("msi_state")
         if msi is True:
-            marker_pairs.append(("🧬 Biologie", "MSI (Instable)"))
+            marker_pairs.append(("🧬 Biologie", "MSI (Instable)", "TumorBiology"))
         elif msi is False:
-            marker_pairs.append(("🧬 Biologie", "MSS (Stable)"))
+            marker_pairs.append(("🧬 Biologie", "MSS (Stable)", "TumorBiology"))
     if isinstance(data.get("PreviousCurativeSurgery"), dict) or isinstance(
         data.get("ChemotherapyTreament"), dict
     ):
         tx_parts = []
+        tx_target = "ChemotherapyTreament"
         if isinstance(data.get("PreviousCurativeSurgery"), dict):
             prev_s = data["PreviousCurativeSurgery"].get("previous_curative_surgery")
             if prev_s is True:
                 tx_parts.append("Chir. réalisée")
+                if not isinstance(data.get("ChemotherapyTreament"), dict):
+                    tx_target = "PreviousCurativeSurgery"
             elif prev_s is False:
                 tx_parts.append("Sans chir.")
+                if not isinstance(data.get("ChemotherapyTreament"), dict):
+                    tx_target = "PreviousCurativeSurgery"
         if isinstance(data.get("ChemotherapyTreament"), dict):
             chemo = data["ChemotherapyTreament"].get("chemotherapy")
             if chemo is True:
@@ -2298,24 +2321,48 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
             elif chemo is False:
                 tx_parts.append("Chimio. non")
         if tx_parts:
-            marker_pairs.append(("💊 Antécédents", " · ".join(tx_parts)))
+            marker_pairs.append(("💊 Antécédents", " · ".join(tx_parts), tx_target))
 
     if isinstance(data.get("MotorFunctionStatus"), dict):
         sma_t = data["MotorFunctionStatus"].get("sma_type")
         if sma_t:
-            marker_pairs.append(("🦿 Type SMA", _clean_marker_val(sma_t)))
+            marker_pairs.append(
+                ("🦿 Type SMA", _clean_marker_val(sma_t), "MotorFunctionStatus")
+            )
+        mfm_tot = data["MotorFunctionStatus"].get("mfm_total_score")
+        if mfm_tot is not None and str(mfm_tot).strip() != "":
+            clean_mfm = _clean_marker_val(mfm_tot)
+            if clean_mfm != "Non renseigné":
+                suffix = "" if clean_mfm.endswith("%") else " %"
+                marker_pairs.append(
+                    ("🦿 Score MFM", f"{clean_mfm}{suffix}", "MotorFunctionStatus")
+                )
     if isinstance(data.get("GeneticDiagnosis"), dict):
         copies = data["GeneticDiagnosis"].get("smn2_copy_count")
         if copies is not None:
-            marker_pairs.append(("🧬 Copies SMN2", f"{copies} copie(s)"))
+            marker_pairs.append(
+                ("🧬 Copies SMN2", f"{copies} copie(s)", "GeneticDiagnosis")
+            )
     if isinstance(data.get("RespiratoryFunction"), dict):
         vent = data["RespiratoryFunction"].get("requires_ventilation_support")
         if vent is not None:
-            marker_pairs.append(("🫁 Ventilation", "Requise" if vent else "Aucune"))
+            marker_pairs.append(
+                (
+                    "🫁 Ventilation",
+                    "Requise" if vent else "Aucune",
+                    "RespiratoryFunction",
+                )
+            )
     if isinstance(data.get("BulbarAndNutritionalStatus"), dict):
         feed = data["BulbarAndNutritionalStatus"].get("feeding_mode")
         if feed:
-            marker_pairs.append(("🍽️ Alimentation", _clean_marker_val(feed)))
+            marker_pairs.append(
+                (
+                    "🍽️ Alimentation",
+                    _clean_marker_val(feed),
+                    "BulbarAndNutritionalStatus",
+                )
+            )
 
     # Find immediately preceding RCP if patient has multiple RCPs
     prev_doc: dict[str, Any] | None = None
@@ -2352,8 +2399,17 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
         # Row 3: Key Clinical Markers (for the physician)
         if marker_pairs:
             m_cols = st.columns(len(marker_pairs))
-            for col, (m_label, m_val) in zip(m_cols, marker_pairs):
-                col.caption(f"{m_label}  \n**{m_val}**")
+            for idx, (col, (m_label, m_val, target_sec)) in enumerate(
+                zip(m_cols, marker_pairs)
+            ):
+                if col.button(
+                    f":small[{m_label}]  \n**{m_val}**",
+                    key=f"btn_jump_marker_{cur_file or 'doc'}_{idx}_{target_sec}",
+                    type="tertiary",
+                    help="Cliquer pour déplier directement la rubrique correspondante",
+                ):
+                    st.session_state[f"focus_section_{cur_file or 'doc'}"] = target_sec
+                    st.rerun()
         if prev_doc is not None:
             prev_dt = PatientMDTForm.extract_mdt_date(prev_doc)
             prev_dt_str = (
@@ -3159,6 +3215,8 @@ def _render_form_sections_list(
         if model_name not in data or header_summary.startswith(" — ⚪ Non mentionné"):
             default_exp = False
         if is_editable and st.session_state.get(edit_key):
+            default_exp = True
+        if st.session_state.get(f"focus_section_{target_filename}") == model_name:
             default_exp = True
 
         with st.expander(
