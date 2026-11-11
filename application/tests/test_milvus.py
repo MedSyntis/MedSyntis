@@ -46,10 +46,17 @@ class TestMilvusVectorialDB(unittest.TestCase):
         db_wrapper = MilvusDB(self.mock_config)
 
         mock_connections.connect.assert_called_once_with(
-            host="localhost", port="19530", token="root:Milvus"
+            alias="medsyntis_medsyntis",
+            host="localhost",
+            port="19530",
+            token="root:Milvus",
         )
-        mock_db.create_database.assert_called_once_with("medsyntis")
-        mock_db.using_database.assert_called_once_with("medsyntis", using="default")
+        mock_db.create_database.assert_called_once_with(
+            "medsyntis", using="medsyntis_medsyntis"
+        )
+        mock_db.using_database.assert_called_once_with(
+            "medsyntis", using="medsyntis_medsyntis"
+        )
         self.assertEqual(db_wrapper.database, "medsyntis")
         self.assertEqual(db_wrapper.coll_name, "medsyntisDocs_all_MiniLM_L6_v2")
 
@@ -72,7 +79,9 @@ class TestMilvusVectorialDB(unittest.TestCase):
         MilvusDB(self.mock_config)
 
         mock_db.create_database.assert_not_called()
-        mock_db.using_database.assert_called_once_with("medsyntis", using="default")
+        mock_db.using_database.assert_called_once_with(
+            "medsyntis", using="medsyntis_medsyntis"
+        )
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.milvus.Milvus")
@@ -305,7 +314,9 @@ class TestMilvusVectorialDB(unittest.TestCase):
         db_wrapper = MilvusDB(self.mock_config)
         db_wrapper.set_clientdb(flush=True)
 
-        mock_utility.drop_collection.assert_called_with(db_wrapper.coll_name)
+        mock_utility.drop_collection.assert_called_with(
+            db_wrapper.coll_name, using="medsyntis_medsyntis"
+        )
         mock_sleep.assert_called_with(2.0)
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")

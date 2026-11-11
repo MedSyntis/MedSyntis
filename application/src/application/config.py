@@ -20,14 +20,15 @@ Functions:
 
 import contextvars
 import ipaddress
-import sys
+import json
 import logging
 from logging.handlers import RotatingFileHandler
-import json
+from pathlib import Path
+import sys
+import threading
 from typing import Any
 from urllib.parse import urlparse
 import warnings
-from pathlib import Path
 
 # --- Suppress noisy third-party warnings globally on module load ---
 # Hugging Face __path__ access deprecation
@@ -169,8 +170,8 @@ class ConfigllmSettings(BaseSettings):
         description="Model identifier for OCR tasks within the Ollama LLM system.",
     )
     temp: float = Field(
-        default=1,
-        description="Temperature parameter for LLM generation. Higher values produce more random output.",
+        default=0.1,
+        description="Temperature parameter for LLM generation. Lower values produce more deterministic clinical extractions.",
     )
     embeddings: str = Field(
         default="openai/embeddings",
@@ -194,6 +195,9 @@ class ConfigllmSettings(BaseSettings):
         ),
         description="API key for the LLM backend (required for OpenAI/vLLM, defaults to 'ollama' for local Ollama).",
     )
+
+
+LLMSettings = ConfigllmSettings
 
 
 class DatabasesVectorialSettings(BaseSettings):
@@ -250,21 +254,40 @@ class ChromaDBSettings(BaseSettings):
     """
     Configuration for the ChromaDB vector database connection.
 
-    Environment variables: APP_CHOMADB_CLIENT, APP_CHOMADB_HOST, APP_CHOMADB_PORT
+    Environment variables: APP_CHROMADB_CLIENT, APP_CHROMADB_HOST, APP_CHROMADB_PORT
+    (with backward-compatible fallback to legacy APP_CHOMADB_* variables).
     """
 
-    model_config = SettingsConfigDict(env_prefix="APP_CHOMADB_")
+    model_config = SettingsConfigDict(
+        env_prefix="APP_CHROMADB_",
+        populate_by_name=True,
+    )
 
     client: str = Field(
         default="HttpClient",
+        validation_alias=AliasChoices(
+            "client",
+            "APP_CHROMADB_CLIENT",
+            "APP_CHOMADB_CLIENT",
+        ),
         description="ChromaDB client type. 'PersistentClient' for local file storage, 'HttpClient' for remote server.",
     )
     host: str = Field(
         default="localhost",
+        validation_alias=AliasChoices(
+            "host",
+            "APP_CHROMADB_HOST",
+            "APP_CHOMADB_HOST",
+        ),
         description="Hostname of the ChromaDB server (used when client is 'HttpClient').",
     )
     port: int = Field(
         default=8000,
+        validation_alias=AliasChoices(
+            "port",
+            "APP_CHROMADB_PORT",
+            "APP_CHOMADB_PORT",
+        ),
         description="Port number of the ChromaDB server (used when client is 'HttpClient').",
     )
 
@@ -274,13 +297,14 @@ class MongoDBSettings(BaseSettings):
     Configuration for the MongoDB database connection.
 
     Environment variables: APP_MONGODB_USER, APP_MONGODB_PASSWORD, APP_MONGODB_HOST,
-    APP_MONGODB_PORT, APP_MONGODB_DATABASE, APP_MONGODB_VECTORDATABASE
+    APP_MONGODB_PORT, APP_MONGODB_AUTH_SOURCE, APP_MONGODB_DATABASE, APP_MONGODB_VECTORDATABASE
     """
 
-    model_config = SettingsConfigDict(env_prefix="APP_MONGODB_")
+    model_config = SettingsConfigDict(env_prefix="APP_MONGODB_", populate_by_name=True)
 
     user: str = Field(
         default="root",
+        validation_alias=AliasChoices("user", "username", "APP_MONGODB_USER"),
         description="MongoDB authentication username.",
     )
     password: str = Field(
@@ -294,6 +318,10 @@ class MongoDBSettings(BaseSettings):
     port: str = Field(
         default="27017",
         description="Port number of the MongoDB server.",
+    )
+    auth_source: str | None = Field(
+        default=None,
+        description="Optional MongoDB authentication database (e.g. 'admin').",
     )
     database: str = Field(
         default="MedSyntis",
@@ -635,6 +663,8 @@ _RUNTIME_OVERRIDES: contextvars.ContextVar[dict[str, Any] | None] = (
 )
 
 _LOGGING_GLOBALS_CONFIGURED = False
+_LOGGER_LOCK = threading.Lock()
+_LAST_LANGCHAIN_FLAGS: tuple[bool, bool] | None = None
 
 
 class _JsonFormatter(logging.Formatter):
@@ -881,10 +911,13 @@ class AppConfig(BaseSettings):
         return self
 
     def is_admin(self, *identities: str | None) -> bool:
-        """Return True if one of the user identities (username, email) is an admin."""
+        """
+        Return True if one of the user identities (username, email) is an admin.
+        Fails closed when `admin_users` is empty outside `dev_mode`.
+        """
         admins = {u.strip().lower() for u in self.admin_users.split(",") if u.strip()}
         if not admins:
-            return True
+            return self.dev_mode
         return any(i and i.strip().lower() in admins for i in identities)
 
     @property
@@ -897,6 +930,13 @@ class AppConfig(BaseSettings):
             domains.append(self.domain.lower())
         return domains or ["oncology"]
 
+    @staticmethod
+    def _strip_domain_suffix(value: str, domain: str) -> str:
+        suffix = f"_{domain}"
+        if domain and value.endswith(suffix):
+            return value[: -len(suffix)]
+        return value
+
     def for_domain(self, domain: str | None = None) -> "AppConfig":
         """Return an AppConfig instance scoped to the requested domain after validating it."""
         target = (domain or self.domain or "oncology").strip().lower()
@@ -906,6 +946,33 @@ class AppConfig(BaseSettings):
             )
         if target == self.domain:
             return self
+
+        src_domain = (self.domain or "").strip().lower()
+
+        mongodb_copy = self.mongodb.model_copy(deep=True)
+        mongodb_copy.database = self._strip_domain_suffix(
+            mongodb_copy.database, src_domain
+        )
+        mongodb_copy.vectordatabase = self._strip_domain_suffix(
+            mongodb_copy.vectordatabase, src_domain
+        )
+
+        milvus_copy = self.milvus.model_copy(deep=True)
+        milvus_copy.database = self._strip_domain_suffix(
+            milvus_copy.database, src_domain
+        )
+
+        dbvec_copy = self.dbvec.model_copy(deep=True)
+        dbvec_copy.collection = self._strip_domain_suffix(
+            dbvec_copy.collection, src_domain
+        )
+
+        rcp_copy = self.rcp.model_copy(deep=True)
+        if src_domain and rcp_copy.path.name == src_domain:
+            rcp_copy.path = rcp_copy.path.parent
+        if src_domain and rcp_copy.additional_path.name == src_domain:
+            rcp_copy.additional_path = rcp_copy.additional_path.parent
+
         return AppConfig(
             domain=target,
             allowed_domains=self.allowed_domains,
@@ -918,8 +985,12 @@ class AppConfig(BaseSettings):
             api_host=self.api_host,
             allow_remote_llm=self.allow_remote_llm,
             llm=self.llm.model_copy(deep=True),
+            dbvec=dbvec_copy,
+            rcp=rcp_copy,
             logs=self.logs.model_copy(deep=True),
+            mongodb=mongodb_copy,
             chromadb=self.chromadb.model_copy(deep=True),
+            milvus=milvus_copy,
             queue=self.queue.model_copy(deep=True),
             api=self.api.model_copy(deep=True),
         )
@@ -960,27 +1031,9 @@ class AppConfig(BaseSettings):
         default_context: dict[str, Any] | None = None,
         additional_context: list[str] | None = None,
     ) -> logging.Logger:
-        self._configure_logging_globals()
+        global _LAST_LANGCHAIN_FLAGS
         default_context = default_context or {}
-
         context = additional_context if additional_context is not None else []
-
-        logger = logging.getLogger(name)
-        logger.setLevel(level=self.logs.level)
-        logger.handlers.clear()
-        ch = logging.StreamHandler()
-        ch.setLevel(level=self.logs.level)
-        # Configure LangChain global logs
-        from langchain_core.globals import set_verbose, set_debug
-
-        if self.logs.langchaindebug:
-            set_debug(True)
-            set_verbose(True)
-        elif self.logs.level == "DEBUG":
-            set_verbose(True)
-
-        service_filter = _RuntimeServiceFilter(self.logs)
-        ch.addFilter(service_filter)
 
         if self.logs.type == "text":
             formatlog = "%(asctime)s - [%(service_upper)s] - %(levelname)s - %(name)s"
@@ -988,31 +1041,61 @@ class AppConfig(BaseSettings):
                 formatlog = f"{formatlog} - {k}: {v}"
             for k in context:
                 formatlog = f"{formatlog} - {k}: %({k})s"
-            formatter = logging.Formatter(f"{formatlog} - %(message)s")
+            formatter: logging.Formatter = logging.Formatter(
+                f"{formatlog} - %(message)s"
+            )
         elif self.logs.type == "json":
             formatter = _JsonFormatter(default_context, list(context))
         else:
             raise ValueError(f"log type : {self.logs.type} not yet available")
-        ch.setFormatter(formatter)
-        logger.addHandler(ch)
 
-        if self.logs.file:
-            try:
-                log_path = Path(self.logs.file)
-                log_path.parent.mkdir(parents=True, exist_ok=True)
-                fh = RotatingFileHandler(
-                    log_path,
-                    maxBytes=self.logs.max_bytes,
-                    backupCount=self.logs.backup_count,
-                    encoding="utf-8",
-                )
-                fh.setLevel(level=self.logs.level)
-                fh.addFilter(service_filter)
-                fh.setFormatter(formatter)
-                logger.addHandler(fh)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to initialize file log handler ({self.logs.file}): {e}"
-                )
+        with _LOGGER_LOCK:
+            self._configure_logging_globals()
 
-        return logger
+            want_debug = self.logs.langchaindebug
+            want_verbose = self.logs.langchaindebug or self.logs.level == "DEBUG"
+            desired_flags = (want_debug, want_verbose)
+            if _LAST_LANGCHAIN_FLAGS != desired_flags:
+                from langchain_core.globals import set_debug, set_verbose
+
+                set_debug(want_debug)
+                set_verbose(want_verbose)
+                _LAST_LANGCHAIN_FLAGS = desired_flags
+
+            logger = logging.getLogger(name)
+            logger.setLevel(level=self.logs.level)
+            for existing_handler in list(logger.handlers):
+                logger.removeHandler(existing_handler)
+                try:
+                    existing_handler.close()
+                except Exception:
+                    pass
+            logger.handlers.clear()
+
+            service_filter = _RuntimeServiceFilter(self.logs)
+            ch = logging.StreamHandler()
+            ch.setLevel(level=self.logs.level)
+            ch.addFilter(service_filter)
+            ch.setFormatter(formatter)
+            logger.addHandler(ch)
+
+            if self.logs.file:
+                try:
+                    log_path = Path(self.logs.file)
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    fh = RotatingFileHandler(
+                        log_path,
+                        maxBytes=self.logs.max_bytes,
+                        backupCount=self.logs.backup_count,
+                        encoding="utf-8",
+                    )
+                    fh.setLevel(level=self.logs.level)
+                    fh.addFilter(service_filter)
+                    fh.setFormatter(formatter)
+                    logger.addHandler(fh)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to initialize file log handler ({self.logs.file}): {e}"
+                    )
+
+            return logger

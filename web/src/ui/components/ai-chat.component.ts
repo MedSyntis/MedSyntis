@@ -1,22 +1,17 @@
 import type { ChatReply } from "../../application/ports/medsyntis-api.port.js";
 import type { AgentModuleInfo, ClinicalDomain } from "../../domain/types.js";
-import { renderSafeInlineMarkdown, renderSafeMarkdown, stripMarkdown } from "../views/html.js";
+import {
+  iconSvg as baseIconSvg,
+  esc,
+  renderSafeInlineMarkdown,
+  renderSafeMarkdown,
+  stripMarkdown,
+} from "../views/html.js";
 
 export { renderSafeInlineMarkdown, renderSafeMarkdown, stripMarkdown };
 
-function esc(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function iconSvg(id: string, extraClass = ""): string {
-  const cls = extraClass ? `ds-icon ${extraClass}` : "ds-icon";
-  return `<svg class="${cls}" aria-hidden="true" focusable="false"><use href="#${id}"/></svg>`;
+  return baseIconSvg(id, esc(extraClass));
 }
 
 export function resolveCitationPdfHref(
@@ -247,6 +242,9 @@ export function renderAiChatComponent(opts: AiChatComponentOptions): string {
         ${mergedSubmitSplitBtnHtml}
       </div>
     </div>
+    <p class="ds-disclaimer ds-chat__disclaimer" data-testid="ai-chat-disclaimer">
+      Assistant IA d'aide à la préparation RCP (Règlement UE 2024/1689 Art. 50 · CSP Art. L. 4001-2) — Contenu généré par IA locale à titre strictement indicatif et non prescriptif ; vérifiez systématiquement les pièces sources. La décision médicale relève exclusivement du collège de la RCP.
+    </p>
   </form>`;
 }
 
@@ -269,7 +267,7 @@ export function renderAiChatDrawer(opts: AiChatDrawerOptions): string {
   return `
     <!-- Material Design 3 Floating Extended FAB (Directly Opens AI Co-Pilot Side Sheet) -->
     <div class="ds-fab-menu" id="ai-chat-fab" data-testid="ai-fab-menu">
-      <button type="button" class="ds-fab-menu__trigger" data-action="open-chat-drawer" aria-controls="ai-chat-drawer" aria-expanded="false" aria-label="${esc(fabLabel)}" data-testid="btn_fab_ai_chat">
+      <button type="button" id="btn_fab_ai_chat" class="ds-fab-menu__trigger" data-action="open-chat-drawer" aria-controls="ai-chat-drawer" aria-expanded="false" aria-label="${esc(fabLabel)}" data-testid="btn_fab_ai_chat">
         <span class="ds-fab-menu__icon ds-fab-menu__icon--open" aria-hidden="true">${iconSvg("ic-sparkle", "ds-icon--md")}</span>
         <span class="ds-fab-menu__label">${esc(fabLabel)}</span>
       </button>

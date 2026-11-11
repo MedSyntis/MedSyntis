@@ -2183,10 +2183,11 @@ input[type="search"].ds-input::-webkit-search-decoration {
     background-color 150ms var(--ds-ease-standard),
     color 150ms var(--ds-ease-standard);
 }
-.ds-field:has(> .ds-input--sm) > .ds-field__clear {
+.ds-field:has(> .ds-input--sm) > .ds-field__clear,
+.ds-field--has-clear .ds-input--sm ~ .ds-field__clear {
   top: calc(0.45rem + 1rem);
-  width: 1.45rem;
-  height: 1.45rem;
+  width: 1.5rem;
+  height: 1.5rem;
 }
 .ds-field.has-value > .ds-field__clear,
 .ds-field:not(.is-empty):has(> .ds-input:not(:placeholder-shown)) > .ds-field__clear {
@@ -6411,6 +6412,25 @@ a.ds-timeline__link:hover {
   display: inline-flex;
   align-items: center;
   color: var(--ds-color-text-muted);
+}
+
+/* ECharts SSR SVG Dark/Light Mode Theme Contrast Overrides (WCAG 2.2 AA >= 4.5:1) */
+.ds-metric-chart-card__canvas svg text,
+.ds-metric-chart-card__canvas svg [fill="#334155"],
+.ds-metric-chart-card__canvas svg [fill="#475569"] {
+  fill: var(--ds-color-text-muted) !important;
+}
+.ds-metric-chart-card__canvas svg [stroke="#e2e8f0"] {
+  stroke: var(--ds-color-border) !important;
+}
+.ds-metric-chart-card__canvas svg [stroke="#94a3b8"] {
+  stroke: var(--ds-color-border-strong) !important;
+}
+
+.ds-chat__disclaimer {
+  margin: var(--ds-space-1) var(--ds-space-3) 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 @media print {

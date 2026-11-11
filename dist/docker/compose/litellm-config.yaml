@@ -1,6 +1,9 @@
 general_settings:
   dangerously_permit_weak_or_unset_master_key: true
 
+litellm_settings:
+  telemetry: false
+
 model_list:
   - model_name: agents
     litellm_params:

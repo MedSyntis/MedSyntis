@@ -6,12 +6,15 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+
 jobs:
   quality-security-build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # only used by the push steps (guarded by github.event_name == 'push')
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -26,7 +29,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # uv installe la version de python requise et les dépendances (dev incluses pour la CI)
+          # Install the required Python version and locked dependencies (including dev group for CI)
           cd application
           uv python install
           uv sync --frozen
@@ -39,7 +42,7 @@ jobs:
             --skip web-build \
             --skip web-test
 
-      # Utilise la version de ruff verrouillée dans application/uv.lock (et non la dernière via uvx)
+      # Use the exact ruff version locked in application/uv.lock (rather than latest via uvx)
       - name: Lint with ruff
         run: |
           cd application
@@ -82,15 +85,15 @@ jobs:
           scan-type: "fs"
           scan-ref: "."
           format: "table"
-          exit-code: "1" # Fait échouer le job si des vulnérabilités CRITICAL/HIGH sont trouvées
+          exit-code: "1" # Fail the job if any CRITICAL or HIGH vulnerabilities/secrets are detected
           severity: "CRITICAL,HIGH"
           scanners: "vuln,secret"
           ignore-unfixed: true
-          skip-dirs: "**/venv,**/.venv,**/dist,**/.cache,**/.pytest_cache,**/node_modules,**/coverage"
+          skip-dirs: "**/venv,**/.venv,web/dist,**/.cache,**/.pytest_cache,**/node_modules,**/coverage"
           trivyignores: ".trivyignore"
 
       - name: Login to GitHub Container Registry
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
@@ -142,8 +145,7 @@ jobs:
           trivyignores: ".trivyignore"
 
       - name: Push API and Streamlit Docker images
-        if: github.event_name == 'push'
-        continue-on-error: true
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           API_IMAGE_ID: ${{ steps.build_image.outputs.api_image_id }}
           IMAGE_ID: ${{ steps.build_image.outputs.image_id }}
@@ -153,15 +155,14 @@ jobs:
           PID_API=$!
           (docker push "$IMAGE_ID:$VERSION" && docker push "$IMAGE_ID:latest") &
           PID_UI=$!
-          if ! (wait $PID_API && wait $PID_UI); then
-            echo "::warning title=GHCR Push Failed::Failed to push Docker images to ghcr.io ($API_IMAGE_ID / $IMAGE_ID). Check GitHub Packages permissions in organization/repository settings."
-          fi
+          wait $PID_API
+          wait $PID_UI
 
   web-quality-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # only used by the push steps (guarded by github.event_name == 'push')
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -216,7 +217,7 @@ jobs:
           severity: "CRITICAL,HIGH"
           scanners: "vuln,secret"
           ignore-unfixed: true
-          skip-dirs: "**/dist,**/node_modules,**/coverage,**/playwright-report,**/test-results"
+          skip-dirs: "dist,node_modules,coverage,playwright-report,test-results"
           trivyignores: ".trivyignore"
 
       - name: Install Playwright Chromium
@@ -226,7 +227,7 @@ jobs:
         run: npm --prefix web run e2e
 
       - name: Login to GitHub Container Registry
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
@@ -258,21 +259,19 @@ jobs:
           trivyignores: ".trivyignore"
 
       - name: Push Web Docker image
-        if: github.event_name == 'push'
-        continue-on-error: true
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           IMAGE_ID: ${{ steps.build_web_image.outputs.image_id }}
           VERSION: ${{ steps.build_web_image.outputs.version }}
         run: |
-          if ! (docker push "$IMAGE_ID:$VERSION" && docker push "$IMAGE_ID:latest"); then
-            echo "::warning title=GHCR Push Failed::Failed to push Web Docker image to ghcr.io ($IMAGE_ID:$VERSION / latest). Check GitHub Packages permissions in organization/repository settings."
-          fi
+          docker push "$IMAGE_ID:$VERSION"
+          docker push "$IMAGE_ID:latest"
 
   sonarcloud:
     name: SonarQube / SonarCloud Analysis
     runs-on: ubuntu-latest
     needs: [quality-security-build, web-quality-test]
-    if: always() && (needs.quality-security-build.result == 'success' || needs.web-quality-test.result == 'success')
+    if: needs.quality-security-build.result == 'success' && needs.web-quality-test.result == 'success'
     permissions:
       contents: read
     env:

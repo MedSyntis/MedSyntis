@@ -1,30 +1,10 @@
-import atexit
+"""
+Legacy Streamlit dashboard entrypoint for MedSyntis.
+
+Deprecated: This Streamlit interface is deprecated in favor of the Material Design 3 Web UI (`web/`).
+"""
+
 import hmac
-import os
-import signal
-
-
-def clean_exit(signum=None, frame=None):
-    try:
-        from src.application.config import AppConfig
-        from src.application.app_functions import unload_active_models
-
-        config = AppConfig()
-        unload_active_models(config)
-    except Exception:
-        pass
-    try:
-        # Send SIGKILL to the entire process group to stop all processes instantly
-        os.killpg(os.getpgid(0), signal.SIGKILL)
-    except Exception:
-        os._exit(0)
-
-
-try:
-    signal.signal(signal.SIGINT, clean_exit)
-    signal.signal(signal.SIGTERM, clean_exit)
-except ValueError:
-    atexit.register(clean_exit)
 
 import streamlit as st
 import yaml
@@ -35,7 +15,7 @@ import streamlit_authenticator as stauth
 PAGES_DIR_SRC = "src/ui"
 navigation = {}
 
-# Configuration de l'authentification
+# Authentication and domain configuration
 from src.application.config import AppConfig
 from src.ui.patient_mdt.translations import (
     apply_card_surface_style,
@@ -202,6 +182,11 @@ if st.session_state.get("authentication_status"):
 
     with st.sidebar:
         st.caption(
+            "Deprecated: This Streamlit interface is deprecated in favor of the Material Design 3 Web UI (`web/`)."
+            if is_en
+            else "Obsolète : cette interface Streamlit est dépréciée au profit de la Web UI Material Design 3 (`web/`)."
+        )
+        st.caption(
             "Préparation documentaire et contrôle de complétude pour la décision collégiale en RCP."
             if not is_en
             else "Structured document synthesis and completeness verification for MDT preparation."
@@ -251,7 +236,7 @@ if st.session_state.get("authentication_status"):
                     pass
                 st.rerun()
 
-    # Redirection automatique vers le dossier patient si spécifié dans l'URL
+    # Automatically redirect to the patient clinical file view when specified in URL query parameters
     if (
         "patient_id" in st.query_params or "file" in st.query_params
     ) and pg.title not in (

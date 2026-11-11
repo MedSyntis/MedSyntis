@@ -1,4 +1,5 @@
 from typing import List, Any, Optional
+from urllib.parse import urlparse
 import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from src.application.config import AppConfig
@@ -8,6 +9,14 @@ from src.infrastructure.llm.base import (
     LLMConnectionError,
     build_base_url,
     retry_connection,
+)
+
+_BLOCKED_PUBLIC_LLM_HOSTS: frozenset[str] = frozenset(
+    {
+        "api.openai.com",
+        "api.anthropic.com",
+        "generativelanguage.googleapis.com",
+    }
 )
 
 
@@ -20,17 +29,23 @@ class OllamaCompatibleOpenAIEmbeddings(OpenAIEmbeddings):
         chunk_size: Optional[int] = None,
         **kwargs,
     ) -> List[List[float]]:
-        # Bypass tokenization and chunking - send raw strings directly to the API
-        # This fixes compatibility with local OpenAI-compatible embedding servers (like Ollama)
-        # that only accept standard string lists as input.
+        # Bypass tokenization and send raw string batches bounded by chunk_size
+        # for compatibility with local OpenAI-compatible embedding servers.
+        if not texts:
+            return []
         model_name = self.model if self.model else engine
         params = {"model": model_name, "encoding_format": "float"} | {
             k: v for k, v in kwargs.items() if v is not None
         }
-        response = self.client.create(input=texts, **params)
-        if not isinstance(response, dict):
-            response = response.model_dump()
-        return [r["embedding"] for r in response["data"]]
+        batch_size = max(1, chunk_size or self.chunk_size or 32)
+        embeddings: List[List[float]] = []
+        for idx in range(0, len(texts), batch_size):
+            batch = texts[idx : idx + batch_size]
+            response = self.client.create(input=batch, **params)
+            if not isinstance(response, dict):
+                response = response.model_dump()
+            embeddings.extend(r["embedding"] for r in response["data"])
+        return embeddings
 
 
 class StrictChatOpenAI(ChatOpenAI):
@@ -103,6 +118,14 @@ class OpenAIConnect(LLMConnect):
             raise LLMConfigurationError(
                 "OpenAI-compatible backend requires an explicit base URL "
                 "(APP_CONFIGLLM_URL); refusing to default to api.openai.com."
+            )
+
+        parsed_host = (urlparse(self.base_url).hostname or "").strip().lower()
+        allow_remote = getattr(config, "allow_remote_llm", False) is True
+        if parsed_host in _BLOCKED_PUBLIC_LLM_HOSTS and not allow_remote:
+            raise LLMConfigurationError(
+                f"Public cloud LLM host '{parsed_host}' is forbidden for patient data "
+                "unless APP_ALLOW_REMOTE_LLM=true is explicitly enabled."
             )
 
         self.logger = config.set_logger(

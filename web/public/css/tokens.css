@@ -534,5 +534,10 @@
     --ds-duration-fast: 0ms;
     --ds-duration-normal: 0ms;
     --ds-duration-slow: 0ms;
+    --ds-duration-short2: 0ms;
+    --ds-duration-short3: 0ms;
+    --ds-duration-short4: 0ms;
+    --ds-duration-medium1: 0ms;
+    --ds-duration-medium2: 0ms;
   }
 }

@@ -1,3 +1,5 @@
+import hashlib
+import logging
 import os
 from datetime import date, datetime
 from pathlib import Path
@@ -17,17 +19,24 @@ from src.domain.patient_dashboard import (
 )
 from src.domain.patient_mdt_form import PatientMDTForm, get_domain_mdt_form_cls
 from src.domain.repositories import (
+    BugReportRepository,
     DocumentCacheRepository,
+    MDTAgendaRepository,
     PatientMDTFormRepository,
     PatientRepository,
 )
 from src.domain.worker import RCPProcessingStatus
 from src.infrastructure.documents.mongodb import Mongodb
 from src.infrastructure.documents.repositories import (
+    MongoBugReportRepository,
     MongoDocumentCacheRepository,
+    MongoMDTAgendaRepository,
     MongoPatientMDTFormRepository,
     MongoPatientRepository,
 )
+from src.infrastructure.vectorial.database import sanitize_collection_name
+
+logger = logging.getLogger(__name__)
 
 
 class PatientRecordService:
@@ -46,6 +55,8 @@ class PatientRecordService:
         mdt_form_storage_path: str | Path | None = None,
         form_cls: type[PatientMDTForm] = PatientMDTForm,
         config: AppConfig | None = None,
+        mdt_agenda_repo: MDTAgendaRepository | None = None,
+        bug_report_repo: BugReportRepository | None = None,
     ) -> None:
         self.patient_repo = patient_repo
         self.mdt_form_repo = mdt_form_repo
@@ -58,6 +69,8 @@ class PatientRecordService:
         )
         self.form_cls = form_cls
         self.config = config
+        self.mdt_agenda_repo = mdt_agenda_repo
+        self.bug_report_repo = bug_report_repo
 
     @classmethod
     def from_config(
@@ -77,6 +90,8 @@ class PatientRecordService:
             mdt_form_storage_path=config.rcp.path,
             form_cls=domain_form_cls,
             config=config,
+            mdt_agenda_repo=MongoMDTAgendaRepository(client, domain=config.domain),
+            bug_report_repo=MongoBugReportRepository(client),
         )
 
     def synchronize_patient_from_admin(
@@ -526,15 +541,54 @@ class PatientRecordService:
         edited_by: str | None = None,
     ) -> tuple[Patient, dict[str, Any]]:
         """
-        Link a `PatientMDTForm` (`filename`) to an existing `PatientRecord` (`target_patient_id`),
-        propagate the target patient's civil identity onto the form's `PatientAdministrative`
-        section while preserving `date_rcp`, and remove any emptied temporary patient record.
+        Link a `PatientMDTForm` (`filename`) to an existing `PatientRecord` (`target_patient_id`)
+        or split it into a standalone `Patient` when `target_patient_id == "CREATE_NEW"`.
         """
+        if target_patient_id == "CREATE_NEW":
+            form_doc = self.mdt_form_repo.get_by_file(filename) or {"file": filename}
+            self.patient_repo.remove_file(filename)
+            current_admin = dict(form_doc.get("PatientAdministrative") or {})
+            if override_date_rcp is not None:
+                current_admin["date_rcp"] = override_date_rcp
+            validated_admin = self.form_cls.validate_manual_section_update(
+                "PatientAdministrative", current_admin
+            )
+            candidate_id = Patient.build_id(
+                first_name=validated_admin.get("first_name"),
+                last_name=validated_admin.get("last_name"),
+                date_birth=validated_admin.get("date_birth"),
+                fallback_file=filename,
+            )
+            if self.patient_repo.get_by_id(candidate_id) is not None:
+                digest = hashlib.sha256(
+                    f"medsyntis:standalone:{candidate_id}:{filename}".encode("utf-8")
+                ).hexdigest()[:16]
+                standalone_id = f"pat_{digest}"
+            else:
+                standalone_id = candidate_id
+            new_patient = Patient.from_administrative(
+                validated_admin,
+                filename=filename,
+                patient_id=standalone_id,
+            )
+            saved_patient = self.patient_repo.save(new_patient, filename=filename)
+            return self._persist_administrative_section_update(
+                filename=filename,
+                form_doc=form_doc,
+                saved_patient=saved_patient,
+                validated_admin=validated_admin,
+                edited_by=edited_by,
+                now=datetime.now(),
+            )
+
         target_patient = self.patient_repo.get_by_id(target_patient_id)
         if target_patient is None:
             all_forms = self.mdt_form_repo.list_all()
             for candidate in self._collect_patients_including_unlinked(all_forms):
-                if candidate.patient_id == target_patient_id:
+                if (
+                    candidate.patient_id == target_patient_id
+                    or candidate.identity.build_legacy_patient_id() == target_patient_id
+                ):
                     target_patient = candidate
                     break
         if target_patient is None:
@@ -739,13 +793,18 @@ class PatientRecordService:
         if patient is None:
             all_forms = self.mdt_form_repo.list_all()
             for candidate in self._collect_patients_including_unlinked(all_forms):
-                if candidate.patient_id == patient_id:
+                if (
+                    candidate.patient_id == patient_id
+                    or candidate.identity.build_legacy_patient_id() == patient_id
+                ):
                     patient = candidate
                     break
         if not patient:
             return None, [], None
 
-        raw_forms = self.mdt_form_repo.list_by_patient(patient_id, files=patient.files)
+        raw_forms = self.mdt_form_repo.list_by_patient(
+            patient.patient_id, files=patient.files
+        )
         dedup_map: dict[str, dict[str, Any]] = {}
         for d in raw_forms:
             if "file" in d:
@@ -884,11 +943,13 @@ class PatientRecordService:
             if self.config is not None and hasattr(self.config, "llm")
             else None
         )
-        model_name = (
-            str(llm_models[0])
-            if isinstance(llm_models, list) and llm_models
-            else (str(llm_models) if llm_models else "deterministic-synthesis")
-        )
+        if isinstance(llm_models, list) and llm_models:
+            parsed_models = [str(m).strip() for m in llm_models if str(m).strip()]
+        elif isinstance(llm_models, str) and llm_models.strip():
+            parsed_models = [m.strip() for m in llm_models.split(",") if m.strip()]
+        else:
+            parsed_models = []
+        model_name = parsed_models[0] if parsed_models else "deterministic-synthesis"
         snapshot = synthesize_patient_record_summary_from_forms(
             patient_label=patient.display_label,
             forms=forms_list,
@@ -936,8 +997,18 @@ class PatientRecordService:
                     content_dict = llm_res.model_dump(mode="json")
                     content_dict["sources_used"] = snapshot["covered_form_ids"]
                     snapshot["content"] = content_dict
-            except Exception:
-                pass
+            except Exception as exc:
+                log = (
+                    self.config.set_logger("patient_record")
+                    if hasattr(self.config, "set_logger")
+                    else logger
+                )
+                log.warning(
+                    "LLM longitudinal summary generation failed for patient %s; falling back to deterministic synthesis: %s",
+                    patient.patient_id,
+                    exc,
+                )
+                snapshot["model_used"] = "deterministic-fallback"
 
         patient.record_summary = snapshot
         patient.updated_at = datetime.now()
@@ -1047,6 +1118,68 @@ class PatientRecordService:
 
         return None, [], None
 
+    def _cleanup_agenda_and_bugs(
+        self,
+        *,
+        patient_ids: list[str] | None = None,
+        filenames: list[str] | None = None,
+    ) -> None:
+        """Remove deleted `patient_id` entries from `mdt_agendas` and clean up matching `bug_reports`."""
+        pid_set = {p for p in (patient_ids or []) if p}
+        file_set = {f for f in (filenames or []) if f}
+        if not pid_set and not file_set:
+            return
+
+        agenda_repo = self.mdt_agenda_repo
+        if agenda_repo is None and hasattr(self.patient_repo, "db_client"):
+            agenda_repo = MongoMDTAgendaRepository(
+                getattr(self.patient_repo, "db_client"),
+                domain=self._resolve_domain_name(),
+            )
+        if agenda_repo is not None and pid_set:
+            try:
+                agenda = agenda_repo.get_active()
+                if agenda is not None:
+                    changed = False
+                    for pid in pid_set:
+                        if agenda.remove_patient(pid):
+                            changed = True
+                    if changed:
+                        agenda_repo.save(agenda)
+            except Exception:
+                pass
+
+        if self.bug_report_repo is not None:
+            try:
+                for item in self.bug_report_repo.list_all():
+                    if isinstance(item, dict):
+                        bid = item.get("bug_id")
+                        b_pid = item.get("patient_id")
+                        b_file = item.get("rcp_file")
+                    else:
+                        bid = item.bug_id
+                        b_pid = item.patient_id
+                        b_file = item.rcp_file
+                    if bid and (
+                        (b_pid and b_pid in pid_set) or (b_file and b_file in file_set)
+                    ):
+                        self.bug_report_repo.delete(str(bid))
+            except Exception:
+                pass
+        elif hasattr(self.patient_repo, "db_client"):
+            try:
+                db_client = getattr(self.patient_repo, "db_client")
+                if pid_set:
+                    db_client.delete_docs(
+                        ["bug_reports"], {"patient_id": {"$in": sorted(pid_set)}}
+                    )
+                if file_set:
+                    db_client.delete_docs(
+                        ["bug_reports"], {"rcp_file": {"$in": sorted(file_set)}}
+                    )
+            except Exception:
+                pass
+
     def delete_patient_mdt_form_document(
         self,
         filename: str,
@@ -1057,8 +1190,12 @@ class PatientRecordService:
     ) -> None:
         """
         Delete a `PatientMDTForm` document from the queue, vector store, repository,
-        and Markdown cache, detach the file from its `Patient`, and remove the PDF from disk.
+        and Markdown cache, detach the file from its `Patient`, clean up agenda/bug references,
+        and remove the PDF from disk.
         """
+        existing_doc = self.mdt_form_repo.get_by_file(filename)
+        prior_pid = existing_doc.get("patient_id") if existing_doc else None
+
         if delete_queue_jobs:
             if self.queue_broker is not None:
                 try:
@@ -1084,7 +1221,10 @@ class PatientRecordService:
                 )
 
                 vecdb = VectorialDataBaseClient(
-                    self.config, coll_prefix=slugify(filename, separator="_")
+                    self.config,
+                    coll_prefix=sanitize_collection_name(
+                        slugify(filename, separator="_")
+                    ),
                 ).vectordb
                 vecdb.delete_collection()
             except Exception:
@@ -1097,6 +1237,14 @@ class PatientRecordService:
             except Exception:
                 pass
         self.patient_repo.remove_file(filename)
+
+        removed_pids: list[str] = []
+        if prior_pid and self.patient_repo.get_by_id(prior_pid) is None:
+            removed_pids.append(prior_pid)
+        self._cleanup_agenda_and_bugs(
+            patient_ids=removed_pids,
+            filenames=[filename],
+        )
 
         if delete_file and self.mdt_form_storage_path is not None:
             try:
@@ -1111,7 +1259,8 @@ class PatientRecordService:
 
     def delete_patient_record(self, patient_id: str, delete_files: bool = True) -> bool:
         """
-        Delete an entire `PatientRecord` along with all its associated `PatientMDTForm` documents.
+        Delete an entire `PatientRecord` along with all its associated `PatientMDTForm` documents,
+        removing any references in `mdt_agendas` and `bug_reports`.
         """
         patient, forms_list, _ = self._get_patient_and_forms(patient_id)
         if not patient:
@@ -1126,5 +1275,10 @@ class PatientRecordService:
         for fname in all_files:
             self.delete_patient_mdt_form_document(fname, delete_file=delete_files)
 
-        self.patient_repo.delete(patient_id)
+        pids_to_clean = list(
+            dict.fromkeys([p for p in (patient_id, patient.patient_id) if p])
+        )
+        for pid in pids_to_clean:
+            self.patient_repo.delete(pid)
+        self._cleanup_agenda_and_bugs(patient_ids=pids_to_clean, filenames=all_files)
         return True

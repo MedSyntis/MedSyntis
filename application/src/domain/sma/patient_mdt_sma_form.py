@@ -1,13 +1,16 @@
-from typing import Any, ClassVar, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from pydantic import Field, field_validator
 
 from src.domain.common.common_ressources import *  # noqa: F403
 from src.domain.common.common_ressources import MarkdownStr
-
-from src.application.agent.agent import MedSyntisAgent
-from src.domain.sma.agents import Agents
 from src.domain.common.patient_mdt_common_form import PatientMDTForm
+from src.domain.sma.agents import Agents
+
+if TYPE_CHECKING:
+    from src.application.agent.agent import MedSyntisAgent
 
 
 class PatientMDTSmaForm(PatientMDTForm):
@@ -20,12 +23,13 @@ class PatientMDTSmaForm(PatientMDTForm):
         Patient WHO performance status
         """
 
-        performance_status: WHOPerformanceStatus = Field(  # noqa: F405
-            description="WHO/OMS performance status of the patient, score from 0 to 4"
+        performance_status: Optional[WHOPerformanceStatus] = Field(  # noqa: F405
+            default=None,
+            description="WHO/OMS performance status of the patient, score from 0 to 4",
         )
 
         question: ClassVar[str] = (
-            "Determine the WHO performance status of the patient (0-4). Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, indicate it."
+            "Determine the WHO performance status of the patient (0-4). Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, set it to null."
         )
 
     class GeneticDiagnosis(PatientMDTForm.default_model):
@@ -33,10 +37,12 @@ class PatientMDTSmaForm(PatientMDTForm):
         Genetic characteristics of Spinal Muscular Atrophy (SMN1 mutation and SMN2 copy number)
         """
 
-        smn1_deletion_confirmed: bool = Field(
-            description="Is the homozygous deletion or mutation of SMN1 confirmed?"
+        smn1_deletion_confirmed: Optional[bool] = Field(
+            default=None,
+            description="Is the homozygous deletion or mutation of SMN1 confirmed?",
         )
-        smn2_copy_count: int = Field(
+        smn2_copy_count: Optional[int] = Field(
+            default=None,
             ge=0,
             le=10,
             description="Number of SMN2 backup gene copies (crucial for prognosis and treatment eligibility)",
@@ -194,8 +200,9 @@ class PatientMDTSmaForm(PatientMDTForm):
         Respiratory status and mechanical ventilation requirements
         """
 
-        requires_ventilation_support: bool = Field(
-            description="Does the patient require respiratory assistance?"
+        requires_ventilation_support: Optional[bool] = Field(
+            default=None,
+            description="Does the patient require respiratory assistance?",
         )
         ventilation_type: Optional[str] = Field(
             default=None,
@@ -214,8 +221,9 @@ class PatientMDTSmaForm(PatientMDTForm):
             le=24,
             description="Number of hours of ventilation per day",
         )
-        uses_cough_assist: bool = Field(
-            description="Does the patient use a mechanical insufflator-exsufflator (cough assist)?"
+        uses_cough_assist: Optional[bool] = Field(
+            default=None,
+            description="Does the patient use a mechanical insufflator-exsufflator (cough assist)?",
         )
         forced_vital_capacity_percent: Optional[float] = Field(
             default=None,
@@ -225,7 +233,7 @@ class PatientMDTSmaForm(PatientMDTForm):
         )
 
         question: ClassVar[str] = (
-            "Extract respiratory evaluations: check if the patient uses ventilation support (NIV, tracheostomy) or a cough assist machine, and look for pulmonary function test values like FVC (CVF) percentage."
+            "Extract respiratory evaluations: check if the patient uses ventilation support (NIV, tracheostomy) or a cough assist machine, and look for pulmonary function test values like FVC (CVF) percentage. Set undocumented fields to null."
         )
 
     class OrthopedicAndSpineStatus(PatientMDTForm.default_model):
@@ -233,25 +241,31 @@ class PatientMDTSmaForm(PatientMDTForm):
         Spine deformities and joint contractures assessment
         """
 
-        has_scoliosis: bool = Field(description="Presence of scoliosis")
+        has_scoliosis: Optional[bool] = Field(
+            default=None,
+            description="Presence of scoliosis",
+        )
         scoliosis_cobb_angle: Optional[float] = Field(
             default=None,
             ge=0,
             le=180,
             description="Scoliosis Cobb angle in degrees if measured",
         )
-        spine_surgery_history: bool = Field(
-            description="Has the patient undergone spinal fusion / arthrodesis?"
+        spine_surgery_history: Optional[bool] = Field(
+            default=None,
+            description="Has the patient undergone spinal fusion / arthrodesis?",
         )
         joint_contractures: list[MarkdownStr] = Field(
-            description="Affected joints with contractures (e.g. hips, knees, ankles)"
+            default_factory=list,
+            description="Affected joints with contractures (e.g. hips, knees, ankles)",
         )
-        wheelchair_user: bool = Field(
-            description="Does the patient require a wheelchair (manual or electric)?"
+        wheelchair_user: Optional[bool] = Field(
+            default=None,
+            description="Does the patient require a wheelchair (manual or electric)?",
         )
 
         question: ClassVar[str] = (
-            "Search for spine and orthopedic assessments. Check for scoliosis presence, the Cobb angle, history of spinal surgery, joints affected by contractures, and whether the patient is wheelchair-dependent."
+            "Search for spine and orthopedic assessments. Check for scoliosis presence, the Cobb angle, history of spinal surgery, joints affected by contractures, and whether the patient is wheelchair-dependent. Set undocumented fields to null."
         )
 
     class BulbarAndNutritionalStatus(PatientMDTForm.default_model):
@@ -259,10 +273,12 @@ class PatientMDTSmaForm(PatientMDTForm):
         Swallowing abilities, feeding methods, and growth/weight monitoring
         """
 
-        has_dysphagia: bool = Field(
-            description="Does the patient have swallowing difficulties?"
+        has_dysphagia: Optional[bool] = Field(
+            default=None,
+            description="Does the patient have swallowing difficulties?",
         )
-        feeding_mode: str = Field(
+        feeding_mode: Optional[str] = Field(
+            default=None,
             description="Primary feeding mode: Oral, Oral with thickening, Gastrostomy tube (G-tube / GPE), or Nasogastric tube",
             json_schema_extra={
                 "options": [
@@ -273,10 +289,12 @@ class PatientMDTSmaForm(PatientMDTForm):
                 ]
             },
         )
-        history_aspiration_pneumonia: bool = Field(
-            description="History of aspiration pneumonia (fausses routes)"
+        history_aspiration_pneumonia: Optional[bool] = Field(
+            default=None,
+            description="History of aspiration pneumonia (fausses routes)",
         )
-        nutritional_status: str = Field(
+        nutritional_status: Optional[str] = Field(
+            default=None,
             description="Nutritional status: Normal, Failure to thrive / Underweight, Overweight",
             json_schema_extra={
                 "options": [
@@ -288,7 +306,7 @@ class PatientMDTSmaForm(PatientMDTForm):
         )
 
         question: ClassVar[str] = (
-            "Extract information regarding bulbar function: presence of dysphagia, history of aspiration pneumonia, current feeding method (oral or tube feeding), and overall nutritional/weight monitoring."
+            "Extract information regarding bulbar function: presence of dysphagia, history of aspiration pneumonia, current feeding method (oral or tube feeding), and overall nutritional/weight monitoring. Set undocumented fields to null."
         )
 
     class RadiologicExams(PatientMDTForm.default_model):

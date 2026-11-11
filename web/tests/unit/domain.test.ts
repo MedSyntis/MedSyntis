@@ -152,7 +152,7 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     );
     expect(completeWithOptional.status).toBe("complete");
     expect(completeWithOptional.badgeClass).toBe("ds-badge--complete");
-    expect(completeWithOptional.label).toBe("2 élément(s) facultatif manquant(s)");
+    expect(completeWithOptional.label).toBe("2 élément(s) facultatif(s) manquant(s)");
 
     const pendingAi = deriveCompletenessInfo(
       {
@@ -576,17 +576,98 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       ],
     });
 
+    expect(() =>
+      coerceSectionUpdatePayload("PatientAdministrative", {
+        first_name: "Jeanne",
+        last_name: "Fictive",
+        date_birth: "2027-01-01",
+        date_rcp: "2026-11-06",
+      }),
+    ).toThrow("La date de naissance ne peut pas être postérieure à la date de la RCP.");
+
     const adminCoerced = coerceSectionUpdatePayload("PatientAdministrative", {
       first_name: "Jeanne",
       last_name: "Fictive",
-      date_birth: "2027-01-01",
+      date_birth: "1960-05-14",
       date_rcp: "2026-11-06",
       extra_field: "extra",
     });
-    expect(adminCoerced.date_birth).toBe("2026-11-06");
+    expect(adminCoerced.date_birth).toBe("1960-05-14");
     expect(adminCoerced.extra_field).toBe("extra");
     const strictAdmin = buildStrictBackendSectionPayload("PatientAdministrative", adminCoerced);
     expect(strictAdmin).not.toHaveProperty("extra_field");
+
+    // CareOrientationProposal human oversight editability & coercion (CSP Art. L. 4001-2)
+    expect(getSectionPresentation("CareOrientationProposal", "oncology", "fr").editable).toBe(true);
+    const careCoerced = coerceSectionUpdatePayload("CareOrientationProposal", {
+      care_adaptation_suggested: "true",
+      suggested_priority: "High-priority pre-MDT review suggested",
+      priority_reason: "Progression ganglionnaire rapide",
+      proposed_care_type: "Chimiothérapie néoadjuvante FOLFIRINOX",
+      orientation_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
+    });
+    expect(careCoerced).toEqual({
+      care_adaptation_suggested: true,
+      suggested_priority: "high",
+      priority_reason: "Progression ganglionnaire rapide",
+      proposed_care_type: "Chimiothérapie néoadjuvante FOLFIRINOX",
+      orientation_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
+    });
+    expect(buildStrictBackendSectionPayload("CareOrientationProposal", careCoerced)).toMatchObject(
+      careCoerced,
+    );
+    expect(
+      buildStrictBackendSectionPayload("CareOrientationProposal", careCoerced, {
+        domain: "oncology",
+        enums: {},
+        sections: [
+          {
+            name: "CareOrientationProposal",
+            description: "Orientation",
+            question: "",
+            multi_agent: false,
+            collaborative: true,
+            agents: [],
+            editable: true,
+            json_schema: {
+              type: "object",
+              properties: {
+                care_adaptation_suggested: { type: "boolean" },
+                suggested_priority: {
+                  enum: [
+                    "High-priority pre-MDT review suggested",
+                    "Semi-urgent pre-MDT review suggested",
+                    "Patient is not urgent",
+                    "no answer",
+                  ],
+                },
+                proposed_care_type: { anyOf: [{ type: "string" }, { type: "null" }] },
+                clinical_rationale: { type: "string" },
+              },
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      care_adaptation_suggested: true,
+      suggested_priority: "High-priority pre-MDT review suggested",
+      proposed_care_type: "Chimiothérapie néoadjuvante FOLFIRINOX",
+      clinical_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
+    });
+
+    // Deleting all dynamic radiology/chemotherapy rows saves [] instead of resurrecting stale rows
+    const clearedExams = coerceSectionUpdatePayload(
+      "RadiologicExams",
+      { exams_list_present: "1" },
+      { exams_list: [{ exam_name: "Hallucinated CT", exam_type: "CT" }] },
+    );
+    expect(clearedExams.exams_list).toEqual([]);
+    const clearedChemo = coerceSectionUpdatePayload(
+      "ChemotherapyTreament",
+      { chemotherapy: "false", chemotherapy_list_present: "1" },
+      { chemotherapy: true, chemotherapy_list: [{ chemotherapy_name: "Hallucinated FOLFOX" }] },
+    );
+    expect(clearedChemo.chemotherapy_list).toEqual([]);
   });
 
   it("supports raw non-integer RULM/HFMSE observations, multi-year series, and obsolescence detection", () => {

@@ -14,7 +14,7 @@ import {
   resolveCanonicalSectionName,
   type SectionPresentationMeta,
 } from "../../domain/catalog.js";
-import { translateValue } from "../../domain/i18n.js";
+import { t, translateValue } from "../../domain/i18n.js";
 import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
 import {
   computeLongitudinalDeltas,
@@ -165,6 +165,8 @@ export interface PatientDossierView {
 const LONG_TEXT_KEYS = new Set([
   "reflection",
   "clinical_rationale",
+  "orientation_rationale",
+  "priority_reason",
   "why",
   "why_relevant",
   "exam_result",
@@ -442,7 +444,10 @@ export class PatientDossierUseCase {
       careProposal: {
         careAdaptationSuggested,
         proposedCareType,
-        clinicalRationale: careSec.clinical_rationale ? String(careSec.clinical_rationale) : null,
+        clinicalRationale:
+          (careSec.orientation_rationale ?? careSec.clinical_rationale)
+            ? String(careSec.orientation_rationale ?? careSec.clinical_rationale)
+            : null,
         reasoningThinking: careReasoning,
         userPrompt: careMeta.userPrompt ?? null,
         durationSec: careDuration,
@@ -713,7 +718,7 @@ export class PatientDossierUseCase {
       if (status === "yes") {
         if (missing > 0) {
           return lang === "fr"
-            ? `${missing} élément(s) facultatif manquant(s)`
+            ? `${missing} élément(s) facultatif(s) manquant(s)`
             : `${missing} optional missing item(s)`;
         }
         return lang === "fr" ? "Dossier complet" : "Complete";
@@ -729,6 +734,14 @@ export class PatientDossierUseCase {
       }
       return lang === "fr" ? "Dossier incomplet" : "Incomplete";
     }
+    if (sectionName === "CareOrientationProposal") {
+      const proposed = String(rawObj.proposed_care_type ?? "").trim();
+      if (proposed) return stripMarkdown(proposed);
+      if (rawObj.care_adaptation_suggested === true) return t("orientation.adapt", lang);
+      if (rawObj.care_adaptation_suggested === false) return t("orientation.standard", lang);
+      return t("orientation.pending", lang);
+    }
+
     if (sectionName === "PatientAdministrative") {
       const fn =
         rawObj.first_name && rawObj.first_name !== "Not_given"
@@ -762,7 +775,7 @@ export class PatientDossierUseCase {
     lang: Language,
     domainSchema?: DomainFormSchema | null,
   ): DossierSectionView[] {
-    const skip = new Set(["ExpertAnswer", "CareOrientationProposal"]);
+    const skip = new Set(["ExpertAnswer"]);
     const internalKeys = new Set([
       "reasoning_thinking",
       "time_execution",
@@ -772,11 +785,24 @@ export class PatientDossierUseCase {
       "references",
     ]);
     const result: DossierSectionView[] = [];
+    const sectionEntries: Array<[string, Record<string, unknown>]> = Object.entries(form.sections);
+    if (!Object.hasOwn(form.sections, "CareOrientationProposal")) {
+      sectionEntries.push(["CareOrientationProposal", {}]);
+    }
 
-    for (const [sectionName, rawSectionObj] of Object.entries(form.sections)) {
+    for (const [sectionName, rawSectionObj] of sectionEntries) {
       if (skip.has(sectionName)) continue;
       const meta = getSectionPresentation(sectionName, form.domain, lang);
       const rawObj: Record<string, unknown> = { ...(rawSectionObj ?? {}) };
+
+      if (sectionName === "CareOrientationProposal") {
+        if (rawObj.orientation_rationale === undefined && rawObj.clinical_rationale !== undefined) {
+          rawObj.orientation_rationale = rawObj.clinical_rationale;
+        }
+        if (rawObj.suggested_priority !== undefined) {
+          rawObj.suggested_priority = normalizePriorityLevel(rawObj.suggested_priority);
+        }
+      }
 
       // Unpack nested mtd_complete object if present (avoiding raw JSON stringification)
       if (
@@ -821,6 +847,14 @@ export class PatientDossierUseCase {
         if (internalKeys.has(k)) continue;
         // Skip duplicate radiological_exams alias if exams_list is already present
         if (k === "radiological_exams" && orderedKeys.includes("exams_list")) continue;
+        // Skip duplicate clinical_rationale alias on CareOrientationProposal when orientation_rationale is present
+        if (
+          sectionName === "CareOrientationProposal" &&
+          k === "clinical_rationale" &&
+          orderedKeys.includes("orientation_rationale")
+        ) {
+          continue;
+        }
 
         const wasPresentInRaw = Object.hasOwn(rawObj, k);
         const v =
@@ -1003,10 +1037,21 @@ export class PatientDossierUseCase {
         sectionName === "MTDCompleted"
           ? (fields.find((f) => f.key === "is_mtd_complete")?.badgeTone ?? null)
           : null;
+      const carePriorityLevel =
+        sectionName === "CareOrientationProposal"
+          ? normalizePriorityLevel(rawObj.suggested_priority ?? form.metrics.priority_level)
+          : null;
       const sectionTone: "green" | "orange" | "red" | null =
         sectionName === "MTDCompleted"
           ? (form.metrics.completeness_tone ?? mtdFieldTone ?? "green")
-          : null;
+          : sectionName === "CareOrientationProposal"
+            ? carePriorityLevel === "high"
+              ? "red"
+              : rawObj.care_adaptation_suggested === true ||
+                  form.metrics.care_adaptation_suggested === true
+                ? "orange"
+                : "green"
+            : null;
       const summaryText =
         sectionName === "MTDCompleted" &&
         lang === "fr" &&
@@ -1199,8 +1244,9 @@ export class PatientDossierUseCase {
     filename: string,
     patientId: string | null,
     domain: ClinicalDomain,
+    editedBy?: string,
   ): Promise<void> {
-    return this.api.linkFormToPatient(filename, patientId, domain);
+    return this.api.linkFormToPatient(filename, patientId, domain, editedBy);
   }
 
   async askQuestion(

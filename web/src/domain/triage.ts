@@ -39,6 +39,7 @@ export function normalizePriorityLevel(raw: unknown): PriorityLevel {
   if (
     str === "high" ||
     str === "urgent" ||
+    str.includes("high-priority") ||
     str.includes("urgent") ||
     str.includes("haute") ||
     str.includes("quickly")
@@ -200,7 +201,7 @@ export function deriveCompletenessInfo(
         badgeClass: "ds-badge--complete",
         label:
           lang === "fr"
-            ? `${missingCount} élément(s) facultatif manquant(s)`
+            ? `${missingCount} élément(s) facultatif(s) manquant(s)`
             : `${missingCount} optional missing item(s)`,
         missingCount,
         missingItems,

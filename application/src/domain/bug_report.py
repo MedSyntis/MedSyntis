@@ -78,57 +78,57 @@ class BugReport(BaseModel):
 
     bug_id: str = Field(
         default_factory=generate_bug_id,
-        description="Identifiant unique du rapport de bug",
+        description="Unique identifier of the bug report",
     )
     title: str = Field(
         ...,
         min_length=1,
-        description="Titre court résumant le problème ou la suggestion",
+        description="Short title summarizing the issue or improvement suggestion",
     )
     description: str = Field(
         ...,
         min_length=1,
-        description="Description détaillée du bug observé ou de l'amélioration souhaitée",
+        description="Detailed description of the observed bug or requested improvement",
     )
     category: BugCategory = Field(
         default=BugCategory.other,
-        description="Catégorie fonctionnelle du signalement",
+        description="Functional category of the report",
     )
     severity: BugSeverity = Field(
         default=BugSeverity.medium,
-        description="Niveau de sévérité ou d'impact",
+        description="Severity or clinical/operational impact level",
     )
     status: BugStatus = Field(
         default=BugStatus.open,
-        description="Statut de résolution du ticket",
+        description="Resolution tracking status of the ticket",
     )
     page: str | None = Field(
         default=None,
-        description="Page ou composant de l'application concerné",
+        description="Application page or UI component concerned",
     )
     patient_id: str | None = Field(
         default=None,
-        description="Identifiant du dossier patient éventuellement concerné",
+        description="Optional identifier of the related patient record",
     )
     rcp_file: str | None = Field(
         default=None,
-        description="Nom du fichier PDF RCP éventuellement concerné",
+        description="Optional filename of the related PatientMDTForm PDF",
     )
     steps_to_reproduce: str | None = Field(
         default=None,
-        description="Étapes pour reproduire le problème ou comportement attendu",
+        description="Steps to reproduce the issue or expected behavior",
     )
     reporter: str | None = Field(
         default="anonymous",
-        description="Utilisateur ayant soumis le rapport",
+        description="Username of the user who submitted the report",
     )
     created_at: datetime = Field(
         default_factory=datetime.now,
-        description="Date et heure de création du signalement",
+        description="Creation date and time of the report",
     )
     updated_at: datetime | None = Field(
         default=None,
-        description="Date et heure de dernière mise à jour",
+        description="Last update date and time of the report",
     )
 
     @field_validator("created_at", mode="before")

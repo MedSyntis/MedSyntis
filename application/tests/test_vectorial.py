@@ -65,7 +65,10 @@ class TestVectorialDatabases(unittest.TestCase):
         # Assert correct collection name and client parameters
         self.assertEqual(db_wrapper.coll_name, "medsyntisDocs_all_MiniLM_L6_v2")
         mock_connections.connect.assert_called_once_with(
-            host="localhost", port="19530", token="root:Milvus"
+            alias="medsyntis_medsyntis",
+            host="localhost",
+            port="19530",
+            token="root:Milvus",
         )
         mock_milvus_cls.assert_called_once()
         self.assertEqual(db_wrapper.embeddings, self.mock_embeddings)

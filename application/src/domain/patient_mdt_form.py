@@ -1,4 +1,5 @@
 import os
+from typing import TYPE_CHECKING, Any
 
 from src.domain.common.patient_mdt_common_form import (
     NonPatientMDTFormError,
@@ -25,7 +26,16 @@ def get_domain_mdt_form_cls(
     return _DOMAIN_MDT_FORM_MAP[target]
 
 
-PatientMDTForm = get_domain_mdt_form_cls()
+if TYPE_CHECKING:
+    PatientMDTForm = BasePatientMDTForm
+
+
+def __getattr__(name: str) -> Any:
+    """Dynamically resolve `PatientMDTForm` without freezing `os.environ` at import time."""
+    if name == "PatientMDTForm":
+        return get_domain_mdt_form_cls()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "BasePatientMDTForm",

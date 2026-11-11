@@ -1,4 +1,5 @@
-from collections.abc import Iterable
+import asyncio
+from collections.abc import AsyncIterable
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
@@ -21,9 +22,24 @@ from src.models.queue import (
     QueueThinkingStreamEvent,
     ReleaseLocksResponse,
 )
-from src.routers.dependencies import DomainConfigDep, get_base_config, require_admin
+from src.routers.dependencies import (
+    DomainConfigDep,
+    get_base_config,
+    get_current_user_info,
+    require_admin,
+)
 
 router = APIRouter(prefix="/queue", tags=["queue"])
+
+
+class UnbufferedEventSourceResponse(EventSourceResponse):
+    """SSE response enforcing `X-Accel-Buffering: no` and `Cache-Control: no-cache`."""
+
+    def init_headers(self, headers=None) -> None:
+        merged = dict(headers or {})
+        merged.setdefault("X-Accel-Buffering", "no")
+        merged.setdefault("Cache-Control", "no-cache")
+        super().init_headers(merged)
 
 
 def get_queue_manager() -> InMemoryQueueManager:
@@ -31,6 +47,89 @@ def get_queue_manager() -> InMemoryQueueManager:
 
 
 QueueManagerDep = Annotated[InMemoryQueueManager, Depends(get_queue_manager)]
+
+
+def _resolve_queue_domain_filter(
+    request: Request,
+    domain: str | None,
+    all_domains: bool,
+    user_info: dict[str, str | bool | None],
+) -> str | None:
+    """Resolve effective queue domain filter, restricting cross-domain visibility to admins or dev mode."""
+    base_conf = get_base_config()
+    if all_domains and (base_conf.dev_mode or bool(user_info.get("is_admin"))):
+        return None
+    requested = getattr(request.state, "requested_domain", None)
+    if requested:
+        return str(requested)
+    if domain:
+        return domain.strip().lower()
+    resolved = getattr(request.state, "domain", None)
+    if resolved:
+        return str(resolved)
+    return (base_conf.domain or "oncology").strip().lower()
+
+
+def _require_existing_job(
+    job_id: str,
+    manager: QueueManagerDep,
+) -> str:
+    """Validate that `job_id` exists in the queue before starting an SSE stream."""
+    if not manager.get_job(job_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tâche '{job_id}' introuvable.",
+        )
+    return job_id
+
+
+async def _stream_thinking_sse(
+    request: Request,
+    manager: InMemoryQueueManager,
+    *,
+    job_id: str | None = None,
+    domain: str | None = None,
+    timeout: float = 30.0,
+) -> AsyncIterable[ServerSentEvent]:
+    """Non-blocking async SSE generator polling `manager` via `asyncio.to_thread` and checking disconnects."""
+    if isinstance(manager, InMemoryQueueManager) and hasattr(
+        manager, "poll_thinking_step"
+    ):
+        state: dict[str, object] = {
+            "job_id": job_id,
+            "domain": domain,
+            "timeout": timeout,
+        }
+        while True:
+            if await request.is_disconnected():
+                break
+            ev = await asyncio.to_thread(
+                manager.poll_thinking_step,
+                state,
+                1.0,
+                15.0,
+            )
+            if ev is None:
+                continue
+            payload = QueueThinkingStreamEvent.model_validate(ev)
+            yield ServerSentEvent(data=payload, event=payload.event)
+            if payload.event == "done":
+                break
+        return
+
+    iterator = iter(
+        manager.stream_job_thinking(job_id=job_id, domain=domain, timeout=timeout)
+    )
+    while True:
+        if await request.is_disconnected():
+            break
+        ev = await asyncio.to_thread(next, iterator, None)
+        if ev is None:
+            break
+        payload = QueueThinkingStreamEvent.model_validate(ev)
+        yield ServerSentEvent(data=payload, event=payload.event)
+        if payload.event == "done":
+            break
 
 
 @router.get("/domains", response_model=QueueDomainsResponse)
@@ -47,15 +146,23 @@ def get_allowed_domains():
 def get_queue_stats_endpoint(
     request: Request,
     manager: QueueManagerDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
     domain: Annotated[
         Optional[str],
-        Query(
-            description="Filtrer les statistiques par domaine (ou omettre pour tous les domaines)"
-        ),
+        Query(description="Filter queue statistics by medical domain"),
     ] = None,
+    all_domains: Annotated[
+        bool,
+        Query(description="Aggregate across all domains (admin or dev mode only)"),
+    ] = False,
 ):
     """Retrieve statistics for the `PriorityQueue` and active execution slots."""
-    target_domain = getattr(request.state, "requested_domain", domain)
+    target_domain = _resolve_queue_domain_filter(
+        request=request,
+        domain=domain,
+        all_domains=all_domains,
+        user_info=user_info,
+    )
     return manager.get_queue_stats(domain=target_domain)
 
 
@@ -63,14 +170,24 @@ def get_queue_stats_endpoint(
 def get_queue_jobs_endpoint(
     request: Request,
     manager: QueueManagerDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
     domain: Annotated[Optional[str], Query()] = None,
+    all_domains: Annotated[
+        bool,
+        Query(description="List tasks across all domains (admin or dev mode only)"),
+    ] = False,
     status_filter: Annotated[Optional[str], Query(alias="status")] = None,
     batch_id: Annotated[Optional[str], Query()] = None,
     filename: Annotated[Optional[str], Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """List tasks in the processing queue (filterable by domain, status, batch, or filename)."""
-    target_domain = getattr(request.state, "requested_domain", domain)
+    target_domain = _resolve_queue_domain_filter(
+        request=request,
+        domain=domain,
+        all_domains=all_domains,
+        user_info=user_info,
+    )
     return manager.get_queue_jobs(
         status=status_filter,
         batch_id=batch_id,
@@ -115,23 +232,32 @@ def get_active_thinking_endpoint(
     return manager.get_job_thinking(job_id=None, domain=target_domain)
 
 
-@router.get("/thinking/stream", response_class=EventSourceResponse)
-def stream_active_thinking_endpoint(
+@router.get("/thinking/stream", response_class=UnbufferedEventSourceResponse)
+async def stream_active_thinking_endpoint(
     request: Request,
     manager: QueueManagerDep,
     domain: Annotated[Optional[str], Query()] = None,
     job_id: Annotated[Optional[str], Query()] = None,
     timeout: Annotated[float, Query(ge=1.0, le=300.0)] = 30.0,
-) -> Iterable[ServerSentEvent]:
+) -> AsyncIterable[ServerSentEvent]:
     """Stream live AI reasoning tokens (SSE) for the currently running task or a specific `job_id`."""
     target_domain = (
-        None if job_id else getattr(request.state, "requested_domain", domain)
+        None
+        if job_id
+        else (
+            getattr(request.state, "requested_domain", None)
+            or domain
+            or getattr(request.state, "domain", None)
+        )
     )
-    for ev in manager.stream_job_thinking(
-        job_id=job_id, domain=target_domain, timeout=timeout
+    async for event in _stream_thinking_sse(
+        request=request,
+        manager=manager,
+        job_id=job_id,
+        domain=target_domain,
+        timeout=timeout,
     ):
-        payload = QueueThinkingStreamEvent.model_validate(ev)
-        yield ServerSentEvent(data=payload, event=payload.event)
+        yield event
 
 
 @router.get("/jobs/{job_id}/thinking", response_model=QueueThinkingResponse)
@@ -149,21 +275,24 @@ def get_job_thinking_endpoint(
     return snap
 
 
-@router.get("/jobs/{job_id}/thinking/stream", response_class=EventSourceResponse)
-def stream_job_thinking_endpoint(
-    job_id: str,
+@router.get(
+    "/jobs/{job_id}/thinking/stream",
+    response_class=UnbufferedEventSourceResponse,
+)
+async def stream_job_thinking_endpoint(
+    request: Request,
+    job_id: Annotated[str, Depends(_require_existing_job)],
     manager: QueueManagerDep,
     timeout: Annotated[float, Query(ge=1.0, le=300.0)] = 30.0,
-) -> Iterable[ServerSentEvent]:
+) -> AsyncIterable[ServerSentEvent]:
     """Stream live AI reasoning tokens (SSE) for a specific task `job_id`."""
-    if not manager.get_job(job_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tâche '{job_id}' introuvable.",
-        )
-    for ev in manager.stream_job_thinking(job_id=job_id, timeout=timeout):
-        payload = QueueThinkingStreamEvent.model_validate(ev)
-        yield ServerSentEvent(data=payload, event=payload.event)
+    async for event in _stream_thinking_sse(
+        request=request,
+        manager=manager,
+        job_id=job_id,
+        timeout=timeout,
+    ):
+        yield event
 
 
 @router.post("/enqueue-import", response_model=EnqueueResponse)

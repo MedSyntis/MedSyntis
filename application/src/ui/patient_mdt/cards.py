@@ -279,7 +279,7 @@ def display_as_list(
                         else ""
                     )
                     status_badges.append(
-                        f":red-badge[🧭 Adaptation suggérée{int_type}]"
+                        f":blue-badge[🧭 Adaptation suggérée{int_type}]"
                     )
                 elif care_req is False:
                     status_badges.append(":gray-badge[Suivi habituel]")
@@ -394,7 +394,7 @@ def display_as_cards(
                             else ""
                         )
                         badge_intervention = (
-                            f":red-badge[🧭 Adaptation suggérée{int_type}]"
+                            f":blue-badge[🧭 Adaptation suggérée{int_type}]"
                         )
                     elif care_req is False:
                         badge_intervention = ":gray-badge[Suivi habituel]"

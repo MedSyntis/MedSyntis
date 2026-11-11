@@ -721,7 +721,9 @@ def build_patient_metric_series(
                 if isinstance(manual_edits, dict)
                 else None
             )
-            is_manual = isinstance(manual_meta, dict)
+            is_manual = bool(
+                isinstance(manual_meta, dict) and manual_meta.get("is_manual", True)
+            )
             edited_by = (
                 str(manual_meta.get("edited_by"))
                 if isinstance(manual_meta, dict) and manual_meta.get("edited_by")

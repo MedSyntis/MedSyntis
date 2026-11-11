@@ -1,5 +1,66 @@
 (function () {
   var root = document.documentElement;
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var m3SelectSeq = 0;
+
+  function cssEscape(val) {
+    var str = String(val == null ? "" : val);
+    if (typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function") {
+      return window.CSS.escape(str);
+    }
+    return str.replace(/(["'\\#.:[\]()>+~=|^$*])/g, "\\$1");
+  }
+
+  function createSpriteIconSvg(iconId, extraClass) {
+    var svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", extraClass ? "ds-icon " + extraClass : "ds-icon");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    var use = document.createElementNS(SVG_NS, "use");
+    use.setAttribute("href", "#" + String(iconId));
+    svg.appendChild(use);
+    return svg;
+  }
+
+  function createPathSvg(pathD, extraClass) {
+    var svg = document.createElementNS(SVG_NS, "svg");
+    if (extraClass) {
+      svg.setAttribute("class", extraClass);
+    }
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    var path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", pathD);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function getFocusableElements(container) {
+    if (!container) return [];
+    var nodes = container.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]):not(.ds-select--native-hidden), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+    );
+    return Array.prototype.slice.call(nodes).filter(function (el) {
+      if (el.hasAttribute("hidden") || el.closest("[hidden]")) return false;
+      if (el.getAttribute("aria-hidden") === "true") return false;
+      return true;
+    });
+  }
+
+  function syncMainBackgroundInert() {
+    var mainEl = document.getElementById("main");
+    if (!mainEl) return;
+    var mobileNavOpen = document.body.classList.contains("ds-shell--mobile-nav-open");
+    var chatDrawer = document.getElementById("ai-chat-drawer");
+    var chatOpen = Boolean(chatDrawer && chatDrawer.classList.contains("is-open"));
+    var shouldInert = mobileNavOpen || chatOpen;
+    mainEl.inert = shouldInert;
+    if (shouldInert) {
+      mainEl.setAttribute("inert", "");
+    } else {
+      mainEl.removeAttribute("inert");
+    }
+  }
   var radioLight = document.getElementById("theme-light");
   var radioDark = document.getElementById("theme-dark");
   var osDarkMql =
@@ -79,10 +140,21 @@
   var mobileNavBtn = document.getElementById("mobile-nav-toggle");
   var sbBackdrop = document.getElementById("sidebar-backdrop");
 
-  function setMobileNavOpen(open) {
+  function setMobileNavOpen(open, restoreFocus) {
+    var wasOpen = document.body.classList.contains("ds-shell--mobile-nav-open");
     document.body.classList.toggle("ds-shell--mobile-nav-open", open);
     if (mobileNavBtn) {
       mobileNavBtn.setAttribute("aria-expanded", String(open));
+    }
+    syncMainBackgroundInert();
+    if (open) {
+      var navAside = document.getElementById("sidebar-nav");
+      var focusables = getFocusableElements(navAside);
+      if (focusables[0]) {
+        focusables[0].focus();
+      }
+    } else if (wasOpen && restoreFocus && mobileNavBtn) {
+      mobileNavBtn.focus();
     }
   }
 
@@ -95,7 +167,7 @@
   if (sbBtn) {
     sbBtn.addEventListener("click", function () {
       if (window.innerWidth <= 1024) {
-        setMobileNavOpen(false);
+        setMobileNavOpen(false, true);
         return;
       }
       var collapsed = document.body.classList.toggle("ds-shell--sidebar-collapsed");
@@ -110,17 +182,42 @@
   if (mobileNavBtn) {
     mobileNavBtn.addEventListener("click", function () {
       var isOpen = document.body.classList.contains("ds-shell--mobile-nav-open");
-      setMobileNavOpen(!isOpen);
+      setMobileNavOpen(!isOpen, isOpen);
     });
   }
   if (sbBackdrop) {
     sbBackdrop.addEventListener("click", function () {
-      setMobileNavOpen(false);
+      setMobileNavOpen(false, true);
     });
   }
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape" && document.body.classList.contains("ds-shell--mobile-nav-open")) {
-      setMobileNavOpen(false);
+      setMobileNavOpen(false, true);
+      return;
+    }
+    if (ev.key === "Tab") {
+      var chatDrawerEl = document.getElementById("ai-chat-drawer");
+      var trapRoot =
+        chatDrawerEl && chatDrawerEl.classList.contains("is-open")
+          ? chatDrawerEl
+          : document.body.classList.contains("ds-shell--mobile-nav-open")
+            ? document.getElementById("sidebar-nav")
+            : null;
+      if (!trapRoot) return;
+      var focusables = getFocusableElements(trapRoot);
+      if (focusables.length === 0) return;
+      var first = focusables[0];
+      var last = focusables[focusables.length - 1];
+      var active = document.activeElement;
+      if (ev.shiftKey) {
+        if (active === first || !trapRoot.contains(active)) {
+          ev.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !trapRoot.contains(active)) {
+        ev.preventDefault();
+        first.focus();
+      }
     }
   });
 
@@ -215,45 +312,59 @@
       wrapper.className =
         "ds-m3-select" + (select.classList.contains("ds-select--sm") ? " ds-m3-select--sm" : "");
 
+      var listboxId = select.id ? "m3-listbox-" + select.id : "m3-listbox-" + ++m3SelectSeq;
+
       var trigger = document.createElement("button");
       trigger.type = "button";
       trigger.className = "ds-m3-select__trigger";
       trigger.setAttribute("aria-haspopup", "listbox");
       trigger.setAttribute("aria-expanded", "false");
+      trigger.setAttribute("aria-controls", listboxId);
+
+      var explicitLabelledBy = select.getAttribute("aria-labelledby");
+      var assocLabel =
+        (select.id ? document.querySelector('label[for="' + cssEscape(select.id) + '"]') : null) ||
+        select.closest("label");
+      if (explicitLabelledBy) {
+        trigger.setAttribute("aria-labelledby", explicitLabelledBy);
+      } else if (assocLabel) {
+        if (!assocLabel.id) {
+          assocLabel.id = select.id ? "lbl-" + select.id : "lbl-m3-" + ++m3SelectSeq;
+        }
+        trigger.setAttribute("aria-labelledby", assocLabel.id);
+      } else if (select.getAttribute("aria-label")) {
+        trigger.setAttribute("aria-label", select.getAttribute("aria-label"));
+      }
 
       var valueSpan = document.createElement("span");
       valueSpan.className = "ds-m3-select__value";
       var arrowSpan = document.createElement("span");
       arrowSpan.className = "ds-m3-select__arrow";
       arrowSpan.setAttribute("aria-hidden", "true");
-      arrowSpan.innerHTML =
-        '<svg class="ds-icon ds-icon--md" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
+      arrowSpan.appendChild(createPathSvg("m6 9 6 6 6-6", "ds-icon ds-icon--md"));
 
       trigger.appendChild(valueSpan);
       trigger.appendChild(arrowSpan);
 
       var panel = document.createElement("ul");
+      panel.id = listboxId;
       panel.className = "ds-m3-select__panel";
       panel.setAttribute("role", "listbox");
-
-      function buildIconHtml(iconId) {
-        if (!iconId) return "";
-        return (
-          '<span class="ds-m3-select__icon" aria-hidden="true">' +
-          '<svg class="ds-icon ds-icon--xs" aria-hidden="true" focusable="false"><use href="#' +
-          iconId +
-          '"></use></svg></span>'
-        );
-      }
 
       function syncFromSelect() {
         var selectedOpt = select.options[select.selectedIndex] || select.options[0];
         var iconId = selectedOpt ? selectedOpt.getAttribute("data-icon") : "";
         var textLabel = selectedOpt ? selectedOpt.textContent || "" : "";
+        valueSpan.textContent = "";
         if (iconId) {
-          valueSpan.innerHTML = buildIconHtml(iconId) + "<span></span>";
-          var innerSpan = valueSpan.querySelector("span:last-child");
-          if (innerSpan) innerSpan.textContent = textLabel;
+          var selIconWrap = document.createElement("span");
+          selIconWrap.className = "ds-m3-select__icon";
+          selIconWrap.setAttribute("aria-hidden", "true");
+          selIconWrap.appendChild(createSpriteIconSvg(iconId, "ds-icon--xs"));
+          var innerSpan = document.createElement("span");
+          innerSpan.textContent = textLabel;
+          valueSpan.appendChild(selIconWrap);
+          valueSpan.appendChild(innerSpan);
         } else {
           valueSpan.textContent = textLabel;
         }
@@ -274,8 +385,7 @@
         var check = document.createElement("span");
         check.className = "ds-m3-select__check";
         check.setAttribute("aria-hidden", "true");
-        check.innerHTML =
-          '<svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+        check.appendChild(createPathSvg("m5 12.5 4.5 4.5L19 7.5", "ds-icon ds-icon--xs"));
 
         li.appendChild(check);
         var optIcon = opt.getAttribute("data-icon");
@@ -283,10 +393,7 @@
           var iconWrap = document.createElement("span");
           iconWrap.className = "ds-m3-select__icon";
           iconWrap.setAttribute("aria-hidden", "true");
-          iconWrap.innerHTML =
-            '<svg class="ds-icon ds-icon--xs" aria-hidden="true" focusable="false"><use href="#' +
-            optIcon +
-            '"></use></svg>';
+          iconWrap.appendChild(createSpriteIconSvg(optIcon, "ds-icon--xs"));
           li.appendChild(iconWrap);
         }
 
@@ -456,9 +563,10 @@
   });
   syncVisualViewportForAiDrawer();
 
-  function setChatDrawerOpen(isOpen) {
+  function setChatDrawerOpen(isOpen, restoreFocus) {
     var drawer = document.getElementById("ai-chat-drawer");
     if (!drawer) return;
+    var wasOpen = drawer.classList.contains("is-open");
     drawer.classList.toggle("is-open", isOpen);
     drawer.setAttribute("aria-hidden", isOpen ? "false" : "true");
     document.querySelectorAll("[data-action='toggle-chat-drawer']").forEach(function (btn) {
@@ -471,6 +579,7 @@
       if (fabTrig) fabTrig.setAttribute("aria-expanded", "false");
       fab.classList.toggle("is-hidden", isOpen);
     }
+    syncMainBackgroundInert();
     syncVisualViewportForAiDrawer();
     if (isOpen && typeof syncAllSegmentedPills === "function") {
       syncAllSegmentedPills();
@@ -482,6 +591,14 @@
           input.focus();
         }, 140);
       }
+    } else if (!isOpen && wasOpen && restoreFocus) {
+      var restoreBtn =
+        document.getElementById("btn_fab_ai_chat") ||
+        document.querySelector('[data-testid="btn_fab_ai_chat"]') ||
+        document.querySelector("[data-action='toggle-chat-drawer']");
+      if (restoreBtn && typeof restoreBtn.focus === "function") {
+        restoreBtn.focus();
+      }
     }
   }
 
@@ -492,7 +609,7 @@
       window.location.hash === "#panel-chat" ||
       window.location.hash === "#ai-chat-drawer"
     ) {
-      setChatDrawerOpen(true);
+      setChatDrawerOpen(true, false);
     }
   } catch (_e) {}
 
@@ -501,7 +618,7 @@
       closeAllMenus(null);
       var drawer = document.getElementById("ai-chat-drawer");
       if (drawer && drawer.classList.contains("is-open")) {
-        setChatDrawerOpen(false);
+        setChatDrawerOpen(false, true);
       }
     }
   });
@@ -692,19 +809,25 @@
         return;
       }
       if (action === "edit-section" && secName) {
-        var editEl = document.querySelector("[data-testid='btn_edit_section_" + secName + "']");
+        var editEl = document.querySelector(
+          '[data-testid="btn_edit_section_' + cssEscape(secName) + '"]',
+        );
         if (editEl) editEl.click();
         return;
       }
       if (action === "rerun-section" && secName) {
-        var rerunEl = document.querySelector("[data-testid='btn_rerun_section_" + secName + "']");
+        var rerunEl = document.querySelector(
+          '[data-testid="btn_rerun_section_' + cssEscape(secName) + '"]',
+        );
         if (rerunEl) rerunEl.click();
         return;
       }
       if (action === "toggle-reasoning" && secName) {
         var parentSec = document.getElementById("section-" + secName);
         if (parentSec && parentSec.tagName === "DETAILS") parentSec.open = true;
-        var reasEl = document.querySelector("[data-testid='reasoning-" + secName + "']");
+        var reasEl = document.querySelector(
+          '[data-testid="reasoning-' + cssEscape(secName) + '"]',
+        );
         if (reasEl) {
           reasEl.open = !reasEl.open;
         }
@@ -720,7 +843,7 @@
       if (action === "toggle-details") {
         var targetTestId = menuActionBtn.getAttribute("data-target-testid");
         var detailsEl = targetTestId
-          ? document.querySelector("[data-testid='" + targetTestId + "']")
+          ? document.querySelector('[data-testid="' + cssEscape(targetTestId) + '"]')
           : null;
         if (detailsEl) {
           var parentDetails = detailsEl.parentElement
@@ -746,7 +869,7 @@
       var chatDrawer = document.getElementById("ai-chat-drawer");
       if (chatDrawer) {
         var nextOpen = !chatDrawer.classList.contains("is-open");
-        setChatDrawerOpen(nextOpen);
+        setChatDrawerOpen(nextOpen, !nextOpen);
       }
       return;
     }
@@ -754,7 +877,7 @@
     var closeChatDrawerBtn = e.target.closest("[data-action='close-chat-drawer']");
     if (closeChatDrawerBtn) {
       closeAllMenus(null);
-      setChatDrawerOpen(false);
+      setChatDrawerOpen(false, true);
       return;
     }
 
@@ -881,7 +1004,27 @@
     });
   });
 
-  // Dialog openers & closers
+  // Dialog openers & closers + auto-open modal dialogs on DOMContentLoaded
+  function autoOpenModalDialogs() {
+    document.querySelectorAll('dialog[data-auto-open="true"]').forEach(function (dlg) {
+      if (dlg.open) return;
+      if (typeof dlg.showModal === "function") {
+        try {
+          dlg.showModal();
+        } catch (_e) {
+          dlg.setAttribute("open", "");
+        }
+      } else {
+        dlg.setAttribute("open", "");
+      }
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", autoOpenModalDialogs);
+  } else {
+    autoOpenModalDialogs();
+  }
+
   document.addEventListener("click", function (e) {
     var openBtn = e.target.closest("[data-open]");
     if (openBtn) {
@@ -1082,7 +1225,9 @@
       var el = document.getElementById("section-" + candidates[i]);
       if (el) return el;
     }
-    var opinionEl = document.querySelector("[data-testid='opinion-" + sectionName + "']");
+    var opinionEl = document.querySelector(
+      '[data-testid="opinion-' + cssEscape(sectionName) + '"]',
+    );
     if (opinionEl) return opinionEl;
     if (sectionName === "ExpertAnswer" || sectionName === "CareOrientationProposal") {
       return (
@@ -1367,8 +1512,83 @@
     }
   });
 
-  // Inline section edit link (progressive enhancement)
+  function buildDynamicRowHeader(titleText) {
+    var header = document.createElement("div");
+    header.className = "ds-subcard__header";
+    header.style.marginBottom = "var(--ds-space-2)";
+    var titleSpan = document.createElement("span");
+    titleSpan.className = "ds-subcard__title";
+    titleSpan.textContent = titleText;
+    var delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "ds-btn ds-btn--danger-soft ds-btn--sm";
+    delBtn.setAttribute("data-remove-dynamic-row", "");
+    delBtn.setAttribute("aria-label", "Supprimer cette ligne");
+    delBtn.appendChild(createSpriteIconSvg("ic-delete", "ds-icon--xs"));
+    delBtn.appendChild(document.createTextNode(" Supprimer"));
+    header.appendChild(titleSpan);
+    header.appendChild(delBtn);
+    return header;
+  }
+
+  function buildDynamicInputField(id, labelText, name, type, placeholder, fieldType) {
+    var field = document.createElement("div");
+    field.className = "ds-field";
+    var label = document.createElement("label");
+    label.className = "ds-label";
+    label.setAttribute("for", id);
+    label.textContent = labelText;
+    var input = document.createElement("input");
+    input.className = "ds-input";
+    input.type = type;
+    input.id = id;
+    input.name = name;
+    input.value = "";
+    input.setAttribute("data-field-type", fieldType);
+    if (placeholder) {
+      input.setAttribute("placeholder", placeholder);
+    }
+    field.appendChild(label);
+    field.appendChild(input);
+    return field;
+  }
+
+  function buildDynamicSelectField(id, labelText, name, optionsList) {
+    var field = document.createElement("div");
+    field.className = "ds-field";
+    var label = document.createElement("label");
+    label.className = "ds-label";
+    label.setAttribute("for", id);
+    label.textContent = labelText;
+    var select = document.createElement("select");
+    select.className = "ds-select";
+    select.id = id;
+    select.name = name;
+    select.setAttribute("data-field-type", "select");
+    optionsList.forEach(function (optDef, idx) {
+      var opt = document.createElement("option");
+      opt.value = optDef.value;
+      opt.textContent = optDef.label;
+      if (idx === 0) opt.selected = true;
+      select.appendChild(opt);
+    });
+    field.appendChild(label);
+    field.appendChild(select);
+    return field;
+  }
+
+  // Inline section edit link & dynamic row builders (progressive enhancement)
   document.addEventListener("click", function (e) {
+    var removeRowBtn = e.target.closest("[data-remove-dynamic-row]");
+    if (removeRowBtn) {
+      e.preventDefault();
+      var targetRow = removeRowBtn.closest("[data-exam-row], [data-chemo-row]");
+      if (targetRow && targetRow.parentNode) {
+        targetRow.parentNode.removeChild(targetRow);
+      }
+      return;
+    }
+
     var addExamBtn = e.target.closest("[data-add-exam-row]");
     if (addExamBtn) {
       e.preventDefault();
@@ -1382,30 +1602,59 @@
         rowEl.className = "ds-subcard";
         rowEl.setAttribute("data-exam-row", String(idx));
         rowEl.style.marginBottom = "var(--ds-space-2)";
-        rowEl.innerHTML =
-          '<div class="ds-kv-grid">' +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + inputId + "-name-" + idx + '">Nom de l\'examen #' + (idx + 1) + "</label>" +
-          '<input class="ds-input" type="text" id="' + inputId + "-name-" + idx + '" name="exam_name_' + idx + '" value="" data-field-type="text" placeholder="Ex : Scanner TAP injecté">' +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + inputId + "-type-" + idx + '">Modalité (Type)</label>' +
-          '<select class="ds-select" id="' + inputId + "-type-" + idx + '" name="exam_type_' + idx + '" data-field-type="select">' +
-          '<option value="CT" selected>CT — Scanner (TDM)</option>' +
-          '<option value="MRI">MRI — IRM</option>' +
-          '<option value="PET">PET — TEP-TDM</option>' +
-          '<option value="EUS">EUS — Écho-endoscopie</option>' +
-          "</select>" +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + inputId + "-date-" + idx + '">Date de l\'examen</label>' +
-          '<input class="ds-input" type="date" id="' + inputId + "-date-" + idx + '" name="exam_date_' + idx + '" value="" data-field-type="date">' +
-          "</div>" +
-          "</div>" +
-          '<div class="ds-field" style="margin-top:var(--ds-space-2)">' +
-          '<label class="ds-label" for="' + inputId + "-res-" + idx + '">Conclusion / Résultat</label>' +
-          '<textarea class="ds-textarea" rows="2" id="' + inputId + "-res-" + idx + '" name="exam_result_' + idx + '" data-field-type="textarea" placeholder="Résumé des conclusions radiologiques"></textarea>' +
-          "</div>";
+
+        rowEl.appendChild(buildDynamicRowHeader("Examen #" + (idx + 1)));
+
+        var kvGrid = document.createElement("div");
+        kvGrid.className = "ds-kv-grid";
+        kvGrid.appendChild(
+          buildDynamicInputField(
+            inputId + "-name-" + idx,
+            "Nom de l'examen #" + (idx + 1),
+            "exam_name_" + idx,
+            "text",
+            "Ex : Scanner TAP injecté",
+            "text",
+          ),
+        );
+        kvGrid.appendChild(
+          buildDynamicSelectField(inputId + "-type-" + idx, "Modalité (Type)", "exam_type_" + idx, [
+            { value: "CT", label: "CT — Scanner (TDM)" },
+            { value: "MRI", label: "MRI — IRM" },
+            { value: "PET", label: "PET — TEP-TDM" },
+            { value: "EUS", label: "EUS — Écho-endoscopie" },
+          ]),
+        );
+        kvGrid.appendChild(
+          buildDynamicInputField(
+            inputId + "-date-" + idx,
+            "Date de l'examen",
+            "exam_date_" + idx,
+            "date",
+            "",
+            "date",
+          ),
+        );
+        rowEl.appendChild(kvGrid);
+
+        var resField = document.createElement("div");
+        resField.className = "ds-field";
+        resField.style.marginTop = "var(--ds-space-2)";
+        var resLabel = document.createElement("label");
+        resLabel.className = "ds-label";
+        resLabel.setAttribute("for", inputId + "-res-" + idx);
+        resLabel.textContent = "Conclusion / Résultat";
+        var resArea = document.createElement("textarea");
+        resArea.className = "ds-textarea";
+        resArea.rows = 2;
+        resArea.id = inputId + "-res-" + idx;
+        resArea.name = "exam_result_" + idx;
+        resArea.setAttribute("data-field-type", "textarea");
+        resArea.setAttribute("placeholder", "Résumé des conclusions radiologiques");
+        resField.appendChild(resLabel);
+        resField.appendChild(resArea);
+        rowEl.appendChild(resField);
+
         rowsHost.appendChild(rowEl);
         initM3TextFields(rowEl);
         initM3Selects(rowEl);
@@ -1426,29 +1675,55 @@
         cRowEl.className = "ds-subcard";
         cRowEl.setAttribute("data-chemo-row", String(cIdx));
         cRowEl.style.marginBottom = "var(--ds-space-2)";
-        cRowEl.innerHTML =
-          '<div class="ds-kv-grid">' +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-name-" + cIdx + '">Protocole / Molécule #' + (cIdx + 1) + "</label>" +
-          '<input class="ds-input" type="text" id="' + cInputId + "-name-" + cIdx + '" name="chemotherapy_name_' + cIdx + '" value="" data-field-type="text" placeholder="Ex : FOLFIRINOX">' +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-tol-" + cIdx + '">Tolérance</label>' +
-          '<select class="ds-select" id="' + cInputId + "-tol-" + cIdx + '" name="chemotherapy_tolerance_' + cIdx + '" data-field-type="select">' +
-          '<option value="Good" selected>Bonne (Good)</option>' +
-          '<option value="Medium">Moyenne / Modérée (Medium)</option>' +
-          '<option value="Poor">Mauvaise / Toxicité (Poor)</option>' +
-          "</select>" +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-start-" + cIdx + '">Date de début</label>' +
-          '<input class="ds-input" type="date" id="' + cInputId + "-start-" + cIdx + '" name="chemotherapy_start_date_' + cIdx + '" value="" data-field-type="date">' +
-          "</div>" +
-          '<div class="ds-field">' +
-          '<label class="ds-label" for="' + cInputId + "-end-" + cIdx + '">Date de fin</label>' +
-          '<input class="ds-input" type="date" id="' + cInputId + "-end-" + cIdx + '" name="chemotherapy_end_date_' + cIdx + '" value="" data-field-type="date">' +
-          "</div>" +
-          "</div>";
+
+        cRowEl.appendChild(buildDynamicRowHeader("Ligne #" + (cIdx + 1)));
+
+        var cGrid = document.createElement("div");
+        cGrid.className = "ds-kv-grid";
+        cGrid.appendChild(
+          buildDynamicInputField(
+            cInputId + "-name-" + cIdx,
+            "Protocole / Molécule #" + (cIdx + 1),
+            "chemotherapy_name_" + cIdx,
+            "text",
+            "Ex : FOLFIRINOX",
+            "text",
+          ),
+        );
+        cGrid.appendChild(
+          buildDynamicSelectField(
+            cInputId + "-tol-" + cIdx,
+            "Tolérance",
+            "chemotherapy_tolerance_" + cIdx,
+            [
+              { value: "Good", label: "Bonne (Good)" },
+              { value: "Medium", label: "Moyenne / Modérée (Medium)" },
+              { value: "Poor", label: "Mauvaise / Toxicité (Poor)" },
+            ],
+          ),
+        );
+        cGrid.appendChild(
+          buildDynamicInputField(
+            cInputId + "-start-" + cIdx,
+            "Date de début",
+            "chemotherapy_start_date_" + cIdx,
+            "date",
+            "",
+            "date",
+          ),
+        );
+        cGrid.appendChild(
+          buildDynamicInputField(
+            cInputId + "-end-" + cIdx,
+            "Date de fin",
+            "chemotherapy_end_date_" + cIdx,
+            "date",
+            "",
+            "date",
+          ),
+        );
+        cRowEl.appendChild(cGrid);
+
         chemoRowsHost.appendChild(cRowEl);
         initM3TextFields(cRowEl);
         initM3Selects(cRowEl);
@@ -1543,17 +1818,66 @@
     var secId = form.getAttribute("data-ajax-section");
     if (secId) {
       e.preventDefault();
+      var showSectionSaveError = function (errMsg) {
+        var hostEl = document.getElementById(secId);
+        var containerEl = form.classList.contains("ds-section__body")
+          ? form
+          : (hostEl && hostEl.querySelector(".ds-section__body")) || form;
+        var existingBanner = containerEl.querySelector("[data-section-save-error]");
+        if (existingBanner && existingBanner.parentNode) {
+          existingBanner.parentNode.removeChild(existingBanner);
+        }
+        var alertEl = document.createElement("div");
+        alertEl.className = "ds-alert ds-alert--danger";
+        alertEl.setAttribute("role", "alert");
+        alertEl.setAttribute("data-testid", "section-save-error-banner");
+        alertEl.setAttribute("data-section-save-error", "true");
+        alertEl.style.marginBottom = "var(--ds-space-3)";
+        var iconSpan = document.createElement("span");
+        iconSpan.className = "ds-alert__icon";
+        iconSpan.appendChild(createSpriteIconSvg("ic-error"));
+        var contentDiv = document.createElement("div");
+        contentDiv.className = "ds-alert__content";
+        var titleSpan = document.createElement("span");
+        titleSpan.className = "ds-alert__title";
+        titleSpan.textContent = "Enregistrement refusé";
+        var msgSpan = document.createElement("span");
+        msgSpan.textContent =
+          errMsg || "Impossible d'enregistrer les modifications de la rubrique.";
+        contentDiv.appendChild(titleSpan);
+        contentDiv.appendChild(msgSpan);
+        alertEl.appendChild(iconSpan);
+        alertEl.appendChild(contentDiv);
+        containerEl.insertBefore(alertEl, containerEl.firstChild);
+      };
+
       var body = new URLSearchParams(new FormData(form)).toString();
       fetch(form.action, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           "HX-Request": "true",
+          "X-Requested-With": "fetch",
         },
         body: body,
       })
         .then(function (r) {
-          if (!r.ok) return null;
+          if (!r.ok) {
+            return r
+              .json()
+              .catch(function () {
+                return null;
+              })
+              .then(function (errJson) {
+                var errMsg =
+                  (errJson && errJson.error) ||
+                  "Impossible d'enregistrer les modifications de la rubrique (HTTP " +
+                    r.status +
+                    ").";
+                showSectionSaveError(errMsg);
+                return null;
+              });
+          }
           return r.text();
         })
         .then(function (html) {
@@ -1565,7 +1889,9 @@
             initM3Selects(document);
           }
         })
-        .catch(function () {});
+        .catch(function () {
+          showSectionSaveError("Erreur réseau lors de l'enregistrement de la rubrique.");
+        });
       return;
     }
 

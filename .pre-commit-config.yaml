@@ -1,4 +1,4 @@
-exclude: '^(experiment/|docker/)'
+exclude: '^(experiment/)'
 repos:
 -   repo: builtin
     hooks:
@@ -9,22 +9,22 @@ repos:
         args: ["--maxkb=1024"]
     -   id: detect-private-key
     -   id: check-merge-conflict
-# Ruff and pyrefly run from the uv-locked versions (same as CI), not a separate pin.
+# Ruff and pyrefly run from the uv-locked versions in application/uv.lock (same as CI).
 -   repo: local
     hooks:
     -   id: ruff-check
         name: ruff check
-        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff check --config application/pyproject.toml --fix "$@"; elif [ -x .venv/bin/ruff ]; then exec .venv/bin/ruff check --config pyproject.toml --fix "$@"; else exec uv run --project application --frozen ruff check --config application/pyproject.toml --fix "$@"; fi' --
+        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff check --config application/pyproject.toml --fix "$@"; else exec uv run --project application --frozen ruff check --config application/pyproject.toml --fix "$@"; fi' --
         language: system
         types: [python]
     -   id: ruff-format
         name: ruff format
-        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff format --config application/pyproject.toml "$@"; elif [ -x .venv/bin/ruff ]; then exec .venv/bin/ruff format --config pyproject.toml "$@"; fi' --
+        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff format --config application/pyproject.toml "$@"; else exec uv run --project application --frozen ruff format --config application/pyproject.toml "$@"; fi' --
         language: system
         types: [python]
     -   id: pyrefly
         name: pyrefly check
-        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/pyrefly ]; then cd application && SITE_PKGS=$(echo .venv/lib/python*/site-packages | awk "{print \$1}") && exec ./.venv/bin/pyrefly check --site-package-path "$SITE_PKGS" --python-version 3.13 --min-severity=warn src; elif [ -x .venv/bin/pyrefly ]; then SITE_PKGS=$(echo .venv/lib/python*/site-packages | awk "{print \$1}") && exec ./.venv/bin/pyrefly check --site-package-path "$SITE_PKGS" --python-version 3.13 --min-severity=warn src; else cd application && exec uv run --frozen pyrefly check --min-severity=warn src; fi' --
+        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/pyrefly ]; then cd application && SITE_PKGS=$(echo .venv/lib/python*/site-packages | awk "{print \$1}") && exec ./.venv/bin/pyrefly check --site-package-path "$SITE_PKGS" --python-version 3.13 --min-severity=warn src; else cd application && exec uv run --frozen pyrefly check --min-severity=warn src; fi' --
         language: system
         types: [python]
         pass_filenames: false

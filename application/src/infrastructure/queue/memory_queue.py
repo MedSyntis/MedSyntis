@@ -28,6 +28,7 @@ LEASE_HEARTBEAT_SECONDS = 60
 # Upper bound of the passive wait of an idle worker (it is normally woken up earlier
 # by `Condition.notify_all()` when a job is pushed or a lease is released).
 WORKER_IDLE_WAIT_SECONDS = 5.0
+MAX_TERMINAL_JOBS = 500
 
 
 class QueueUnavailableError(RuntimeError):
@@ -75,6 +76,8 @@ class InMemoryQueueManager:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._active_leases: dict[str, dict[str, Any]] = {}
         self._cancelled_job_ids: set[str] = set()
+        self._cancelled_history: list[str] = []
+        self._max_terminal_jobs: int = MAX_TERMINAL_JOBS
         self._stop_event = threading.Event()
         self._worker_threads: list[threading.Thread] = []
         self._workers_started = False
@@ -163,6 +166,64 @@ class InMemoryQueueManager:
         if isinstance(cloned.get("completed_models"), list):
             cloned["completed_models"] = list(cloned["completed_models"])
         return cloned
+
+    def _record_cancelled_id_locked(self, job_id: str) -> None:
+        """Record `job_id` in `_cancelled_job_ids` while tracking FIFO eviction order."""
+        if job_id not in self._cancelled_job_ids:
+            self._cancelled_job_ids.add(job_id)
+            self._cancelled_history.append(job_id)
+
+    def _evict_excess_terminal_jobs_locked(self) -> None:
+        """
+        Bound in-memory retention of terminal (`COMPLETED`, `FAILED`, `CANCELLED`) jobs
+        and `_cancelled_job_ids` to `self._max_terminal_jobs`. Must hold `self._lock`.
+        """
+        cap = max(1, self._max_terminal_jobs)
+        active_statuses = {JobStatus.PENDING.value, JobStatus.PROCESSING.value}
+        terminal_statuses = {
+            JobStatus.COMPLETED.value,
+            JobStatus.FAILED.value,
+            JobStatus.CANCELLED.value,
+        }
+        protected_ids = {
+            str(j["depends_on_job_id"])
+            for j in self._jobs.values()
+            if j.get("depends_on_job_id") and j.get("status") in active_statuses
+        }
+        terminal_jobs = [
+            j
+            for j in self._jobs.values()
+            if j.get("status") in terminal_statuses and j["job_id"] not in protected_ids
+        ]
+        if len(terminal_jobs) > cap:
+            terminal_jobs.sort(
+                key=lambda j: (
+                    j.get("completed_at") or j.get("created_at") or datetime.min
+                )
+            )
+            excess = len(terminal_jobs) - cap
+            for stale in terminal_jobs[:excess]:
+                jid = stale["job_id"]
+                self._jobs.pop(jid, None)
+                self._cancelled_job_ids.discard(jid)
+
+        if len(self._cancelled_job_ids) > cap:
+            kept_history: list[str] = [
+                jid for jid in self._cancelled_history if jid in self._cancelled_job_ids
+            ]
+            # Append any IDs added directly to `_cancelled_job_ids`
+            seen_hist = set(kept_history)
+            for jid in self._cancelled_job_ids:
+                if jid not in seen_hist:
+                    kept_history.append(jid)
+                    seen_hist.add(jid)
+            evictable = [jid for jid in kept_history if jid not in self._jobs]
+            to_drop_count = max(0, len(self._cancelled_job_ids) - cap)
+            for jid in evictable[:to_drop_count]:
+                self._cancelled_job_ids.discard(jid)
+            self._cancelled_history = [
+                jid for jid in kept_history if jid in self._cancelled_job_ids
+            ]
 
     def _get_transitive_dependents_locked(
         self, root_job_id: str
@@ -516,7 +577,8 @@ class InMemoryQueueManager:
                     j["status"] = JobStatus.CANCELLED.value
                     j["completed_at"] = now
                     j["current_step"] = "Remplacée par une relance complète"
-                    self._cancelled_job_ids.add(j["job_id"])
+                    self._record_cancelled_id_locked(j["job_id"])
+            self._evict_excess_terminal_jobs_locked()
 
             created_jobs: list[dict[str, Any]] = []
             depends_id: str | None = None
@@ -952,93 +1014,131 @@ class InMemoryQueueManager:
                 job = self._find_active_processing_job_locked(domain=domain)
             return self._format_thinking_snapshot(job)
 
+    def poll_thinking_step(
+        self,
+        state: dict[str, Any],
+        wait_timeout: float = 1.0,
+        heartbeat_interval: float = 15.0,
+    ) -> dict[str, Any] | None:
+        """
+        Execute one bounded wait step for an async SSE thinking stream.
+        Returns an event dictionary (`thinking`, `heartbeat`, or `done`) when ready,
+        or `None` if `wait_timeout` elapsed without state change or heartbeat due.
+        """
+        now = datetime.now()
+        if "deadline" not in state:
+            timeout_s = max(0.5, float(state.get("timeout") or 30.0))
+            state["deadline"] = now + timedelta(seconds=timeout_s)
+            state["last_seq"] = -1
+            state["last_text"] = ""
+            state["last_step"] = None
+            state["last_agent"] = None
+            state["tracked_job_id"] = state.get("job_id")
+            state["last_emit_at"] = now
+
+        if self._stop_event.is_set():
+            snap = self._format_thinking_snapshot(None)
+            return {**snap, "event": "done", "delta": ""}
+
+        deadline: datetime = state["deadline"]
+        hb_interval = max(0.05, float(heartbeat_interval))
+
+        with self._cond:
+            tracked_job_id = state.get("tracked_job_id")
+            domain = state.get("domain")
+            job = (
+                self._jobs.get(tracked_job_id)
+                if tracked_job_id
+                else self._find_active_processing_job_locked(
+                    domain=str(domain) if domain else None
+                )
+            )
+            if job and not tracked_job_id:
+                tracked_job_id = job.get("job_id")
+                state["tracked_job_id"] = tracked_job_id
+
+            snap = self._format_thinking_snapshot(job)
+            if not job:
+                return {**snap, "event": "done", "delta": ""}
+
+            seq = snap["thinking_seq"]
+            text = snap["current_thinking"]
+            step = snap["current_step"]
+            agent = snap["active_agent"]
+            status = snap["status"]
+
+            changed = (
+                seq != state["last_seq"]
+                or step != state["last_step"]
+                or agent != state["last_agent"]
+                or status != JobStatus.PROCESSING.value
+            )
+
+            if changed:
+                last_text = str(state["last_text"])
+                delta = text[len(last_text) :] if text.startswith(last_text) else text
+                state["last_seq"] = seq
+                state["last_text"] = text
+                state["last_step"] = step
+                state["last_agent"] = agent
+                state["last_emit_at"] = datetime.now()
+                if status != JobStatus.PROCESSING.value:
+                    return {**snap, "event": "done", "delta": delta}
+                return {**snap, "event": "thinking", "delta": delta}
+
+            now = datetime.now()
+            if now >= deadline:
+                return {**snap, "event": "done", "delta": ""}
+
+            elapsed_since_emit = (now - state["last_emit_at"]).total_seconds()
+            if elapsed_since_emit >= hb_interval:
+                state["last_emit_at"] = now
+                return {**snap, "event": "heartbeat", "delta": ""}
+
+            remaining_deadline = (deadline - now).total_seconds()
+            remaining_hb = hb_interval - elapsed_since_emit
+            effective_wait = min(
+                max(0.05, float(wait_timeout)),
+                max(0.05, remaining_deadline),
+                max(0.05, remaining_hb),
+            )
+            self._cond.wait(timeout=effective_wait)
+            now_after = datetime.now()
+            if now_after >= deadline:
+                return {**snap, "event": "done", "delta": ""}
+            if (now_after - state["last_emit_at"]).total_seconds() >= hb_interval:
+                state["last_emit_at"] = now_after
+                return {**snap, "event": "heartbeat", "delta": ""}
+            return None
+
     def stream_job_thinking(
         self,
         job_id: str | None = None,
         domain: str | None = None,
         timeout: float = 30.0,
-        heartbeat_interval: float = 2.0,
+        heartbeat_interval: float = 15.0,
     ):
         """
         Yield live AI reasoning events (`thinking`, `heartbeat`, `done`) for a specific
         `job_id` or for the currently `PROCESSING` task using condition-variable wakeups.
         """
-        deadline = datetime.now() + timedelta(seconds=max(0.5, float(timeout)))
-        last_seq = -1
-        last_text = ""
-        last_step = None
-        last_agent = None
-        tracked_job_id = job_id
-
+        state: dict[str, Any] = {
+            "job_id": job_id,
+            "domain": domain,
+            "timeout": timeout,
+        }
+        hb_interval = max(0.05, float(heartbeat_interval))
         while not self._stop_event.is_set():
-            with self._cond:
-                job = (
-                    self._jobs.get(tracked_job_id)
-                    if tracked_job_id
-                    else self._find_active_processing_job_locked(domain=domain)
-                )
-                if job and not tracked_job_id:
-                    tracked_job_id = job.get("job_id")
-
-                snap = self._format_thinking_snapshot(job)
-                if not job:
-                    yield {
-                        **snap,
-                        "event": "done",
-                        "delta": "",
-                    }
-                    return
-
-                seq = snap["thinking_seq"]
-                text = snap["current_thinking"]
-                step = snap["current_step"]
-                agent = snap["active_agent"]
-                status = snap["status"]
-
-                changed = (
-                    seq != last_seq
-                    or step != last_step
-                    or agent != last_agent
-                    or status != JobStatus.PROCESSING.value
-                )
-
-                if changed:
-                    if text.startswith(last_text):
-                        delta = text[len(last_text) :]
-                    else:
-                        delta = text
-                    last_seq = seq
-                    last_text = text
-                    last_step = step
-                    last_agent = agent
-
-                    if status != JobStatus.PROCESSING.value:
-                        yield {
-                            **snap,
-                            "event": "done",
-                            "delta": delta,
-                        }
-                        return
-
-                    yield {
-                        **snap,
-                        "event": "thinking",
-                        "delta": delta,
-                    }
-                    continue
-
-                now = datetime.now()
-                if now >= deadline:
-                    yield {
-                        **snap,
-                        "event": "done",
-                        "delta": "",
-                    }
-                    return
-
-                remaining = (deadline - now).total_seconds()
-                wait_time = min(max(0.05, heartbeat_interval), max(0.05, remaining))
-                self._cond.wait(timeout=wait_time)
+            ev = self.poll_thinking_step(
+                state,
+                wait_timeout=hb_interval,
+                heartbeat_interval=hb_interval,
+            )
+            if ev is None:
+                continue
+            yield ev
+            if ev.get("event") == "done":
+                return
 
     def complete_job(
         self,
@@ -1087,6 +1187,7 @@ class InMemoryQueueManager:
                 ):
                     self._push_to_pq(candidate)
 
+            self._evict_excess_terminal_jobs_locked()
             self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
             self._notify_waiters()
             return self._clone_job(job)
@@ -1147,10 +1248,11 @@ class InMemoryQueueManager:
                             else "Annulé suite à l'échec d'une étape précédente"
                         )
                         dep["current_step"] = "Annulé"
-                        self._cancelled_job_ids.add(dep["job_id"])
+                        self._record_cancelled_id_locked(dep["job_id"])
                 if not skip_rcp_status_update:
                     job_to_fail_rcp = (job["domain"], job["filename"])
 
+            self._evict_excess_terminal_jobs_locked()
             self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
             self._notify_waiters()
             result = self._clone_job(job)
@@ -1229,14 +1331,15 @@ class InMemoryQueueManager:
                 return False
             deps = self._get_transitive_dependents_locked(job_id)
             self._jobs.pop(job_id, None)
-            self._cancelled_job_ids.add(job_id)
+            self._record_cancelled_id_locked(job_id)
             self.release_gpu_lease(job_id=job_id)
 
             for dep in deps:
                 dep_id = dep["job_id"]
                 self._jobs.pop(dep_id, None)
-                self._cancelled_job_ids.add(dep_id)
+                self._record_cancelled_id_locked(dep_id)
                 self.release_gpu_lease(job_id=dep_id)
+            self._evict_excess_terminal_jobs_locked()
 
             domain = job["domain"]
             filename = job["filename"]
@@ -1263,8 +1366,9 @@ class InMemoryQueueManager:
             ]
             for jid in matching_ids:
                 self._jobs.pop(jid, None)
-                self._cancelled_job_ids.add(jid)
+                self._record_cancelled_id_locked(jid)
                 self.release_gpu_lease(job_id=jid)
+            self._evict_excess_terminal_jobs_locked()
             return len(matching_ids)
 
     def retry_job(self, job_id: str) -> dict[str, Any] | None:

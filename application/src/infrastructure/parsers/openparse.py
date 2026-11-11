@@ -35,10 +35,6 @@ class OpenParseDocumentLoader(BaseLoader):
             # }
         )
         parsed_basic_doc = parser.parse(self.file_path, ocr=True)
-        pdf = openparse.Pdf(self.file_path)
-        pdf.export_with_bboxes(
-            parsed_basic_doc.nodes, output_pdf=f"{self.file_path}.bbox"
-        )
 
         for node in parsed_basic_doc.nodes:
             yield Document(

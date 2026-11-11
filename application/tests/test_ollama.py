@@ -68,7 +68,7 @@ class TestOllamaConnection(unittest.TestCase):
             model="llama3",
             tools=[],
             reasoning=True,
-            num_predict=2048,
+            num_predict=4096,
             temperature=0.7,
             validate_model_on_init=True,
             streaming=True,

@@ -32,7 +32,7 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
     icon: "ic-compass",
     pole: "synthesis",
     tab: "opinions",
-    editable: false,
+    editable: true,
     order: 10,
     titleFr: "Proposition d'orientation pré-RCP",
     titleEn: "Pre-MDT Care Orientation Proposal",

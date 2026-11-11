@@ -360,10 +360,51 @@ class RadiologicalExaminations(BaseModel):
 
 
 class PatientPriority(str, Enum):
-    urgent = "Patient must be treated urgently"
-    medium = "Patient must be treated as soon as possible"
+    urgent = "High-priority pre-MDT review suggested"
+    medium = "Semi-urgent pre-MDT review suggested"
     low = "Patient is not urgent"
     not_given = "no answer"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Optional["PatientPriority"]:
+        """Support legacy persisted priority values and enum names seamlessly."""
+        if not isinstance(value, str):
+            return None
+        norm = value.strip().lower()
+        legacy_aliases = {
+            "patient must be treated urgently": cls.urgent,
+            "urgent, a treatment is needed quickly": cls.urgent,
+            "urgent": cls.urgent,
+            "high": cls.urgent,
+            "patient must be treated as soon as possible": cls.medium,
+            "medium, a treatment is needed but not urgent": cls.medium,
+            "semi-urgent": cls.medium,
+            "medium": cls.medium,
+            "patient is not urgent": cls.low,
+            "low, no urgent treatment needed": cls.low,
+            "low": cls.low,
+            "no answer": cls.not_given,
+            "not_given": cls.not_given,
+        }
+        return legacy_aliases.get(norm)
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> Any:
+        from pydantic_core import core_schema
+
+        def _coerce_priority(val: Any) -> Any:
+            if isinstance(val, cls):
+                return val
+            if isinstance(val, str):
+                mapped = cls._missing_(val)
+                if mapped is not None:
+                    return mapped.value
+            return val
+
+        return core_schema.no_info_before_validator_function(
+            _coerce_priority,
+            handler(source_type),
+        )
 
 
 class Reference(BaseModel):
@@ -376,7 +417,9 @@ class Reference(BaseModel):
 
 
 class ExpertSuggestion(BaseModel):
-    suggestion: MarkdownStr = Field(description="Expert suggestion for the patient")
+    suggestion: MarkdownStr = Field(
+        description="Pre-MDT orientation options grounded in guidelines"
+    )
 
     why: MarkdownStr = Field(
         description="Explanation of the reasoning behind the suggestion"

@@ -14,6 +14,7 @@ from src.domain.common.common_ressources import (
     RadiologicExamType,
     TreatmentToleranceEnum,
 )
+from src.domain.patient import Patient
 from src.domain.patient_mdt_form import PatientMDTOncologicForm, PatientMDTSmaForm
 from src.domain.worker import RCPProcessingStatus
 from src.infrastructure.documents.repositories import (
@@ -127,27 +128,36 @@ class TestManualSectionEditing:
             == "FOLFIRINOX"
         )
 
-        # 4. CareOrientationProposal and ExpertAnswer must NOT be manually editable
+        # 4. CareOrientationProposal IS manually editable (CSP Art. L. 4001-2 human oversight),
+        # whereas ExpertAnswer remains non-editable
         assert (
             PatientMDTOncologicForm.is_section_manually_editable(
                 "CareOrientationProposal"
             )
-            is False
+            is True
         )
         assert (
             PatientMDTOncologicForm.is_section_manually_editable("ExpertAnswer")
             is False
         )
+        updated_care = service.update_patient_mdt_form_section(
+            filename=filename,
+            section_name="CareOrientationProposal",
+            section_data={
+                "care_adaptation_suggested": True,
+                "suggested_priority": "Urgent, a treatment is needed quickly",
+                "proposed_care_type": "Chirurgie DPC d'emblée",
+                "clinical_rationale": "Validation collégiale RCP.",
+            },
+        )
+        assert (
+            updated_care["manual_edits"]["CareOrientationProposal"]["is_manual"] is True
+        )
         with pytest.raises(ValueError, match="cannot be manually modified"):
             service.update_patient_mdt_form_section(
                 filename=filename,
-                section_name="CareOrientationProposal",
-                section_data={
-                    "care_adaptation_suggested": True,
-                    "suggested_priority": "urgent",
-                    "proposed_care_type": "Chirurgie DPC d'emblée",
-                    "clinical_rationale": "Validation collégiale RCP.",
-                },
+                section_name="ExpertAnswer",
+                section_data={"pancreas expert": {"expert_relevant": True}},
             )
 
         # 5. Update MTDCompleted and verify card metrics reflect manual completeness override
@@ -315,7 +325,8 @@ class TestAdministrativeRecoveryAndIdentityUpdate:
             },
         )
 
-        assert updated_patient.patient_id == "lambert_sophie_1975_08_22"
+        expected_sophie_id = Patient.build_id("Sophie", "Lambert", "1975-08-22")
+        assert updated_patient.patient_id == expected_sophie_id
         assert updated_patient.full_name == "Sophie Lambert"
         assert updated_patient.born_name == "Moreau"
         assert updated_patient.files == [filename]
@@ -324,7 +335,7 @@ class TestAdministrativeRecoveryAndIdentityUpdate:
         assert patient_repo.get_by_id(fallback_patient.patient_id) is None
 
         # Form document must be updated, marked COMPLETED, and carry calculated age (50)
-        assert updated_doc["patient_id"] == "lambert_sophie_1975_08_22"
+        assert updated_doc["patient_id"] == expected_sophie_id
         assert updated_doc["processing_status"] == RCPProcessingStatus.COMPLETED.value
         assert updated_doc.get("processing_error") is None
         assert updated_doc["PatientAdministrative"]["age"] == 50
@@ -362,7 +373,9 @@ class TestAdministrativeRecoveryAndIdentityUpdate:
                 "gender": "Male",
             },
         )
-        assert p1.patient_id == "dupond_marc_1965_03_10"
+        expected_dupond_id = Patient.build_id("Marc", "Dupond", datetime(1965, 3, 10))
+        expected_dupont_id = Patient.build_id("Marc", "Dupont", "1965-03-10")
+        assert p1.patient_id == expected_dupond_id
 
         # Correct spelling on file_2 with apply_to_all_patient_forms=True
         new_patient, updated_doc_2 = service.update_patient_administrative(
@@ -378,15 +391,15 @@ class TestAdministrativeRecoveryAndIdentityUpdate:
             apply_to_all_patient_forms=True,
         )
 
-        assert new_patient.patient_id == "dupont_marc_1965_03_10"
+        assert new_patient.patient_id == expected_dupont_id
         assert set(new_patient.files) == {file_1, file_2}
         # Old misspelled patient_id must be cleaned up
-        assert patient_repo.get_by_id("dupond_marc_1965_03_10") is None
+        assert patient_repo.get_by_id(expected_dupond_id) is None
 
-        # Both forms must now point to dupont_marc_1965_03_10, while file_1 keeps its own date_rcp
+        # Both forms must now point to expected_dupont_id, while file_1 keeps its own date_rcp
         doc_1 = mdt_form_repo.get_by_file(file_1)
         assert doc_1 is not None
-        assert doc_1["patient_id"] == "dupont_marc_1965_03_10"
+        assert doc_1["patient_id"] == expected_dupont_id
         assert doc_1["PatientAdministrative"]["last_name"] == "Dupont"
         assert "2025-03-15" in str(doc_1["PatientAdministrative"]["date_rcp"])
         assert "2026-03-25" in str(updated_doc_2["PatientAdministrative"]["date_rcp"])
@@ -432,14 +445,15 @@ class TestLinkMDTFormToExistingPatient:
             target_patient_id=existing_patient.patient_id,
         )
 
-        assert linked_patient.patient_id == "martin_claire_1962_07_21"
+        expected_claire_id = Patient.build_id("Claire", "Martin", datetime(1962, 7, 21))
+        assert linked_patient.patient_id == expected_claire_id
         assert linked_patient.files == ["claire_rcp1.pdf", orphan_file]
 
         # Temporary patient record must be deleted since it has no remaining files
         assert patient_repo.get_by_id(temp_patient.patient_id) is None
 
         # Form must have Claire Martin's civil identity, keep its own date_rcp (2026-07-25), and compute age 64
-        assert updated_form["patient_id"] == "martin_claire_1962_07_21"
+        assert updated_form["patient_id"] == expected_claire_id
         assert updated_form["processing_status"] == RCPProcessingStatus.COMPLETED.value
         admin = updated_form["PatientAdministrative"]
         assert admin["first_name"] == "Claire"

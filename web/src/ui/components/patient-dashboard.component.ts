@@ -727,10 +727,10 @@ function renderPointPills(
         lang === "fr" ? "Observation qualitative brute" : "Raw qualitative note"
       }">${iconSvg("ic-info", "ds-icon--xs")}</span>`
     : "";
-  return `<div class="ds-metric-points-strip" role="list" aria-label="${
+  return `<div class="ds-metric-points-strip" role="group" aria-label="${
     lang === "fr" ? "Dernier relevé RCP" : "Latest MDT reading"
   }">
-    <div class="ds-raw-pill ${latestPt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(latestPt.formId)}" data-jump-section="${esc(sectionName)}" data-jump-tab="clinical" tabindex="0">
+    <div class="ds-raw-pill ${latestPt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="button" data-form-id="${esc(latestPt.formId)}" data-jump-section="${esc(sectionName)}" data-jump-tab="clinical" tabindex="0">
       <span class="ds-chart-legend__dot" style="--legend-color:#0f766e" aria-hidden="true"></span>
       <span class="ds-raw-pill__date">${esc(latestPt.formDateLabel)}</span>
       <strong class="ds-raw-pill__val ds-metric-pill__value ds-markdown-inline">${esc(exactVal)}</strong>
@@ -753,7 +753,7 @@ interface ChartCardShellProps {
 
 function renderChartCardShell(props: ChartCardShellProps): string {
   return `<article class="ds-card ds-metric-chart-card${props.extraClass ? ` ${props.extraClass}` : ""}" data-testid="metric_chart_${esc(props.metricKey)}"${props.extraAttrs ? ` ${props.extraAttrs}` : ""} data-metric-key="${esc(props.metricKey)}" data-section="${esc(props.sectionName)}">
-    <div class="ds-card__header" data-jump-section="${esc(props.sectionName)}" data-jump-tab="clinical" tabindex="0">
+    <div class="ds-card__header" role="button" data-jump-section="${esc(props.sectionName)}" data-jump-tab="clinical" tabindex="0">
       <div>
         <h4 class="ds-card__title">
           <span class="ds-icon-box">${iconSvg(props.iconId)}</span>
@@ -819,7 +819,7 @@ function renderMfmCombinedChartCard(
   const maxDays = allPoints.reduce((acc, p) => Math.max(acc, p.daysSinceFirstRcp), 0);
   const spanYears = formatSpanDuration(maxDays, lang);
 
-  const combinedPillsHtml = `<div class="ds-metric-points-strip" role="list" data-testid="mfm_chart_legend" aria-label="${
+  const combinedPillsHtml = `<div class="ds-metric-points-strip" role="group" data-testid="mfm_chart_legend" aria-label="${
     lang === "fr" ? "Légende et derniers relevés MFM" : "MFM legend and latest readings"
   }">
     ${mfmSeriesList
@@ -832,7 +832,7 @@ function renderMfmCombinedChartCard(
         const deltaBadge = pt.deltaDisplay
           ? `<span class="ds-raw-pill__delta">Δ ${esc(pt.deltaDisplay)}</span>`
           : "";
-        return `<div class="ds-raw-pill" role="listitem" data-testid="mfm_legend_item_${esc(s.metricKey)}" data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
+        return `<div class="ds-raw-pill" role="button" data-testid="mfm_legend_item_${esc(s.metricKey)}" data-form-id="${esc(pt.formId)}" data-series-key="${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
           <span class="ds-chart-legend__dot" style="--legend-color:${esc(vis.color)}" aria-hidden="true"></span>
           <span class="ds-raw-pill__series">${esc(vis.shortLabel)}</span>
           <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
@@ -890,7 +890,7 @@ function renderQualitativeSwimlanes(
         .map((s) => {
           const secMeta = getSectionPresentation(s.section, domain, lang);
           const clinicalLabel = resolveClinicalMetricLabel(s, lang);
-          return `<div class="ds-subcard ds-swimlane-row" data-testid="swimlane_${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
+          return `<div class="ds-subcard ds-swimlane-row" role="button" data-testid="swimlane_${esc(s.metricKey)}" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
             <div class="ds-swimlane-row__label">
               <span class="ds-subcard__title">${iconSvg(secMeta.icon, "ds-icon--xs")} ${esc(clinicalLabel)}</span>
               <span class="ds-small ds-muted">${esc(secMeta.title)}</span>
@@ -1001,11 +1001,13 @@ function renderRawMatrixTable(
                 const clinicalLabel = resolveClinicalMetricLabel(s, lang);
                 const byForm = new Map(s.points.map((p) => [p.formId, p]));
                 return `<tr>
-                  <td data-label="${lang === "fr" ? "Paramètre clinique" : "Clinical parameter"}" class="ds-table__primary-cell" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
-                    <strong>${esc(clinicalLabel)}</strong>
-                    ${s.unit ? ` <span class="ds-small ds-muted">(${esc(s.unit)})</span>` : ""}
-                    <br/>
-                    <span class="ds-small ds-muted">${esc(secMeta.title)}</span>
+                  <td data-label="${lang === "fr" ? "Paramètre clinique" : "Clinical parameter"}" class="ds-table__primary-cell">
+                    <div role="button" data-jump-section="${esc(s.section)}" data-jump-tab="clinical" tabindex="0">
+                      <strong>${esc(clinicalLabel)}</strong>
+                      ${s.unit ? ` <span class="ds-small ds-muted">(${esc(s.unit)})</span>` : ""}
+                      <br/>
+                      <span class="ds-small ds-muted">${esc(secMeta.title)}</span>
+                    </div>
                   </td>
                   ${colEntries
                     .map(([formId, dateLabel]) => {

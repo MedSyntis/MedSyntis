@@ -1,5 +1,6 @@
 from copy import deepcopy
 from datetime import datetime
+import hashlib
 from typing import Any
 
 from src.application.config import AppConfig
@@ -8,6 +9,24 @@ from src.domain.mdt_agenda import MDTAgenda
 from src.domain.patient import Patient
 from src.domain.worker.queue_job import RCPProcessingStatus
 from src.infrastructure.documents.mongodb import Mongodb, sanitize_bson_payload
+
+
+def _legacy_slug_to_pseudonymized_id(patient_id: str) -> str | None:
+    """Convert a legacy cleartext slug `patient_id` into its opaque pseudonymized `patient_id`."""
+    if not patient_id or patient_id.startswith("pat_"):
+        return None
+    if patient_id.startswith("patient_"):
+        suffix = patient_id.removeprefix("patient_")
+        if len(suffix) == 16 and all(c in "0123456789abcdef" for c in suffix):
+            return None
+        digest = hashlib.sha256(
+            f"medsyntis:unidentified:{suffix}".encode("utf-8")
+        ).hexdigest()[:16]
+        return f"patient_{digest}"
+    digest = hashlib.sha256(
+        f"medsyntis:patient:{patient_id}".encode("utf-8")
+    ).hexdigest()[:16]
+    return f"pat_{digest}"
 
 
 class InMemoryPatientRepository:
@@ -20,7 +39,23 @@ class InMemoryPatientRepository:
 
     def get_by_id(self, patient_id: str) -> Patient | None:
         p = self._patients.get(patient_id)
-        return p.model_copy(deep=True) if p else None
+        if p is not None:
+            return p.model_copy(deep=True)
+        pseudo_id = _legacy_slug_to_pseudonymized_id(patient_id)
+        if pseudo_id and pseudo_id in self._patients:
+            return self._patients[pseudo_id].model_copy(deep=True)
+        if patient_id.startswith(("pat_", "patient_")):
+            for cand in self._patients.values():
+                fallback_file = cand.files[0] if cand.files else None
+                built = Patient.build_id(
+                    first_name=cand.first_name,
+                    last_name=cand.last_name,
+                    date_birth=cand.date_birth,
+                    fallback_file=fallback_file,
+                )
+                if built == patient_id:
+                    return cand.model_copy(deep=True)
+        return None
 
     def find_by_identity(
         self,
@@ -38,6 +73,15 @@ class InMemoryPatientRepository:
         if exact_id in self._patients:
             return self._patients[exact_id].model_copy(deep=True)
 
+        legacy_id = Patient.build_legacy_id(
+            first_name=first_name,
+            last_name=last_name,
+            date_birth=date_birth,
+            fallback_file=fallback_file,
+        )
+        if legacy_id and legacy_id in self._patients:
+            return self._patients[legacy_id].model_copy(deep=True)
+
         name_key = Patient.build_name_key(first_name=first_name, last_name=last_name)
         if not name_key:
             return None
@@ -51,13 +95,33 @@ class InMemoryPatientRepository:
         for p in self._patients.values():
             if p.name_key == name_key and p.date_birth is None:
                 return p.model_copy(deep=True)
-        return self.get_by_id(name_key)
+        no_dob_id = Patient.build_id(first_name=first_name, last_name=last_name)
+        if no_dob_id in self._patients:
+            return self._patients[no_dob_id].model_copy(deep=True)
+        return (
+            self._patients[name_key].model_copy(deep=True)
+            if name_key in self._patients
+            else None
+        )
 
     def list_all(self) -> list[Patient]:
         return [p.model_copy(deep=True) for p in self._patients.values()]
 
     def save(self, patient: Patient, filename: str | None = None) -> Patient:
         existing = self._patients.get(patient.patient_id)
+        if existing is None:
+            legacy_id = Patient.build_legacy_id(
+                first_name=patient.first_name,
+                last_name=patient.last_name,
+                date_birth=patient.date_birth,
+                fallback_file=filename or (patient.files[0] if patient.files else None),
+            )
+            if (
+                legacy_id
+                and legacy_id != patient.patient_id
+                and legacy_id in self._patients
+            ):
+                existing = self._patients.pop(legacy_id)
         files: list[str] = []
         if existing:
             for f in existing.files:
@@ -77,9 +141,6 @@ class InMemoryPatientRepository:
         updated = patient.model_copy(
             update={
                 "files": files,
-                "name_key": Patient.build_name_key(
-                    patient.first_name, patient.last_name
-                ),
                 "record_summary": deepcopy(preserved_summary)
                 if preserved_summary is not None
                 else None,
@@ -221,13 +282,17 @@ class InMemoryDocumentCacheRepository:
         file_name: str,
         markdown: str,
         document_type: str = "mtd",
+        doc_type: str | None = None,
     ) -> None:
-        self._cache[file_hash] = {
+        entry: dict[str, Any] = {
             "hash": file_hash,
             "file": file_name,
             "document_type": document_type,
             "markdown": markdown,
         }
+        if doc_type is not None:
+            entry["doc_type"] = doc_type
+        self._cache[file_hash] = entry
 
     def delete(
         self,
@@ -408,7 +473,26 @@ class MongoPatientRepository:
 
     def get_by_id(self, patient_id: str) -> Patient | None:
         raw = self.db_client.get_patient(patient_id)
-        return Patient.from_persistence(raw) if raw else None
+        if raw:
+            return Patient.from_persistence(raw)
+        pseudo_id = _legacy_slug_to_pseudonymized_id(patient_id)
+        if pseudo_id:
+            raw_pseudo = self.db_client.get_patient(pseudo_id)
+            if raw_pseudo:
+                return Patient.from_persistence(raw_pseudo)
+        if patient_id.startswith(("pat_", "patient_")):
+            for doc in self.db_client.get_all_patients():
+                cand = Patient.from_persistence(doc)
+                fallback_file = cand.files[0] if cand.files else None
+                built = Patient.build_id(
+                    first_name=cand.first_name,
+                    last_name=cand.last_name,
+                    date_birth=cand.date_birth,
+                    fallback_file=fallback_file,
+                )
+                if built == patient_id:
+                    return cand
+        return None
 
     def find_by_identity(
         self,
@@ -598,12 +682,14 @@ class MongoDocumentCacheRepository:
         file_name: str,
         markdown: str,
         document_type: str = "mtd",
+        doc_type: str | None = None,
     ) -> None:
         self.db_client.save_document_cache(
             file_hash=file_hash,
             file_name=file_name,
             markdown=markdown,
             document_type=document_type,
+            doc_type=doc_type,
         )
 
     def delete(
@@ -665,7 +751,21 @@ class MongoBugReportRepository:
             query["severity"] = severity
         if category:
             query["category"] = category
-        return self.db_client.get_all_bug_reports(query)
+        raw_docs = self.db_client.get_all_bug_reports(query)
+        validated_list: list[dict[str, Any]] = []
+        for raw in raw_docs:
+            clean = {k: v for k, v in raw.items() if k != "_id"}
+            try:
+                report = BugReport.model_validate(clean)
+                validated_list.append(report.model_dump(mode="python"))
+            except Exception as exc:
+                if hasattr(self.db_client, "logger"):
+                    self.db_client.logger.warning(
+                        "Skipping invalid bug_reports document (bug_id=%s): %s",
+                        clean.get("bug_id"),
+                        exc,
+                    )
+        return validated_list
 
     def update_status(self, bug_id: str, status: BugStatus | str) -> BugReport | None:
         val = status.value if isinstance(status, BugStatus) else status
@@ -680,7 +780,7 @@ class MongoBugReportRepository:
         return self.db_client.update_bug_report(bug_id, fields)
 
     def delete(self, bug_id: str) -> bool:
-        return bool(self.db_client.delete_bug_report(bug_id))
+        return self.db_client.delete_bug_report(bug_id)
 
 
 class MongoMDTAgendaRepository:

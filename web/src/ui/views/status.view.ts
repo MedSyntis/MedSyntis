@@ -1,11 +1,12 @@
 import type { UserSession } from "../../domain/types.js";
-import { html, INLINE_ICONS_SVG, iconSvg, raw, stripDomainQuery } from "./html.js";
+import { esc, html, INLINE_ICONS_SVG, iconSvg, raw, stripDomainQuery } from "./html.js";
 
 export interface StatusPageOptions {
   statusCode: number;
   kind?: "not_found" | "maintenance" | "server_error";
   title?: string;
   message?: string;
+  retryHref?: string;
   session: UserSession;
 }
 
@@ -87,7 +88,7 @@ export function renderStatusPage(opts: StatusPageOptions): string {
         </a>
         ${raw(
           kind !== "not_found"
-            ? `<a class="ds-btn ds-btn--tonal" href="" data-testid="btn_status_retry">
+            ? `<a class="ds-btn ds-btn--tonal" href="${esc(opts.retryHref || "/")}" data-testid="btn_status_retry">
                  ${iconSvg("ic-refresh")} ${lang === "fr" ? "Réessayer" : "Retry"}
                </a>`
             : "",

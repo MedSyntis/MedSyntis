@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import hashlib
 import re
 from typing import Any, Optional, Self
 
@@ -135,8 +136,35 @@ class PatientIdentity(BaseModel):
         fallback_file: str | None = None,
     ) -> str:
         """
-        Build a deterministic, normalized `patient_id` from `(last_name, first_name, date_birth)`.
-        Falls back to `(last_name, first_name)` if `date_birth` is missing, or `fallback_file` if unknown.
+        Build a deterministic, opaque pseudonymized `patient_id` using SHA-256.
+        Preserves the `pat_` prefix for identified patients and `patient_` for unidentified PDFs
+        while preventing civil identity or filename PII leakage in identifiers and URLs.
+        """
+        name_key = cls.build_name_key(first_name, last_name)
+        if not name_key:
+            file_slug = slugify(fallback_file or "unknown", separator="_")
+            digest = hashlib.sha256(
+                f"medsyntis:unidentified:{file_slug}".encode("utf-8")
+            ).hexdigest()[:16]
+            return f"patient_{digest}"
+
+        dob_str = _normalize_birth_date_slug(date_birth)
+        canonical = f"{name_key}_{dob_str}" if dob_str else name_key
+        digest = hashlib.sha256(
+            f"medsyntis:patient:{canonical}".encode("utf-8")
+        ).hexdigest()[:16]
+        return f"pat_{digest}"
+
+    @classmethod
+    def build_legacy_id(
+        cls,
+        first_name: str | None,
+        last_name: str | None,
+        date_birth: datetime | str | None = None,
+        fallback_file: str | None = None,
+    ) -> str:
+        """
+        Build the legacy slug-based `patient_id` for backward-compatible repository lookups.
         """
         name_key = cls.build_name_key(first_name, last_name)
         if not name_key:
@@ -150,6 +178,14 @@ class PatientIdentity(BaseModel):
 
     def build_patient_id(self, fallback_file: str | None = None) -> str:
         return self.build_id(
+            first_name=self.first_name,
+            last_name=self.last_name,
+            date_birth=self.date_birth,
+            fallback_file=fallback_file,
+        )
+
+    def build_legacy_patient_id(self, fallback_file: str | None = None) -> str:
+        return self.build_legacy_id(
             first_name=self.first_name,
             last_name=self.last_name,
             date_birth=self.date_birth,
@@ -233,6 +269,21 @@ class Patient(BaseModel):
         fallback_file: str | None = None,
     ) -> str:
         return PatientIdentity.build_id(
+            first_name=first_name,
+            last_name=last_name,
+            date_birth=date_birth,
+            fallback_file=fallback_file,
+        )
+
+    @classmethod
+    def build_legacy_id(
+        cls,
+        first_name: str | None,
+        last_name: str | None,
+        date_birth: datetime | str | None = None,
+        fallback_file: str | None = None,
+    ) -> str:
+        return PatientIdentity.build_legacy_id(
             first_name=first_name,
             last_name=last_name,
             date_birth=date_birth,

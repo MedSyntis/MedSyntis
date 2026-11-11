@@ -14,6 +14,7 @@ class TestOpenAIConnection(unittest.TestCase):
         self.mock_config.llm.embeddings = "text-embedding-3-large"
         self.mock_config.llm.temp = 0.7
         self.mock_config.llm.api_key = "test-api-key"
+        self.mock_config.allow_remote_llm = True
 
         self.mock_logger = MagicMock()
         self.mock_config.set_logger.return_value = self.mock_logger
@@ -36,6 +37,16 @@ class TestOpenAIConnection(unittest.TestCase):
             model="text-embedding-3-large",
         )
         self.mock_logger.info.assert_called_with("Succesfully connected")
+
+    @patch("src.infrastructure.llm.openai.OllamaCompatibleOpenAIEmbeddings")
+    @patch("src.infrastructure.llm.openai.openai.OpenAI")
+    def test_init_rejects_public_cloud_host_when_remote_llm_disabled(
+        self, mock_openai_client_cls, mock_embeddings_cls
+    ):
+        self.mock_config.allow_remote_llm = False
+        with self.assertRaises(ValueError):
+            OpenAIConnect(self.mock_config)
+        mock_openai_client_cls.assert_not_called()
 
     @patch("src.infrastructure.llm.openai.OllamaCompatibleOpenAIEmbeddings")
     @patch("src.infrastructure.llm.openai.openai.OpenAI")

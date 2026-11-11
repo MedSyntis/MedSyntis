@@ -37,7 +37,7 @@ Preparing an MDT session involves collecting heterogeneous medical reports, veri
 
 ## 👩‍💼 Stage 1: Uploading Patient Records & 3-Wave Local AI Extraction (`/ingest`)
 
- primarily used by **MDT Medical Secretaries** and referring clinicians prior to the meeting.
+This stage is primarily used by **MDT Medical Secretaries** and referring clinicians prior to the meeting.
 
 ### 1. Multi-PDF Drag-and-Drop Upload
 Navigate to **Import PDF (`/ingest`)** or trigger **Import PDF** directly from the Worklist or a Patient Dossier:

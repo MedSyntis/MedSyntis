@@ -92,6 +92,7 @@ export interface ShellLayoutOptions {
   queueStats: QueueStats;
   queueJobs: QueueJobItem[];
   bodyHtml: string;
+  afterMainHtml?: string;
   toastMessage?: string | null;
 }
 
@@ -155,7 +156,7 @@ export function deriveFormProcessingState(
       statusUpper === "ERROR" ||
       matchingJobs.some((j) => j.status === "FAILED" && statusUpper !== "COMPLETED"));
 
-  let label = lang === "fr" ? "Traitement terminée" : "Completed";
+  let label = lang === "fr" ? "Traitement terminé" : "Completed";
   if (isProcessing) {
     if (statusUpper.includes("ADMIN")) {
       label = lang === "fr" ? "Extraction administrative en cours" : "Extracting admin data";
@@ -576,6 +577,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
       ${bodyHtml}
     </main>
   </div>
+  ${opts.afterMainHtml ?? ""}
 
   <!-- ===================== Queue Drawer (M3 Side Sheet) ===================== -->
   <dialog class="ds-drawer" id="queue-drawer" aria-labelledby="queue-drawer-title" data-testid="queue-drawer">
@@ -649,7 +651,7 @@ function renderPriorityBadgeHtml(
 ): string {
   const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
   const jumpAttrs = options?.jumpSection
-    ? ` data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
+    ? ` role="button" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
     : "";
   const interactiveCls = options?.jumpSection ? " ds-badge--interactive" : "";
   const rawReasons =
@@ -1214,6 +1216,7 @@ export function renderSectionDetailsPartial(
   expertMode = false,
   missingItemsState?: PatientDossierView["missingItemsState"],
   isProcessingSection = false,
+  saveError: string | null = null,
 ): string {
   const domainParam = encodeURIComponent(domain);
   const fileParam = encodeURIComponent(filename);
@@ -1242,6 +1245,10 @@ export function renderSectionDetailsPartial(
               ex,
               idx,
             ) => `<div class="ds-subcard" data-exam-row="${idx}" style="margin-bottom:var(--ds-space-2)">
+              <div class="ds-cluster" style="justify-content:space-between;margin-bottom:var(--ds-space-2)">
+                <span class="ds-subcard__title">Examen #${idx + 1}</span>
+                <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm" data-remove-dynamic-row aria-label="Supprimer cette ligne" data-testid="btn_remove_exam_row_${idx}">${iconSvg("ic-delete", "ds-icon--xs")} Supprimer</button>
+              </div>
               <div class="ds-kv-grid">
                 <div class="ds-field">
                   <label class="ds-label" for="${inputId}-name-${idx}">Nom de l'examen #${idx + 1}</label>
@@ -1270,6 +1277,7 @@ export function renderSectionDetailsPartial(
           .join("");
         return `<div class="ds-field" data-exams-list-container="${esc(sec.name)}">
           <span class="ds-label">${esc(f.label)}</span>
+          <input type="hidden" name="exams_list_present" value="1">
           <div data-exams-rows>${rowsHtml}</div>
           <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-add-exam-row="${esc(sec.name)}" style="align-self:flex-start;margin-top:var(--ds-space-1)">
             ${iconSvg("ic-plus")} Ajouter un examen
@@ -1295,6 +1303,10 @@ export function renderSectionDetailsPartial(
               ch,
               idx,
             ) => `<div class="ds-subcard" data-chemo-row="${idx}" style="margin-bottom:var(--ds-space-2)">
+              <div class="ds-cluster" style="justify-content:space-between;margin-bottom:var(--ds-space-2)">
+                <span class="ds-subcard__title">Ligne #${idx + 1}</span>
+                <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm" data-remove-dynamic-row aria-label="Supprimer cette ligne" data-testid="btn_remove_chemo_row_${idx}">${iconSvg("ic-delete", "ds-icon--xs")} Supprimer</button>
+              </div>
               <div class="ds-kv-grid">
                 <div class="ds-field">
                   <label class="ds-label" for="${inputId}-name-${idx}">Protocole / Molécule #${idx + 1}</label>
@@ -1322,6 +1334,7 @@ export function renderSectionDetailsPartial(
           .join("");
         return `<div class="ds-field" data-chemo-list-container="${esc(sec.name)}">
           <span class="ds-label">${esc(f.label)}</span>
+          <input type="hidden" name="chemotherapy_list_present" value="1">
           <div data-chemo-rows>${rowsHtml}</div>
           <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-add-chemo-row="${esc(sec.name)}" style="align-self:flex-start;margin-top:var(--ds-space-1)">
             ${iconSvg("ic-plus")} Ajouter une ligne de traitement
@@ -1392,6 +1405,15 @@ export function renderSectionDetailsPartial(
     };
 
     const inputsHtml = sec.fields.map(renderEditControl).join("");
+    const editErrorHtml = saveError
+      ? `<div class="ds-alert ds-alert--danger" role="alert" data-section-save-error data-testid="section-save-error-banner">
+          <span class="ds-alert__icon" aria-hidden="true">${iconSvg("ic-error")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">Échec de l'enregistrement</span>
+            <span>${esc(saveError)}</span>
+          </div>
+        </div>`
+      : "";
 
     return `<details class="ds-section is-editing" open id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}">
       <summary>
@@ -1399,6 +1421,7 @@ export function renderSectionDetailsPartial(
         <span class="ds-section__summary">Édition manuelle en cours…</span>
       </summary>
       <form class="ds-section__body" method="post" action="/forms/${fileParam}/sections/${secParam}?domain=${domainParam}" data-ajax-section="section-${esc(sec.name)}">
+        ${editErrorHtml}
         ${inputsHtml}
         <div class="ds-section__actions">
           <button type="submit" class="ds-btn ds-btn--primary ds-btn--sm" data-testid="btn_save_section_${esc(sec.name)}">${iconSvg("ic-check")} Enregistrer</button>
@@ -1639,7 +1662,9 @@ export function renderSectionDetailsPartial(
                 !sec.summaryText.toLowerCase().includes("facultatif"))
             ? "red"
             : "green"))
-      : null;
+      : sec.name === "CareOrientationProposal"
+        ? (sec.sectionTone ?? "green")
+        : null;
   const secToneClass =
     resolvedMtdTone === "green"
       ? "ds-section--green"
@@ -1648,6 +1673,29 @@ export function renderSectionDetailsPartial(
         : resolvedMtdTone === "red"
           ? "ds-section--red"
           : "";
+  const careOrientBadgeHtml =
+    sec.name === "CareOrientationProposal"
+      ? (() => {
+          const orient = deriveOrientationInfo(
+            {
+              care_adaptation_suggested:
+                typeof sec.rawData?.care_adaptation_suggested === "boolean"
+                  ? sec.rawData.care_adaptation_suggested
+                  : null,
+              proposed_care_type:
+                typeof sec.rawData?.proposed_care_type === "string"
+                  ? sec.rawData.proposed_care_type
+                  : null,
+            },
+            "fr",
+          );
+          return `<span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>`;
+        })()
+      : "";
+  const careDisclaimerHtml =
+    sec.name === "CareOrientationProposal"
+      ? `<p class="ds-disclaimer">${esc(t("disclaimer.ml", "fr"))}</p>`
+      : "";
   return `<details class="ds-section ${sec.isManual ? "ds-section--manual" : ""} ${secToneClass}${isProcessingSection ? " is-processing" : ""}" id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}"${isProcessingSection ? ' data-processing-active="true"' : ""}>
     <summary>
       <span class="ds-section__title">${iconSvg(sec.meta.icon)} ${esc(sec.meta.title)}</span>
@@ -1656,6 +1704,7 @@ export function renderSectionDetailsPartial(
           ? `<span class="ds-badge ds-badge--processing ds-badge--sm" data-testid="badge-processing-section-${esc(sec.name)}"><span class="ds-spinner" aria-hidden="true"></span> Analyse en cours…</span>`
           : ""
       }
+      ${careOrientBadgeHtml}
       ${
         sec.isManual
           ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-testid="badge-manual-edit">${iconSvg("ic-edit-note")} Modifié manuellement</span>`
@@ -1670,6 +1719,7 @@ export function renderSectionDetailsPartial(
       ${subCardsHtml}
       ${longFieldsHtml}
       ${refsHtml}
+      ${careDisclaimerHtml}
       ${
         sec.isManual && sec.manualMeta
           ? `<p class="ds-section__provenance">Modifié manuellement par ${esc(sec.manualMeta.edited_by ?? "Clinicien")} · protégé lors des relances IA</p>`
@@ -1732,6 +1782,7 @@ export function renderDossierPage(
   editingSection?: string,
   agendaNav?: AgendaDossierNavContext,
   activeTab: "clinical" | "opinions" | "patient-dashboard" = "clinical",
+  saveError: string | null = null,
 ): string {
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
@@ -1796,7 +1847,7 @@ export function renderDossierPage(
       const deltaHtml = m.delta
         ? ` <span class="ds-delta ds-delta--${m.delta.direction}">${iconSvg(m.delta.icon, "ds-icon--xs")} ${esc(m.delta.deltaText)}</span>`
         : "";
-      return `<div class="ds-markers__item ds-markers__item--interactive" data-jump-section="${esc(m.targetSection)}" data-jump-tab="${esc(m.targetTab)}" data-testid="marker-${esc(m.key)}" tabindex="0">
+      return `<div class="ds-markers__item ds-markers__item--interactive" role="button" data-jump-section="${esc(m.targetSection)}" data-jump-tab="${esc(m.targetTab)}" data-testid="marker-${esc(m.key)}" tabindex="0">
         <dt>${esc(m.label)}</dt>
         <dd class="${m.isMissing ? "is-missing" : ""}">${esc(m.value)}${deltaHtml}</dd>
       </div>`;
@@ -1864,6 +1915,7 @@ export function renderDossierPage(
         session.expertMode,
         s.name === "MTDCompleted" ? dossier.missingItemsState : undefined,
         activeSectionNames.has(s.name),
+        editingSection === s.name ? saveError : null,
       )}`;
     })
     .join("");
@@ -1878,67 +1930,21 @@ export function renderDossierPage(
         session.expertMode,
         s.name === "MTDCompleted" ? dossier.missingItemsState : undefined,
         activeSectionNames.has(s.name),
+        editingSection === s.name ? saveError : null,
       ),
     )
     .join("");
 
-  // Collapsible CareOrientationProposal card (collapsed by default) with M3 Tonal surface
-  const careTone =
-    dossier.priorityBadge.level === "high"
-      ? "red"
-      : dossier.careProposal.careAdaptationSuggested
-        ? "orange"
-        : "green";
-  const careOrientationHtml = dossier.careProposal.clinicalRationale
-    ? `<details class="ds-section ds-section--${careTone}" id="section-CareOrientationProposal" data-testid="section-CareOrientationProposal">
-        <summary>
-          <span class="ds-section__title">${iconSvg("ic-compass")} Proposition d'orientation pré-RCP</span>
-          <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm">${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}</span>
-          <span class="ds-section__summary">${esc(stripMarkdown(dossier.careProposal.proposedCareType ?? dossier.orientationBadge.label))}</span>
-        </summary>
-        <div class="ds-section__body">
-          ${
-            dossier.careProposal.proposedCareType
-              ? `<div class="ds-rationale ds-rationale--orientation">
-                  <span class="ds-rationale__label">Modalité de prise en charge proposée</span>
-                  <div class="ds-rationale__text ds-markdown-inline">${renderSafeInlineMarkdown(dossier.careProposal.proposedCareType)}</div>
-                </div>`
-              : ""
-          }
-          <div class="ds-rationale ds-rationale--orientation">
-            <span class="ds-rationale__label">${iconSvg("ic-compass", "ds-icon--xs")} Argumentaire clinique pré-RCP</span>
-            <div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(dossier.careProposal.clinicalRationale)}</div>
+  const saveErrorBannerHtml =
+    saveError && !editingSection
+      ? `<div class="ds-alert ds-alert--danger" role="alert" data-testid="section-save-error-banner">
+          <span class="ds-alert__icon">${iconSvg("ic-error")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">Enregistrement ou rétablissement refusé</span>
+            <span>${esc(saveError)}</span>
           </div>
-          <p class="ds-disclaimer">${esc(t("disclaimer.ml", lang))}</p>
-          <div class="ds-section__actions">
-            <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/sections/CareOrientationProposal/rerun?domain=${domainParam}" style="display:inline-flex">
-              <input type="hidden" name="preserve_manual_edits" value="true">
-              <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm">
-                ${iconSvg("ic-refresh")} Relancer la synthèse
-              </button>
-            </form>
-            <div class="ds-cluster" style="margin-left:auto;gap:var(--ds-space-2)">
-              ${
-                dossier.careProposal.reasoningThinking
-                  ? `<details class="ds-popover" data-testid="reasoning-CareOrientationProposal">
-                      <summary class="ds-popover__trigger">${iconSvg("ic-sparkle", "ds-icon--xs")} Réflexion IA</summary>
-                      <div class="ds-popover__panel" role="dialog" aria-label="Réflexion IA — Orientation pré-RCP">
-                        <div class="ds-popover__title">${iconSvg("ic-sparkle", "ds-icon--xs")} Réflexion IA — Orientation pré-RCP</div>
-                        <div class="ds-thinking-popover__body ds-markdown">${renderSafeMarkdown(dossier.careProposal.reasoningThinking)}</div>
-                      </div>
-                    </details>`
-                  : ""
-              }
-              ${
-                dossier.careProposal.durationSec !== null
-                  ? `<span class="ds-section__duration">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.careProposal.durationSec)}</span>`
-                  : ""
-              }
-            </div>
-          </div>
-        </div>
-      </details>`
-    : "";
+        </div>`
+      : "";
 
   const opinionsHtml =
     dossier.opinions.length === 0
@@ -2195,6 +2201,7 @@ export function renderDossierPage(
 
   const bodyHtml = `
     ${agendaNavHtml}
+    ${saveErrorBannerHtml}
     <!-- Unified Patient Hero Card: Compact 2-Line Header + Patient-Level View Switcher + Session Markers & Timeline -->
     <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}${proc.isProcessing ? " is-processing" : ""}" data-testid="synoptic-card" data-patient-view="${isDashboardView ? "dashboard" : "rcp"}"${proc.isProcessing ? ` data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}"` : ""}>
       <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata + Patient-Level View Tabs) -->
@@ -2210,8 +2217,8 @@ export function renderDossierPage(
               jumpSection: "CareOrientationProposal",
               jumpTab: "opinions",
             })}
-            <div class="ds-hovercard" data-jump-section="MTDCompleted" data-jump-tab="opinions" tabindex="0">
-              <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="MTDCompleted" data-jump-tab="opinions" data-testid="badge-completeness">
+            <div class="ds-hovercard" role="button" data-jump-section="MTDCompleted" data-jump-tab="opinions" tabindex="0">
+              <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm ds-badge--interactive" role="button" data-jump-section="MTDCompleted" data-jump-tab="opinions" data-testid="badge-completeness">
                 ${iconSvg(dossier.completenessBadge.icon)} ${esc(dossier.completenessBadge.label)}
               </span>
               ${
@@ -2227,8 +2234,8 @@ export function renderDossierPage(
             </div>
             ${
               dossier.careProposal?.proposedCareType || dossier.careProposal?.clinicalRationale
-                ? `<div class="ds-hovercard" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" tabindex="0">
-                    <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt">
+                ? `<div class="ds-hovercard" role="button" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" tabindex="0">
+                    <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" role="button" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt">
                       ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
                     </span>
                     <div class="ds-hovercard__panel" role="tooltip">
@@ -2237,23 +2244,23 @@ export function renderDossierPage(
                       ${dossier.careProposal.clinicalRationale ? `<div class="ds-rationale__text ds-markdown">${renderSafeMarkdown(dossier.careProposal.clinicalRationale)}</div>` : ""}
                     </div>
                   </div>`
-                : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt" tabindex="0">
+                : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm ds-badge--interactive" role="button" data-jump-section="CareOrientationProposal" data-jump-tab="opinions" data-testid="badge-orientation-adapt" tabindex="0">
                     ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
                   </span>`
             }
             ${
               dossier.specialties.length === 1 && dossier.specialties[0]
-                ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate ds-badge--interactive" data-jump-section="${esc(dossier.specialties[0].name)}" data-jump-tab="opinions" data-testid="badge-specialties" tabindex="0">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
+                ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate ds-badge--interactive" role="button" data-jump-section="${esc(dossier.specialties[0].name)}" data-jump-tab="opinions" data-testid="badge-specialties" tabindex="0">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
                 : ""
             }
             ${
               dossier.specialties.length > 1
-                ? `<div class="ds-hovercard" data-jump-section="ExpertAnswer" data-jump-tab="opinions" tabindex="0">
-                    <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" data-jump-section="ExpertAnswer" data-jump-tab="opinions" data-testid="badge-specialties">${iconSvg("ic-stethoscope")} ${dossier.specialties.length} ${lang === "fr" ? "spécialités" : "specialties"}</span>
+                ? `<div class="ds-hovercard" role="button" data-jump-section="ExpertAnswer" data-jump-tab="opinions" tabindex="0">
+                    <span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--interactive" role="button" data-jump-section="ExpertAnswer" data-jump-tab="opinions" data-testid="badge-specialties">${iconSvg("ic-stethoscope")} ${dossier.specialties.length} ${lang === "fr" ? "spécialités" : "specialties"}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
                       <span class="ds-hovercard__title">${iconSvg("ic-stethoscope")} ${lang === "fr" ? "Spécialités mobilisées" : "Involved specialties"} (${dossier.specialties.length})</span>
                       <ul class="ds-hovercard__list">
-                        ${dossier.specialties.map((s) => `<li data-jump-section="${esc(s.name)}" data-jump-tab="opinions">${esc(s.label)}</li>`).join("")}
+                        ${dossier.specialties.map((s) => `<li role="button" tabindex="0" data-jump-section="${esc(s.name)}" data-jump-tab="opinions">${esc(s.label)}</li>`).join("")}
                       </ul>
                     </div>
                   </div>`
@@ -2502,7 +2509,6 @@ export function renderDossierPage(
                 </details>
               </div>
             </div>
-            ${careOrientationHtml}
             ${opinionSectionsHtml}
             ${opinionsHtml}
           </div>
@@ -2545,8 +2551,6 @@ export function renderDossierPage(
     <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-patient-dashboard" aria-labelledby="tab-patient-dashboard" tabindex="0"${isDashboardView ? "" : " hidden"}>
       ${renderPatientDashboardPanel(dossier.dashboard, lang)}
     </div>
-
-    ${dossierChatDrawerHtml}
 
     <!-- Modal: Link Form to Patient -->
     <dialog class="ds-modal" id="link-patient-modal" aria-labelledby="link-modal-title">
@@ -2614,6 +2618,7 @@ export function renderDossierPage(
     queueStats,
     queueJobs,
     bodyHtml,
+    afterMainHtml: dossierChatDrawerHtml,
   });
 }
 
@@ -2751,8 +2756,9 @@ export function renderGuidelinesPage(
   const activeRes = overview.selectedResource ?? overview.resources[0] ?? null;
 
   const resourceMenuItemsHtml = overview.resources
-    .map((r) => {
+    .map((r, idx) => {
       const isSelected = activeRes?.filename === r.filename;
+      const delDialogId = `del-guideline-${idx}`;
       return `<li class="ds-guidelines-nav__item ${isSelected ? "is-active" : ""}" data-guideline-item="${esc(r.filename.toLowerCase())}">
         <a class="ds-guidelines-nav__link ${isSelected ? "is-active" : ""}" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(r.filename)}" aria-current="${isSelected ? "page" : "false"}" data-testid="resource-item-${esc(r.filename)}">
           <span class="ds-guidelines-nav__icon">${iconSvg(isSelected ? "ic-check" : "ic-book", "ds-icon--xs")}</span>
@@ -2762,12 +2768,37 @@ export function renderGuidelinesPage(
             ${r.indexed ? "Indexé" : "Non indexé"}
           </span>
         </a>
-        <form method="post" action="/guidelines/${encodeURIComponent(r.filename)}/delete?domain=${domainParam}" style="display:inline-flex">
-          <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--icon" aria-label="Supprimer ${esc(r.filename)}" title="Supprimer ce référentiel" data-testid="btn_del_guideline_${esc(r.filename)}">
-            ${iconSvg("ic-delete", "ds-icon--xs")}
-          </button>
-        </form>
+        <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" data-open="${delDialogId}" aria-label="Supprimer ${esc(r.filename)}" title="Supprimer ce référentiel" data-testid="btn_del_guideline_${esc(r.filename)}">
+          ${iconSvg("ic-delete", "ds-icon--xs")}
+        </button>
       </li>`;
+    })
+    .join("");
+
+  const deleteGuidelineDialogsHtml = overview.resources
+    .map((r, idx) => {
+      const delDialogId = `del-guideline-${idx}`;
+      return `<dialog class="ds-modal ds-modal--danger" id="${delDialogId}" aria-labelledby="${delDialogId}-title">
+        <div class="ds-modal__header">
+          <span>${iconSvg("ic-delete")}</span>
+          <h2 id="${delDialogId}-title">Supprimer le référentiel ${esc(r.filename)} ?</h2>
+        </div>
+        <div class="ds-modal__body">
+          <div class="ds-alert ds-alert--danger" role="alert">
+            <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+            <div class="ds-alert__content">
+              <span class="ds-alert__title">Action irréversible</span>
+              <span>Le référentiel PDF <strong>${esc(r.filename)}</strong> et son indexation vectorielle seront définitivement supprimés.</span>
+            </div>
+          </div>
+        </div>
+        <div class="ds-modal__footer">
+          <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+          <form method="post" action="/guidelines/${encodeURIComponent(r.filename)}/delete?domain=${domainParam}">
+            <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_guideline_${esc(r.filename)}">${iconSvg("ic-delete")} Supprimer définitivement</button>
+          </form>
+        </div>
+      </dialog>`;
     })
     .join("");
 
@@ -2863,7 +2894,7 @@ export function renderGuidelinesPage(
       </div>
     </div>
 
-    ${guidelineChatDrawerHtml}
+    ${deleteGuidelineDialogsHtml}
 
     <!-- Modal: Upload Guideline PDF -->
     <dialog class="ds-modal" id="upload-guideline-modal" aria-labelledby="upload-guideline-title">
@@ -2894,6 +2925,7 @@ export function renderGuidelinesPage(
     queueStats,
     queueJobs,
     bodyHtml,
+    afterMainHtml: guidelineChatDrawerHtml,
   });
 }
 
@@ -3067,7 +3099,7 @@ export function renderFeedbackPage(
 
   const rowsHtml = bugs.items
     .map(
-      (b) => `<tr data-testid="bug-row-${esc(b.id)}">
+      (b, idx) => `<tr data-testid="bug-row-${esc(b.id)}">
         <td data-label="ID" class="ds-mono">${esc(b.id)}</td>
         <td data-label="Signalement" class="ds-table__primary-cell">
           <strong>${esc(b.title)}</strong>
@@ -3083,17 +3115,57 @@ export function renderFeedbackPage(
         <td data-label="Dossier" class="ds-mono">${esc(b.patientOrFile ?? "—")}</td>
         <td data-label="Date" class="ds-nowrap">${esc(b.createdAt)}</td>
         <td class="ds-table__actions">
-          <form method="post" action="/feedback/${encodeURIComponent(b.id)}/status?domain=${domainParam}" style="display:inline-flex;gap:var(--ds-space-1)">
-            <select name="status" class="ds-select ds-select--sm" data-autosubmit="true">
-              <option value="open" ${b.status === "open" ? "selected" : ""}>Ouvert</option>
-              <option value="in_progress" ${b.status === "in_progress" ? "selected" : ""}>En cours</option>
-              <option value="resolved" ${b.status === "resolved" ? "selected" : ""}>Résolu</option>
-            </select>
-          </form>
+          ${
+            session.isAdmin
+              ? `<div class="ds-cluster" style="justify-content:flex-end;gap:var(--ds-space-1)">
+                  <form method="post" action="/feedback/${encodeURIComponent(b.id)}/status?domain=${domainParam}" style="display:inline-flex;gap:var(--ds-space-1)">
+                    <select name="status" class="ds-select ds-select--sm" aria-label="Statut du signalement ${esc(b.id)}" data-autosubmit="true">
+                      <option value="open" ${b.status === "open" ? "selected" : ""}>Ouvert</option>
+                      <option value="in_progress" ${b.status === "in_progress" ? "selected" : ""}>En cours</option>
+                      <option value="resolved" ${b.status === "resolved" ? "selected" : ""}>Résolu</option>
+                    </select>
+                  </form>
+                  <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" data-open="del-bug-dialog-${idx}" aria-label="Supprimer le signalement ${esc(b.id)}" data-testid="btn_del_bug_${esc(b.id)}">
+                    ${iconSvg("ic-delete", "ds-icon--xs")}
+                  </button>
+                </div>`
+              : `<span class="ds-small ds-muted">—</span>`
+          }
         </td>
       </tr>`,
     )
     .join("");
+
+  const deleteBugDialogsHtml = session.isAdmin
+    ? bugs.items
+        .map(
+          (
+            b,
+            idx,
+          ) => `<dialog class="ds-modal ds-modal--danger" id="del-bug-dialog-${idx}" aria-labelledby="del-bug-title-${idx}">
+            <div class="ds-modal__header">
+              <span>${iconSvg("ic-delete")}</span>
+              <h2 id="del-bug-title-${idx}">Supprimer le signalement ${esc(b.id)} ?</h2>
+            </div>
+            <div class="ds-modal__body">
+              <div class="ds-alert ds-alert--danger" role="alert">
+                <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+                <div class="ds-alert__content">
+                  <span class="ds-alert__title">Action irréversible</span>
+                  <span>Le signalement <strong>${esc(b.title)}</strong> sera définitivement supprimé.</span>
+                </div>
+              </div>
+            </div>
+            <div class="ds-modal__footer">
+              <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+              <form method="post" action="/feedback/${encodeURIComponent(b.id)}/delete?domain=${domainParam}">
+                <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_bug_${esc(b.id)}">${iconSvg("ic-delete")} Supprimer définitivement</button>
+              </form>
+            </div>
+          </dialog>`,
+        )
+        .join("")
+    : "";
 
   const bodyHtml = `
     <div class="ds-page-header">
@@ -3116,6 +3188,13 @@ export function renderFeedbackPage(
           <h2 class="ds-card__title">${iconSvg("ic-add")} Nouveau signalement</h2>
         </div>
         <div class="ds-card__body ds-stack">
+          <div class="ds-alert ds-alert--warning" role="note" data-testid="feedback-gdpr-warning">
+            <span class="ds-alert__icon">${iconSvg("ic-warning")}</span>
+            <div class="ds-alert__content">
+              <span class="ds-alert__title">Protection des données de santé (RGPD &amp; Secret médical)</span>
+              <span>Ne saisissez aucune donnée directement identifiante (nom, prénom, NIR, date de naissance complète, coordonnées) dans les champs libres. Référencez uniquement l'identifiant technique du dossier ou le nom du fichier PDF.</span>
+            </div>
+          </div>
           <div class="ds-field">
             <label class="ds-label" for="bug-title">Titre du signalement</label>
             <input class="ds-input" id="bug-title" name="title" required placeholder="Ex. : Date d'examen radiologique inversée" data-testid="input-bug-title">
@@ -3161,6 +3240,7 @@ export function renderFeedbackPage(
         </table>
       </div>
     </div>
+    ${deleteBugDialogsHtml}
   `;
 
   return renderLayout({
@@ -3180,7 +3260,7 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
   const { stats, jobs } = dashboard;
 
   const jobsRows = jobs
-    .map((j) => {
+    .map((j, idx) => {
       const jobHref = resolveQueueJobHref(j, session.domain);
       const rowDataAttr = jobHref
         ? ` data-href="${jobHref}" title="Cliquer pour ouvrir ${esc(j.filename ?? j.jobId)}"`
@@ -3211,13 +3291,40 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
                 ? `<form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/retry?domain=${domainParam}"><button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_retry_${esc(j.jobId)}">${iconSvg("ic-refresh")} Relancer</button></form>`
                 : ""
             }
-            <form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/delete?domain=${domainParam}">
-              <button type="submit" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" aria-label="Supprimer le job ${esc(j.jobId)}" data-testid="btn_del_job_${esc(j.jobId)}">${iconSvg("ic-delete")}</button>
-            </form>
+            <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" data-open="del-job-dialog-${idx}" aria-label="Supprimer le job ${esc(j.jobId)}" data-testid="btn_del_job_${esc(j.jobId)}">${iconSvg("ic-delete")}</button>
           </div>
         </td>
       </tr>`;
     })
+    .join("");
+
+  const deleteJobDialogsHtml = jobs
+    .map(
+      (
+        j,
+        idx,
+      ) => `<dialog class="ds-modal ds-modal--danger" id="del-job-dialog-${idx}" aria-labelledby="del-job-title-${idx}">
+        <div class="ds-modal__header">
+          <span>${iconSvg("ic-delete")}</span>
+          <h2 id="del-job-title-${idx}">Supprimer le job ${esc(j.jobId)} ?</h2>
+        </div>
+        <div class="ds-modal__body">
+          <div class="ds-alert ds-alert--danger" role="alert">
+            <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+            <div class="ds-alert__content">
+              <span class="ds-alert__title">Suppression d'un traitement de la file</span>
+              <span>Le job <strong>${esc(j.jobId)}</strong> (${esc(j.filename ?? j.jobType)}) sera retiré de la file d'attente.</span>
+            </div>
+          </div>
+        </div>
+        <div class="ds-modal__footer">
+          <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+          <form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/delete?domain=${domainParam}">
+            <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_job_${esc(j.jobId)}">${iconSvg("ic-delete")} Confirmer la suppression</button>
+          </form>
+        </div>
+      </dialog>`,
+    )
     .join("");
 
   const bodyHtml = `
@@ -3227,17 +3334,12 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
         <p class="ds-muted">Suivi temps réel Cross-Domains (Oncologie &amp; SMA) de la file PriorityQueue et de l'inférence LLM locale.</p>
       </div>
       <div class="ds-page-header__actions">
-        <form method="post" action="/admin/queue/locks/release?domain=${domainParam}">
-          <button type="submit" class="ds-btn ds-btn--secondary" data-testid="btn_release_locks">
-            ${iconSvg("ic-refresh")} Libérer les verrous GPU (${stats.gpuLocksCount})
-          </button>
-        </form>
-        <form method="post" action="/admin/queue/clean?domain=${domainParam}">
-          <input type="hidden" name="mode" value="completed">
-          <button type="submit" class="ds-btn ds-btn--tonal" data-testid="btn_clean_completed">
-            ${iconSvg("ic-check")} Purger les terminés
-          </button>
-        </form>
+        <button type="button" class="ds-btn ds-btn--secondary" data-open="release-locks-dialog" data-testid="btn_release_locks">
+          ${iconSvg("ic-refresh")} Libérer les verrous GPU (${stats.gpuLocksCount})
+        </button>
+        <button type="button" class="ds-btn ds-btn--tonal" data-open="clean-completed-dialog" data-testid="btn_clean_completed">
+          ${iconSvg("ic-check")} Purger les terminés
+        </button>
       </div>
     </div>
 
@@ -3266,6 +3368,50 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
         </tbody>
       </table>
     </div>
+    ${deleteJobDialogsHtml}
+    <dialog class="ds-modal ds-modal--danger" id="release-locks-dialog" aria-labelledby="release-locks-title">
+      <div class="ds-modal__header">
+        <span>${iconSvg("ic-refresh")}</span>
+        <h2 id="release-locks-title">Libérer les verrous GPU ?</h2>
+      </div>
+      <div class="ds-modal__body">
+        <div class="ds-alert ds-alert--danger" role="alert">
+          <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">Action d'administration GPU</span>
+            <span>Les verrous d'inférence bloqués (${stats.gpuLocksCount}) seront forcés à l'état libre. N'utilisez cette action qu'en cas de blocage avéré d'un worker.</span>
+          </div>
+        </div>
+      </div>
+      <div class="ds-modal__footer">
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="post" action="/admin/queue/locks/release?domain=${domainParam}">
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_release_locks">${iconSvg("ic-refresh")} Confirmer la libération</button>
+        </form>
+      </div>
+    </dialog>
+    <dialog class="ds-modal ds-modal--danger" id="clean-completed-dialog" aria-labelledby="clean-completed-title">
+      <div class="ds-modal__header">
+        <span>${iconSvg("ic-delete")}</span>
+        <h2 id="clean-completed-title">Purger les jobs terminés ?</h2>
+      </div>
+      <div class="ds-modal__body">
+        <div class="ds-alert ds-alert--danger" role="alert">
+          <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">Nettoyage de l'historique de file</span>
+            <span>Les entrées terminées (${stats.completed}) seront supprimées de l'historique d'exécution.</span>
+          </div>
+        </div>
+      </div>
+      <div class="ds-modal__footer">
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="post" action="/admin/queue/clean?domain=${domainParam}">
+          <input type="hidden" name="mode" value="completed">
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_clean_completed">${iconSvg("ic-check")} Confirmer la purge</button>
+        </form>
+      </div>
+    </dialog>
   `;
 
   return renderLayout({
@@ -3797,7 +3943,7 @@ export function renderAgendaPage(
     </section>
 
     <!-- Direct Onboarding Modal: "Programmer une nouvelle réunion" -->
-    <dialog class="ds-modal ds-agenda-onboarding" id="schedule-meeting-dialog" ${openOnboarding ? "open" : ""} aria-labelledby="schedule-meeting-title" data-testid="schedule-meeting-dialog">
+    <dialog class="ds-modal ds-agenda-onboarding" id="schedule-meeting-dialog" ${openOnboarding ? 'data-auto-open="true"' : ""} aria-labelledby="schedule-meeting-title" data-testid="schedule-meeting-dialog">
       <form method="post" action="/agenda/schedule?domain=${domainParam}" data-testid="form-schedule-meeting">
         <div class="ds-modal__header">
           <span>${iconSvg("ic-calendar")}</span>

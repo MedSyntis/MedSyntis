@@ -1,6 +1,6 @@
 ---
 name: sre-devops-expert
-description: "SRE & DevOps specialist skill for MedSyntis. Covers Docker & Docker Compose production stacks (`dist/docker/`), Caddy & OAuth2-Proxy zero-trust ingress, GPU/VRAM capacity planning for llama.cpp/LiteLLM/Ollama/Cloud Run, Milvus & MongoDB reliability, observability/logrotate, and GitHub Actions CI/CD DevSecOps pipelines (`.github/workflows/ci.yml`)."
+description: "SRE & DevOps specialist skill for MedSyntis. Covers Docker & Docker Compose production stacks (`dist/docker/`), Caddy & OAuth2-Proxy zero-trust ingress (`medsyntis-web` `:3000` primary upstream), GPU/VRAM capacity planning for llama.cpp/LiteLLM/Ollama/Cloud Run, Milvus & MongoDB reliability, observability/logrotate, and GitHub Actions CI/CD DevSecOps pipelines (`.github/workflows/ci.yml`)."
 ---
 
 # MedSyntis SRE & DevOps Specialist Skill (`sre-devops-expert`)
@@ -16,14 +16,12 @@ The production stack is defined in [`dist/docker/compose/docker-compose.prod.yml
 ```mermaid
 graph LR
     Internet((HTTPS 443)) --> Caddy[Caddy TLS Proxy]
-    Caddy -->|forward_auth| OAuth[oauth2-proxy :4180]
-    Caddy -->|X-MedSyntis-Proxy-Secret| UI_Onco[medsyntis-ui-oncology :8501]
-    Caddy -->|X-MedSyntis-Proxy-Secret| UI_SMA[medsyntis-ui-sma :8502->8501]
-    UI_Onco --> API[medsyntis-api :8000 PriorityQueue]
-    UI_SMA --> API
-    UI_Onco --> Mongo[(MongoDB 9.0 :27017)]
-    UI_SMA --> Mongo
-    API --> Mongo
+    Caddy -->|forward_auth ingress_net| OAuth[oauth2-proxy :4180]
+    Caddy -->|oncologic.* / sma.* + X-MedSyntis-Proxy-Secret| Web[medsyntis-web :3000 Primary M3 UI]
+    Caddy -.->|optional --profile streamlit| UI_ST[medsyntis-ui-oncology / sma :8501/:8502]
+    Web -->|backend_internal| API[medsyntis-api :8000 PriorityQueue]
+    UI_ST -.-> API
+    API --> Mongo[(MongoDB 9.0 rs0 :27017)]
     API --> Milvus[(Milvus Standalone :19530)]
     API --> LiteLLM[LiteLLM Proxy :4000]
     LiteLLM --> LlamaChat[llama-cpp-chat GPU :8080]
@@ -31,39 +29,31 @@ graph LR
 ```
 
 ### Key Architectural Invariants
-1. **Multi-Domain Isolation with Shared Queue Worker**:
-   - `medsyntis-ui-oncology` (`APP_DOMAIN=oncology`) and `medsyntis-ui-sma` (`APP_DOMAIN=sma`) run as separate stateless Streamlit containers mounting domain-specific document volumes (`/data/medsyntis/oncologic` and `/data/medsyntis/sma`).
-   - `medsyntis-api` (`uvicorn app-api:app --port 8000`) mounts both domain directories and hosts the centralized `PriorityQueue` worker so GPU LLM inference is strictly serialized across domains without VRAM contention.
-2. **Loopback-Only Host Port Exposure**:
-   - Only `caddy` binds to `0.0.0.0:80` and `0.0.0.0:443` (TCP/UDP).
-   - All internal services (`mongod`, `llama-cpp-chat`, `llama-cpp-embeddings`, `litellm`, `medsyntis-ui-oncology`, `medsyntis-ui-sma`, `medsyntis-api`, `oauth2-proxy`) MUST bind host ports strictly to `127.0.0.1:<port>:<container_port>`.
+1. **Primary M3 Web BFF (`medsyntis-web`) & Centralized Queue Worker (`medsyntis-api`)**:
+   - `medsyntis-web` (`dist/docker/Dockerfile.web`, Fastify 5 on `:3000`) is the **primary clinical interface** serving both `oncologic.{$PROD_BASE_DOMAIN}` and `sma.{$PROD_BASE_DOMAIN}` via domain-injected headers from Caddy (`X-MedSyntis-Domain`).
+   - Legacy Streamlit containers (`medsyntis-ui-oncology` and `medsyntis-ui-sma` on `:8501`/`:8502`) are deprecated and gated behind the optional `--profile streamlit` (`oncologic-st.*` / `sma-st.*`).
+   - `medsyntis-api` (`dist/docker/Dockerfile.api`, `uvicorn app-api:app --port 8000`) mounts both domain directories (`/data/medsyntis/oncologic` and `/data/medsyntis/sma`) and hosts the centralized `PriorityQueue` worker so GPU LLM inference is strictly serialized across domains without VRAM contention.
+2. **Network Segmentation & Loopback-Only Host Port Exposure**:
+   - External traffic terminates at `caddy` (`0.0.0.0:80` and `0.0.0.0:443`) on `ingress_net` alongside `oauth2-proxy`.
+   - Internal application, database, and LLM containers communicate over `backend_internal` (`internal: true`, blocking direct outbound internet egress) plus `milvus` for vector search.
+   - Every host-mapped diagnostic port (`mongod`, `llama-cpp-chat`, `llama-cpp-embeddings`, `litellm`, `medsyntis-web`, `medsyntis-api`, `oauth2-proxy`, `medsyntis-ui-*`) MUST bind strictly to `127.0.0.1:<port>:<container_port>`.
 
 ---
 
-## 2. Container Security & Hardening (`dist/docker/Dockerfile` & Compose)
+## 2. Container Security & Zero-Trust Hardening (`dist/docker/`)
 
-1. **Non-Root Execution & Capability Dropping**:
-   - [`dist/docker/Dockerfile`](../../../dist/docker/Dockerfile) runs on `python:3.14-slim` as non-root `appuser` (`UID=1002`, `GID=1002`) with `UV_PYTHON_DOWNLOADS=never` and `uv sync --frozen --no-dev`.
-   - In `docker-compose.prod.yml`, `x-ui-common` enforces:
-     - `userns_mode: "keep-id"`
-     - `cap_drop: ["ALL"]`
-2. **Fail-Fast Secret Enforcement**:
-   - Never provide weak defaults for production secrets in `docker-compose.prod.yml`. Always use mandatory variable expansion:
-     - `${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env.prod}`
-     - `${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}`
-     - `${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}`
-   - In `litellm-config.prod.yaml` and `litellm` env, always enforce `LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY: "false"`.
+1. **Multi-Stage Non-Root Dockerfiles & Pinned Tags**:
+   - [`dist/docker/Dockerfile.api`](../../../dist/docker/Dockerfile.api) and [`dist/docker/Dockerfile`](../../../dist/docker/Dockerfile) use multi-stage `python:3.13-slim-trixie` builds with pinned `ghcr.io/astral-sh/uv:0.13.7` so compilers (`build-essential`, `gcc`) are never retained in the runtime image; both run as non-root `appuser` (`UID=1002`, `GID=1002`) with `HEALTHCHECK` probes.
+   - [`dist/docker/Dockerfile.web`](../../../dist/docker/Dockerfile.web) uses multi-stage `node:26-trixie-slim` with `npm ci --omit=dev`, strips package managers (`npm`/`npx`/`corepack`) and build-only `styleguide/` assets from runtime, and runs under `dumb-init` as `appuser` (`UID=1002`).
+   - In `docker-compose.prod.yml`, services enforce `cap_drop: ["ALL"]`, `security_opt: ["no-new-privileges:true"]` (with minimal `cap_add` only where required by `mongod` and `caddy`), and explicit version tags (e.g., `ghcr.io/berriai/litellm:v1.108.4` — never `:main-latest`).
+2. **Fail-Fast Secret Enforcement & Zero Telemetry**:
+   - Mandatory `${VAR:?...}` expansion is enforced in `docker-compose.prod.yml` for `OAUTH2_PROXY_CLIENT_ID`, `OAUTH2_PROXY_CLIENT_SECRET`, `OAUTH2_PROXY_COOKIE_SECRET`, `APP_MONGODB_PASSWORD`, `LITELLM_MASTER_KEY`, `APP_API_TOKEN`, and `APP_PROXY_SECRET` (`make init-prod` generates cryptographic secrets into `.env.prod` with `chmod 0600`).
+   - All services disable outbound telemetry and runtime model hub downloads (`LITELLM_TELEMETRY="False"`, `telemetry: false` in `litellm-config*.yaml`, `HF_HUB_OFFLINE="1"`, `TRANSFORMERS_OFFLINE="1"`, `ANONYMIZED_TELEMETRY="False"`, `SCARF_NO_ANALYTICS="true"`, `DO_NOT_TRACK="1"`).
 3. **Zero-Trust Caddy + OAuth2 Proxy Ingress (`dist/docker/compose/Caddyfile`)**:
-   - Before calling `import oauth_forward`, Caddy MUST strip any client-forged identity headers:
-     ```caddyfile
-     request_header -X-Auth-Request-User
-     request_header -X-Auth-Request-Email
-     request_header -X-Auth-Request-Preferred-Username
-     request_header -X-Forwarded-User
-     request_header -X-Forwarded-Email
-     request_header -X-Forwarded-Preferred-Username
-     ```
-   - After `forward_auth` succeeds, Caddy injects `header_up X-MedSyntis-Proxy-Secret {$APP_PROXY_SECRET}`, which `app-ui.py` verifies using `hmac.compare_digest()`.
+   - Enforces `Strict-Transport-Security "max-age=31536000; includeSubDomains"` (`(security_headers)`).
+   - Strips client-spoofed headers (`-X-Forwarded-For`, `-X-MedSyntis-Domain`, `-X-MedSyntis-Proxy-Secret`, `-X-Auth-Request-*`, `-X-Forwarded-User/Email/Preferred-Username`) via `(strip_spoofed_headers)` across all upstreams (`oncologic.*`, `sma.*`, `oncologic-st.*`, `sma-st.*`) before `forward_auth`, then injects trusted `X-MedSyntis-Domain` and `X-MedSyntis-Proxy-Secret`.
+4. **Least-Privilege Host Sudoers & Staging (`dist/sudoers/medsyntis`, `Makefile`)**:
+   - Never use `chmod 777` on host volumes (use `0750`/`0700`) or wildcard `*` rules in `/etc/sudoers.d/medsyntis`; restrict `NOPASSWD` strictly to `/usr/sbin/logrotate /etc/logrotate.d/medsyntis` and stage root-owned configs via `mktemp` (`0600`) + `sudo install`.
 
 ---
 
@@ -71,45 +61,34 @@ graph LR
 
 1. **24 GB VRAM Budget (NVIDIA L4 Profile)**:
    - **Reasoning Server (`llama-cpp-chat`)**:
-     - Runs `Ornith-1.5-35B-A3B-IQ4_XS.gguf` (~19.3 GB weights) on GPU (`-ngl 99`, `--flash-attn on`).
-     - Quantizes KV cache (`--cache-type-k q4_0 --cache-type-v q4_0`) to fit a `64000` context window within ~1.5–2 GB VRAM.
-     - Caps reasoning loops via `--reasoning-format deepseek --reasoning-budget 6144` to prevent runaway thinking tokens from exhausting context or hanging jobs.
-     - Strips CUDA forward-compat libraries (`rm -rf /usr/local/cuda*/compat && ldconfig`) in the entrypoint when host drivers are newer than the container's compat package.
+     - Verifies `/models/Ornith-1.5-35B-A3B-IQ4_XS.gguf` exists locally (failing fast with exit code `1` if missing rather than downloading from HuggingFace), loads weights onto GPU (`-ngl 99`, `--flash-attn on`), quantizes KV cache (`q4_0`) for a `64000` context window, and bounds reasoning tokens (`--reasoning-budget 6144`).
    - **Embeddings Server (`llama-cpp-embeddings`)**:
-     - Runs `bge-m3` strictly on CPU (`-ngl 0`, `-c 8192`, `-b 8192`, `-ub 8192`) so embedding requests during RAG retrieval never compete with the main LLM for GPU VRAM.
+     - Verifies `/models/bge-m3-Q4_K_M.gguf` (or `F16`/`FP16`) exists locally (failing fast in prod if missing) and runs strictly on CPU (`-ngl 0`, `-c 8192`) so RAG embeddings never contend with chat inference for GPU VRAM.
    - **LiteLLM Unified Gateway (`litellm-config.prod.yaml`)**:
-     - Exposes `openai/agents` (`-> http://llama-cpp-chat:8080/v1`) and `openai/embeddings` (`-> http://llama-cpp-embeddings:8080/v1`) with `drop_params: true`.
-2. **Cloud Run GPU Benchmarking (`dist/gcloud_test/`)**:
-   - Contains declarative Cloud Run GPU service manifests (`cloud-run-service-*.yaml`) and GCS model sync utilities (`dist/gcloud_test/gcs/`) for testing models on L4 GPUs. Never send real patient data to remote test endpoints.
+     - Exposes `openai/agents` (`-> http://llama-cpp-chat:8080/v1`) and `openai/embeddings` (`-> http://llama-cpp-embeddings:8080/v1`) with `drop_params: true` and `telemetry: false`.
+2. **Cloud Run Dev Tunnel Guardrail (`Makefile`)**:
+   - Local developer targets (`cloudrun-proxy`, `start-web-dev`, `start-ui-dev`) require explicit `APP_ALLOW_REMOTE_LLM=true` and display a GDPR/HDS warning forbidding real patient data (PHI) over remote test tunnels.
 
 ---
 
-## 4. Database Reliability, Observability & Log Management
+## 4. Database Reliability, Backups & Observability
 
 1. **MongoDB (`medsyntis-mongod`)**:
-   - Runs `mongodb/mongodb-community-server:9.0-ubuntu2204` with `oom_score_adj: 200`, `GLIBC_TUNABLES: glibc.pthread.rseq=1`, and a `mongosh` ping healthcheck (`interval: 10s`, `retries: 5`).
-   - Downstream services (`medsyntis-ui-*`, `medsyntis-api`) must wait on `mongod: condition: service_healthy`.
+   - Runs `mongodb/mongodb-community-server:9.0-ubuntu2204` (`--replSet rs0`) protected from Linux OOM killer eviction via `oom_score_adj: -500` and verified via `mongosh` healthchecks.
 2. **Milvus Standalone (`dist/docker/compose/milvus-standalone-docker-compose.yml`)**:
-   - Orchestrates `milvus-etcd`, `milvus-minio`, and `milvus-standalone` (`:19530` gRPC, `:9091` healthcheck) on the `milvus` bridge network.
-3. **Structured Logging & Rotation**:
-   - Production containers log in structured JSON (`APP_LOG_TYPE: json`) to `/var/log/medsyntis/medsyntis-{oncology,sma,api}.log` with internal rotation (`APP_LOG_MAX_BYTES: 10485760`, `APP_LOG_BACKUP_COUNT: 5`).
-   - Docker daemon logging uses `json-file` with `max-size: 20m`, `max-file: 5`, `compress: "true"`.
-   - Host logrotate policy is maintained in [`dist/logrotate/medsyntis`](../../../dist/logrotate/medsyntis).
+   - Orchestrates `milvus-etcd`, `milvus-minio`, and `milvus-standalone` (`:19530` gRPC, `:9091` healthcheck) on the `milvus` network.
+3. **Backups & Structured Log Rotation**:
+   - `make backup-prod` creates `0700` timestamped archives containing `mongodump --oplog`, domain PDFs/Milvus metadata, and `SHA256SUMS`.
+   - Production services write structured JSON logs to `${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/logs`, rotated by [`dist/logrotate/medsyntis`](../../../dist/logrotate/medsyntis).
 
 ---
 
 ## 5. CI/CD & DevSecOps Pipeline (`.github/workflows/ci.yml`)
 
-Every change to `application/`, `dist/docker/`, or `.github/workflows/ci.yml` must satisfy the CI pipeline gates:
-1. **Dependency & Lockfile Integrity**:
-   - Always use `uv sync --frozen` against `application/uv.lock` (never unpinned `pip install`).
-2. **Static Analysis & Formatting**:
-   - `uv run --frozen ruff format . --check`
-   - `uv run --frozen ruff check .`
-   - `uv run --frozen pyrefly check src`
-3. **Automated Tests & Coverage**:
-   - `PYTHONPATH=. uv run --frozen pytest --timeout=300 --cov=src --cov-report=xml:coverage.xml tests/ src/`
-4. **Vulnerability & Secret Scanning (Trivy)**:
-   - `aquasecurity/trivy-action` scans the filesystem for `CRITICAL,HIGH` CVEs and leaked secrets (`scanners: "vuln,secret"`, `exit-code: "1"`), respecting `.trivyignore`.
-5. **Container Build Verification**:
-   - `docker build -f dist/docker/Dockerfile` must succeed cleanly on every PR and push.
+Every change across `application/`, `web/`, `dist/`, or `.github/workflows/` must pass:
+1. **Python Quality & Test Gate**: `uv sync --frozen`, `ruff format --check`, `ruff check`, `pyrefly check src`, `pytest --cov=src` on `application/tests/`.
+2. **Web M3 Quality, Unit & E2E Gate**: `npm --prefix web ci`, `npm --prefix web run lint` (Biome + `tsc --noEmit` + WCAG contrast check), `npm --prefix web run test` (Vitest), and `npm --prefix web run e2e` (Playwright).
+3. **Security & Container Build Gate**:
+   - `aquasecurity/trivy-action` (`scanners: "vuln,secret"`, `exit-code: "1"`) scanning `application/`, `web/`, and root `dist/` (`skip-dirs` excludes `web/dist`, not `**/dist`).
+   - `docker build` verification for `Dockerfile.api`, `Dockerfile.web`, and `Dockerfile`; GHCR image push runs strictly on `push` to `refs/heads/main` with job-scoped `packages: write`.
+   - `sonarcloud` runs only when both Python and Web test jobs succeed (`&&`).

@@ -58,6 +58,13 @@ export const MTD_COMPLETENESS_SELECT_OPTIONS: FieldSelectOption[] = [
   { value: "false", labelFr: "Non", labelEn: "No" },
 ];
 
+export const CARE_ORIENTATION_PRIORITY_OPTIONS: FieldSelectOption[] = [
+  { value: "high", labelFr: "Priorité haute (Urgent)", labelEn: "High priority (Urgent)" },
+  { value: "medium", labelFr: "Priorité modérée (Semi-urgent)", labelEn: "Moderate priority" },
+  { value: "low", labelFr: "Priorité standard", labelEn: "Standard priority" },
+  { value: "none", labelFr: "Non évaluée", labelEn: "Not assessed" },
+];
+
 const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
   PatientAdministrative: [
     { key: "last_name", inputType: "text", nullable: false, defaultValue: "" },
@@ -726,6 +733,46 @@ const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
       inputType: "textarea",
       nullable: true,
       defaultValue: null,
+    },
+  ],
+  CareOrientationProposal: [
+    {
+      key: "care_adaptation_suggested",
+      inputType: "boolean",
+      nullable: false,
+      defaultValue: false,
+      options: BOOLEAN_SELECT_OPTIONS,
+    },
+    {
+      key: "suggested_priority",
+      inputType: "select",
+      nullable: false,
+      defaultValue: "medium",
+      options: CARE_ORIENTATION_PRIORITY_OPTIONS,
+    },
+    {
+      key: "priority_reason",
+      inputType: "textarea",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Justification clinique du niveau de priorité proposé",
+      placeholderEn: "Clinical rationale for the suggested priority level",
+    },
+    {
+      key: "proposed_care_type",
+      inputType: "text",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Ex : Chimiothérapie 2e ligne, Réévaluation après TEP-TDM",
+      placeholderEn: "E.g. Second-line chemotherapy, Re-evaluation after PET-CT",
+    },
+    {
+      key: "orientation_rationale",
+      inputType: "textarea",
+      nullable: true,
+      defaultValue: null,
+      placeholderFr: "Argumentaire collégial pré-RCP et références aux référentiels",
+      placeholderEn: "Pre-MDT clinical orientation rationale and guideline references",
     },
   ],
 };

@@ -6,43 +6,46 @@ Welcome to the **MedSyntis** development guidelines for AI agents and coding ass
 
 ## 📖 Project Overview & Tech Stack
 
-MedSyntis is a secure, open-source, local-first web application designed for clinical professionals (surgeons, doctors, oncologists, and rare disease specialists) in France. It leverages local Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) to:
-1. **Analyze Patient Records (MTDs)** to extract clinical and administrative info.
-2. **Detect Missing Records** to flag incomplete patient files.
-3. **Assess Case Urgency** and recommend an optimized MDT/RCP meeting order.
-4. **Integrate Scientific Reference guidelines** (TNCD - Thésaurus National de Cancérologie Digestive) to support clinical decision-making.
+MedSyntis is a secure, open-source, 100% local-first clinical web application designed for hospital Multidisciplinary Team Meetings (**MDT / RCP — Réunions de Concertation Pluridisciplinaire**) in **Digestive Oncology** and **Spinal Muscular Atrophy (SMA) / Rare Neuromuscular Diseases**. It leverages local Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) to:
+1. **Analyze Patient Records (`PatientMDTForm`)** to extract structured clinical, biological/genetic, and administrative information across longitudinal MDT sessions.
+2. **Detect Missing Records (`MTDCompleted`)** to flag incomplete patient files before the board meeting.
+3. **Assess Case Urgency & Schedule Sessions (`MDTAgenda`)** to recommend an optimized MDT passage order and verify specialist quorum.
+4. **Integrate National Scientific Reference Guidelines** — **TNCD** (*Thésaurus National de Cancérologie Digestive*) for Digestive Oncology and **PNDS** (*Protocole National de Diagnostic et de Soins*) for Spinal Muscular Atrophy (SMA) — to ground pre-MDT clinical synthesis.
 
 ### Technical Stack & Key Dependencies
-- **Core Runtime**: Python `>=3.13` (strictly enforced in `pyproject.toml`; note that legacy `HOW-TO-CONTRIBUTE.md` may mention `3.11.X`, but `pyproject.toml` is the source of truth) and Node.js `>=26` for the Material Design 3 Web UI (`web/`).
-- **Material Design 3 Web UI (`web/`)**: Fastify 5 (`fastify`, `@fastify/cookie`, `@fastify/formbody`, `@fastify/multipart`, `@fastify/static`), TypeScript 5.8, self-hosted `ds-*` Design System (WCAG 2.2 AA Light/Dark/Auto themes), Vitest, and Playwright E2E.
-- **Legacy Frontend Dashboard (`application/`)**: Streamlit (`streamlit>=1.66.1`, `streamlit-pdf-viewer`, `streamlit-authenticator`).
-- **Orchestration**: LangChain (`langchain-core`, `langchain-ollama`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`).
+- **Core Runtime**: Python `>=3.13` (strictly enforced in `application/pyproject.toml` and `application/.python-version`) and Node.js `>=26` (`web/package.json`) for the primary Material Design 3 Web UI (`web/`).
+- **Primary Material Design 3 Web UI (`web/`)**: Fastify 5 (`fastify`, `@fastify/cookie`, `@fastify/formbody`, `@fastify/multipart`), TypeScript 7, `zod` 4, `marked` 18, `echarts` 6, self-hosted `ds-*` Design System (WCAG 2.2 AA Light/Dark/Auto themes, strict zero-CDN CSP), Biome 2, Vitest 5, and Playwright E2E.
+- **Legacy / Deprecated Frontend Dashboard (`application/src/ui/`, `application/app-ui.py`)**: Streamlit (`streamlit>=1.66.1`, `streamlit-pdf-viewer`, `streamlit-authenticator`). **Deprecated** in favor of `web/`; maintained only as an optional legacy profile (`--profile streamlit`).
+- **Backend API & Orchestration (`application/`)**: FastAPI (`application/app-api.py`), Uvicorn, `pydantic-settings`, and LangChain (`langchain-core`, `langchain-litellm`, `langchain-openai`, `langchain-ollama`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`).
 - **Vector Search Databases**:
-  - Milvus (`pymilvus>=3.0.2`, `langchain-milvus>=0.4.0`) for main retrieval.
-  - Chroma (`chromadb>=1.5.9`, `langchain-chroma`) as alternative.
-- **Relational / Document DB**: MongoDB (`pymongo>=4.19.0`, `langchain-mongodb`) for caching and storing patient records meta-information.
-- **Document Parsers**: Docling (`docling-core`), MuPDF (`pymupdf`), Ollama OCR (`ollama-ocr`), OpenParse (`openparse`).
-- **Local LLM Engine**: Ollama (`mistral-nemo` for reasoning, `granite3.2-vision` for OCR, `nomic-embed-text` / `all-MiniLM-L6-v2` for embeddings).
+  - Milvus Standalone `v3.0.4` (`pymilvus>=3.0.2`, `langchain-milvus>=0.4.0`) for primary domain-scoped retrieval.
+  - Chroma (`chromadb>=1.5.9`, `langchain-chroma`) as lightweight local/test alternative.
+- **Document & Metadata DB**: MongoDB `9.0` Replica Set (`pymongo>=4.19.0`, `langchain-mongodb`) for domain-scoped `PatientRecord`, `PatientMDTForm`, `MDTAgenda`, `BugReport`, and OCR document caches.
+- **Document Parsers**: Docling (`docling`, `docling-core`), PyMuPDF (`pymupdf`), Ollama OCR (`ollama-ocr`), and OpenParse (`openparse`).
+- **Local LLM Serving Engine**:
+  - **LiteLLM Gateway + `llama.cpp` (Default / Production on NVIDIA L4 24 GB)**: `Ornith-1.5-35B-A3B-IQ4_XS.gguf` on GPU (`llama-cpp-chat`) for clinical extraction/reasoning and `bge-m3-Q4_K_M.gguf` on CPU (`llama-cpp-embeddings`) for vector embeddings.
+  - **Local Ollama (Alternative Dev Stack)**: `mistral-nemo` for reasoning, `granite3.2-vision` for VLM OCR, and `nomic-embed-text` for embeddings.
 
 ---
 
 ## 🛠️ Executable Commands & Development Workflows
 
-All development operations must follow these exact shell commands. Standard prefix-hooks automatically optimize performance.
+All commands below are designed to execute cleanly from the **repository root** (`/home/guillaume/git/oncoflow`):
 
-| Operation | Command | Purpose |
+| Operation | Command (from repo root) | Purpose |
 | :--- | :--- | :--- |
 | **Verify Tooling** | `rtk --version` | Verify the Rust Token Killer utility |
 | **Environment Check** | `rtk gain` | View token analytics and dev operation savings |
 | **Docker Compose** | `docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d` | Spin up local Milvus Standalone database |
-| **Install Dependencies**| `uv pip install -e .` or `uv sync` | Fast dependency resolution using `uv` |
-| **Run Linter** | `ruff check src/` | Lint python files with Ruff rules |
-| **Format Code** | `ruff format src/` | Format python files according to PEP8 |
+| **Install Python Deps** | `uv sync --project application` | Install locked Python dependencies in `application/.venv` |
+| **Run Python Linter** | `uv run --project application ruff check application/src/` | Lint Python files with Ruff rules |
+| **Format Python Code** | `uv run --project application ruff format application/src/` | Format Python files according to PEP8 |
 | **Run Git Hooks** | `prek run` or `make hooks` | Run Git pre-commit hooks (Rust-native `prek`) |
-| **Run Unit Tests** | `pytest src/application/agent/tests/` | Run test suite for the LangChain agent |
-| **Run App Dev Mode** | `uv run streamlit run app-ui.py` | Start Streamlit UI server locally |
-| **Web UI Install** | `npm --prefix web ci` | Install Node.js dependencies for the M3 Web UI |
-| **Web UI Lint & WCAG** | `npm --prefix web run lint` | Run Biome, TypeScript typecheck, and WCAG contrast check |
+| **Run Python Tests** | `uv run --project application pytest application/tests/` | Run Pytest unit & integration test suite |
+| **Run Primary Web UI** | `make start-web` (or `npm --prefix web run dev`) | Start FastAPI (`:8000`) + Primary M3 Web UI (`:3000`) |
+| **Run Legacy Streamlit**| `uv run --project application streamlit run application/app-ui.py` | Start deprecated legacy Streamlit UI locally (`:8501`) |
+| **Web UI Install** | `npm --prefix web ci` | Install locked Node.js dependencies for the M3 Web UI |
+| **Web UI Lint & WCAG** | `npm --prefix web run lint` | Run Biome, TypeScript typecheck, and WCAG 2.2 AA contrast check |
 | **Web UI Unit/Int Tests**| `npm --prefix web run test` | Run Vitest unit & Fastify BFF integration tests |
 | **Web UI E2E Tests** | `npm --prefix web run e2e` | Run Playwright E2E clinical & mobile journeys |
 
@@ -50,14 +53,14 @@ All development operations must follow these exact shell commands. Standard pref
 
 ## 🛡️ Critical Boundaries & Rules (MUST NEVER VIOLATE)
 
-> [!CAUTION] **Patient Data Privacy (Local-Only Execution)**
-> MedSyntis deals with highly confidential medical data. **Never use public APIs or remote cloud services** (like OpenAI, Anthropic, or external embedding servers) for parsing or model invocation. All operations must run locally via local Docker services (Milvus, MongoDB) or local Ollama instances to guarantee hospital data compliance.
+> [!CAUTION] **Patient Data Privacy (100% Local-Only Execution)**
+> MedSyntis processes highly confidential medical records. **Never use public APIs or remote cloud services** (such as OpenAI, Anthropic, Google Cloud, or hosted embedding servers) for parsing or model invocation with patient data. All production operations must run 100% locally via local Docker services (Milvus, MongoDB) and local LLM servers (`LiteLLM` + `llama.cpp` or local `Ollama`) with `APP_ALLOW_REMOTE_LLM=false`.
 
 > [!WARNING] **Dependency Synchronization**
-> Always respect `pyproject.toml` dependencies. Do not use ad-hoc versions. Use `uv.lock` to pin dependencies.
+> Always respect `application/pyproject.toml` (`application/uv.lock`) and `web/package.json` (`web/package-lock.json`). Never install unpinned ad-hoc packages.
 
 > [!IMPORTANT] **Model Identifier Check**
-> Do not assume model identifiers are available or guess their configurations. Always fall back to `AppConfig.llm` parsed environment configurations.
+> Never hardcode or guess model identifiers. Always resolve LLM and embedding configurations dynamically from `AppConfig.llm`.
 
 ---
 
@@ -88,7 +91,7 @@ graph TD
 ```
 
 ### 1. 🐍 Python Developer
-- **Domain**: Advanced python constructs, LangChain API usage, database connection pools, parser performance.
+- **Domain**: Advanced Python constructs, LangChain API usage, database connection pools, parser performance.
 - **Location**: [python-developer/SKILL.md](.agents/skills/python-developer/SKILL.md)
 
 ### 2. ✍️ LLM Prompting Engineer
@@ -102,7 +105,7 @@ graph TD
   - Skill: [product-owner/SKILL.md](.agents/skills/product-owner/SKILL.md)
 
 ### 4. 🩺 Doctor (Clinical Expert)
-- **Domain**: Medical nomenclature, oncology staging relevance, TNCD standard checks, clinical correlation validity.
+- **Domain**: Medical nomenclature, oncology staging relevance (TNCD), SMA neuromuscular follow-up (PNDS), clinical correlation validity.
 - **Location**: [doctor/SKILL.md](.agents/skills/doctor/SKILL.md)
 
 ### 5. 🚀 CI Expert
@@ -110,27 +113,27 @@ graph TD
 - **Location**: [ci-expert/SKILL.md](.agents/skills/ci-expert/SKILL.md)
 
 ### 6. 🌐 Infrastructure Expert
-- **Domain**: Standalone Docker services, database connections (Milvus, MongoDB, ChromaPersistent), hardware acceleration, and memory footprint constraints.
+- **Domain**: Standalone Docker services, database connections (Milvus, MongoDB, Chroma), hardware acceleration, and memory footprint constraints.
 - **Location**: [infrastructure-expert/SKILL.md](.agents/skills/infrastructure-expert/SKILL.md)
 
 ### 7. 🎯 Quality Expert
-- **Domain**: Unit test coverage, exception safety, logging consistency, and edge-case validation.
+- **Domain**: Unit test coverage, exception safety, logging consistency (`APP_LOG_LEVEL`), and edge-case validation.
 - **Location**: [quality-expert/SKILL.md](.agents/skills/quality-expert/SKILL.md)
 
 ### 8. 🎨 UI / UX Expert (`ui-ux-expert` Subagent & Skill)
-- **Domain**: MedSyntis brand identity, hospital-grade clinical ergonomics (zero-friction readability for physicians and RCP medical secretaries), slate/teal/sage/rose color palette, destructive action semantics (`btn_del_` / `btn_danger_`), Dark Mode portal CSS safety, and Streamlit view architecture (`src/ui/` and `app-ui.py`).
+- **Domain**: MedSyntis brand identity, hospital-grade clinical ergonomics (zero-friction readability for physicians and MDT medical secretaries), primary Material Design 3 Web UI (`web/`, `ds-*` tokens, WCAG 2.2 AA Light/Dark/Auto), and legacy deprecated Streamlit views (`application/src/ui/` and `application/app-ui.py`).
 - **Locations**:
   - Subagent: [ui-ux-expert.md](.agents/agents/ui-ux-expert.md)
   - Skill: [ui-ux-expert/SKILL.md](.agents/skills/ui-ux-expert/SKILL.md)
 
 ### 9. 🔌 API Expert (`medsyntis-api-expert` Subagent & `api-expert` Skill)
-- **Domain**: Cross-Domain FastAPI architecture (`app-api.py`, `src/routers/`, `src/models/`), `PriorityQueue` SSE streaming (`EventSourceResponse`), multi-domain middleware (`AllowedDomainMiddleware`), dependency injection (`Annotated[..., Depends(...)]`), OpenAPI 3.1 contracts, and Hexagonal/DDD router refactoring.
+- **Domain**: Cross-Domain FastAPI architecture (`application/app-api.py`, `application/src/routers/`, `application/src/models/`), `PriorityQueue` SSE streaming (`EventSourceResponse`), multi-domain middleware (`AllowedDomainMiddleware`), dependency injection (`Annotated[..., Depends(...)]`), OpenAPI 3.1 contracts, and Hexagonal/DDD router boundaries.
 - **Locations**:
   - Subagent: [api-expert.md](.agents/agents/api-expert.md)
   - Skill: [api-expert/SKILL.md](.agents/skills/api-expert/SKILL.md)
 
 ### 10. 🛡️ SRE & DevOps Specialist (`sre-devops-expert` Subagent & Skill)
-- **Domain**: Production Docker & Docker Compose stacks (`dist/docker/`), container security hardening (`cap_drop: ALL`, `userns_mode: keep-id`, loopback port bindings), Zero-Trust Caddy + OAuth2-Proxy SSO ingress (`Caddyfile`), GPU/VRAM capacity planning (`llama.cpp` on L4 24GB + CPU `bge-m3` embeddings + `LiteLLM` gateway + Cloud Run GPU manifests), MongoDB & Milvus high availability, structured JSON logging/logrotate, and GitHub Actions DevSecOps pipelines (`.github/workflows/ci.yml` with `uv`, `ruff`, `pyrefly`, `pytest`, `Trivy`, and GHCR).
+- **Domain**: Production Docker & Docker Compose stacks (`dist/docker/`), container security hardening (`cap_drop: ALL`, `no-new-privileges`, loopback port bindings, `backend_internal` network isolation), Zero-Trust Caddy + OAuth2-Proxy SSO ingress (`Caddyfile`), GPU/VRAM capacity planning (`llama.cpp` on L4 24GB + CPU `bge-m3` embeddings + `LiteLLM` gateway), MongoDB & Milvus reliability, structured JSON logging/logrotate, and GitHub Actions DevSecOps pipelines (`.github/workflows/ci.yml`).
 - **Locations**:
   - Subagent: [sre-devops-expert.md](.agents/agents/sre-devops-expert.md)
   - Skill: [sre-devops-expert/SKILL.md](.agents/skills/sre-devops-expert/SKILL.md)
@@ -142,7 +145,7 @@ graph TD
   - Skill: [github-issue-architect/SKILL.md](.agents/skills/github-issue-architect/SKILL.md)
 
 ### 12. ⚖️ French GDPR & Medical-Legal Expert (`legal-gdpr-expert` Subagent & Skill)
-- **Domain**: French & European health data protection (**RGPD / GDPR**, **Loi Informatique et Libertés Art. 64–70**, **CNIL** health referentials, **HDS Art. L. 1111-8 CSP**, **PGSSI-S**), French Public Health Code (**Secret médical & Équipe de soins Art. L. 1110-4 / L. 1110-12 CSP**, **Garantie Humaine IA Art. L. 4001-2 CSP**, **Organisation des RCP Art. D. 6124-131 CSP / INCa / HAS / TNCD / PNDS**), **EU Medical Device Regulation (MDR 2017/745 Rule 11 & MDCG 2019-11)** non-prescriptive positioning, and **EU AI Act (2024/1689)** human oversight, transparency, and anti-hallucination grounding. Delivers structured 5-part regulatory & medico-legal opinions (*Avis motivés*).
+- **Domain**: French & European health data protection (**RGPD / GDPR**, **Loi Informatique et Libertés Art. 64–70**, **CNIL** health referentials, **HDS Art. L. 1111-8 CSP**, **PGSSI-S**), French Public Health Code (**Secret médical & Équipe de soins Art. L. 1110-4 / L. 1110-12 CSP**, **Garantie Humaine IA Art. L. 4001-2 CSP**, **Organisation des RCP Art. D. 6124-131 CSP / INCa / HAS / TNCD / PNDS**), **EU Medical Device Regulation (MDR 2017/745 Rule 11 & MDCG 2019-11)** non-prescriptive positioning, and **EU AI Act (2024/1689)** human oversight, transparency, and anti-hallucination grounding.
 - **Locations**:
   - Subagent: [legal-gdpr-expert.md](.agents/agents/legal-gdpr-expert.md)
   - Skill: [legal-gdpr-expert/SKILL.md](.agents/skills/legal-gdpr-expert/SKILL.md)
@@ -187,6 +190,6 @@ Context7 provides a CLI wizard to search, install, and generate modular skills f
 ## 🚫 Streamlit Architectural Boundary (CRITICAL RULE)
 
 > [!CAUTION]
-> **IL EST FORMELLEMENT INTERDIT DE FAIRE DU STREAMLIT EN DEHORS DE L'ui.**
-> L'importation de la bibliothèque `streamlit` (`import streamlit as st`) ou l'utilisation de `st.session_state` est strictement limitée aux fichiers et sous-répertoires situés sous `src/ui/`.
-> Le code de base de l'application (`src/application/`, `src/infrastructure/`, `src/domain/`) doit rester neutre et exempt de tout couplage direct avec Streamlit pour garantir la modularité et la testabilité du système.
+> **STREAMLIT IS STRICTLY FORBIDDEN OUTSIDE THE LEGACY UI ADAPTER LAYER (`application/src/ui/`).**
+> Importing `streamlit` (`import streamlit as st`) or referencing `st.session_state` is strictly restricted to `application/app-ui.py` and files under `application/src/ui/` (which is deprecated in favor of the primary Material Design 3 Web UI in `web/`).
+> Core backend layers (`application/src/domain/`, `application/src/application/`, `application/src/infrastructure/`, and `application/src/routers/`) MUST remain 100% framework-neutral and completely free of any Streamlit coupling to preserve Hexagonal/DDD modularity and testability (`application/tests/test_ddd_architecture.py`).

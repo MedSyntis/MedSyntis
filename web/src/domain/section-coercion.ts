@@ -212,6 +212,46 @@ export function coerceSelectValue(
     const uw = options.find((o) => o.value.includes("Underweight"));
     if (uw) return uw.value;
   }
+  // Priority level / PatientPriority enum aliases
+  if (
+    rawLower === "high" ||
+    rawLower === "urgent" ||
+    rawLower.includes("high-priority") ||
+    rawLower.includes("urgently") ||
+    (rawLower.includes("urgent") && !rawLower.includes("semi") && !rawLower.includes("not urgent"))
+  ) {
+    const hi = options.find(
+      (o) =>
+        o.value === "high" ||
+        o.value.toLowerCase().includes("high-priority") ||
+        o.value.toLowerCase().includes("urgently"),
+    );
+    if (hi) return hi.value;
+  }
+  if (
+    rawLower === "medium" ||
+    rawLower.includes("semi-urgent") ||
+    rawLower.includes("soon as possible") ||
+    rawLower.includes("modérée")
+  ) {
+    const med = options.find(
+      (o) =>
+        o.value === "medium" ||
+        o.value.toLowerCase().includes("semi-urgent") ||
+        o.value.toLowerCase().includes("soon as possible"),
+    );
+    if (med) return med.value;
+  }
+  if (rawLower === "low" || rawLower.includes("not urgent") || rawLower.includes("standard")) {
+    const lo = options.find(
+      (o) => o.value === "low" || o.value.toLowerCase() === "patient is not urgent",
+    );
+    if (lo) return lo.value;
+  }
+  if (rawLower === "none" || rawLower === "no answer" || rawLower === "not_given") {
+    const noneOpt = options.find((o) => o.value === "none" || o.value === "no answer");
+    if (noneOpt) return noneOpt.value;
+  }
   return fallback;
 }
 
@@ -351,6 +391,93 @@ export function coerceSectionUpdatePayload(
     ...rawBody,
   };
 
+  if (canonical === "CareOrientationProposal") {
+    const normalizeSuggestedPriority = (raw: unknown): "high" | "medium" | "low" | "none" => {
+      const s = String(raw ?? "")
+        .trim()
+        .toLowerCase();
+      if (
+        s === "high" ||
+        s === "urgent" ||
+        s.includes("high-priority") ||
+        s.includes("urgently") ||
+        (s.includes("urgent") && !s.includes("semi") && !s.includes("not urgent")) ||
+        s.includes("priorité haute") ||
+        s.includes("priorite haute")
+      ) {
+        return "high";
+      }
+      if (
+        s === "medium" ||
+        s === "semi-urgent" ||
+        s.includes("semi-urgent") ||
+        s.includes("as soon as possible") ||
+        s.includes("priorité modérée") ||
+        s.includes("priorite moderee")
+      ) {
+        return "medium";
+      }
+      if (
+        s === "low" ||
+        s === "standard" ||
+        s.includes("not urgent") ||
+        s.includes("priorité standard") ||
+        s.includes("priorite standard")
+      ) {
+        return "low";
+      }
+      return "none";
+    };
+
+    const rawAdapt =
+      rawBody.care_adaptation_suggested !== undefined
+        ? rawBody.care_adaptation_suggested
+        : existingSectionData.care_adaptation_suggested;
+    const careAdaptationSuggested = coerceBooleanValue(rawAdapt, false);
+
+    const rawPrio =
+      rawBody.suggested_priority !== undefined
+        ? rawBody.suggested_priority
+        : (existingSectionData.suggested_priority ?? "medium");
+    const suggestedPriority = normalizeSuggestedPriority(rawPrio);
+
+    const rawPrioReason =
+      rawBody.priority_reason !== undefined
+        ? rawBody.priority_reason
+        : (existingSectionData.priority_reason ?? null);
+    const priorityReason = isPlaceholderValue(rawPrioReason)
+      ? null
+      : String(rawPrioReason ?? "").trim() || null;
+
+    const rawCareType =
+      rawBody.proposed_care_type !== undefined
+        ? rawBody.proposed_care_type
+        : (existingSectionData.proposed_care_type ?? null);
+    const proposedCareType = isPlaceholderValue(rawCareType)
+      ? null
+      : String(rawCareType ?? "").trim() || null;
+
+    const rawRationale =
+      rawBody.orientation_rationale !== undefined
+        ? rawBody.orientation_rationale
+        : rawBody.clinical_rationale !== undefined
+          ? rawBody.clinical_rationale
+          : (existingSectionData.orientation_rationale ??
+            existingSectionData.clinical_rationale ??
+            null);
+    const orientationRationale = isPlaceholderValue(rawRationale)
+      ? null
+      : String(rawRationale ?? "").trim() || null;
+
+    return {
+      care_adaptation_suggested: careAdaptationSuggested,
+      suggested_priority: suggestedPriority,
+      priority_reason: priorityReason,
+      proposed_care_type: proposedCareType,
+      orientation_rationale: orientationRationale,
+    };
+  }
+
   if (canonical === "MTDCompleted") {
     const existingNested =
       existingSectionData.mtd_complete &&
@@ -427,6 +554,8 @@ export function coerceSectionUpdatePayload(
       }
     } else if (Array.isArray(rawBody.exams_list)) {
       examsList = extractNormalizedExamsList(rawBody);
+    } else if (rawBody.exams_list_present !== undefined) {
+      examsList = [];
     } else {
       examsList = extractNormalizedExamsList(existingSectionData);
     }
@@ -460,6 +589,8 @@ export function coerceSectionUpdatePayload(
         ...rawBody,
         chemotherapy_list: [],
       });
+    } else if (rawBody.chemotherapy_list_present !== undefined) {
+      chemoList = [];
     } else {
       chemoList = extractNormalizedChemoList(existingSectionData);
     }
@@ -467,7 +598,9 @@ export function coerceSectionUpdatePayload(
     const hasChemo =
       rawBody.chemotherapy !== undefined
         ? coerceBooleanValue(rawBody.chemotherapy, chemoList.length > 0)
-        : chemoList.length > 0 || coerceBooleanValue(existingSectionData.chemotherapy, false);
+        : rawBody.chemotherapy_list_present !== undefined || indexedIndices.size > 0
+          ? chemoList.length > 0
+          : chemoList.length > 0 || coerceBooleanValue(existingSectionData.chemotherapy, false);
 
     const out: Record<string, unknown> = {
       chemotherapy: hasChemo,
@@ -590,12 +723,12 @@ export function coerceSectionUpdatePayload(
     }
   }
 
-  // Domain consistency rules to prevent backend ValueError
+  // Domain consistency rules: never silently corrupt civil identity dates
   if (canonical === "PatientAdministrative") {
     const dob = out.date_birth as string | null;
     const dRcp = out.date_rcp as string | null;
     if (dob && dRcp && dob > dRcp) {
-      out.date_birth = dRcp;
+      throw new Error("La date de naissance ne peut pas être postérieure à la date de la RCP.");
     }
   }
 
@@ -625,6 +758,86 @@ export function buildStrictBackendSectionPayload(
   domainSchema?: DomainFormSchema | null,
 ): Record<string, unknown> {
   const canonical = resolveCanonicalSectionName(sectionName);
+  if (canonical === "CareOrientationProposal") {
+    const matchedSection = domainSchema?.sections?.find(
+      (s) => s.name === "CareOrientationProposal",
+    );
+    const props =
+      matchedSection?.json_schema &&
+      typeof matchedSection.json_schema.properties === "object" &&
+      matchedSection.json_schema.properties !== null
+        ? (matchedSection.json_schema.properties as Record<string, Record<string, unknown>>)
+        : null;
+
+    const prioRaw = String(coercedPayload.suggested_priority ?? "none");
+    const prioLower = prioRaw.toLowerCase();
+    let mappedPriority: string | null = prioRaw;
+    if (props?.suggested_priority) {
+      const propJson = JSON.stringify(props.suggested_priority);
+      if (propJson.includes("High-priority pre-MDT review suggested")) {
+        mappedPriority =
+          prioLower === "high" ||
+          prioLower === "urgent" ||
+          prioLower.includes("high-priority") ||
+          prioLower.includes("urgently")
+            ? "High-priority pre-MDT review suggested"
+            : prioLower === "medium" ||
+                prioLower.includes("semi-urgent") ||
+                prioLower.includes("soon as possible")
+              ? "Semi-urgent pre-MDT review suggested"
+              : prioLower === "low" || prioLower.includes("not urgent")
+                ? "Patient is not urgent"
+                : "no answer";
+      } else if (propJson.includes("Patient must be treated urgently")) {
+        mappedPriority =
+          prioLower === "high" || prioLower === "urgent" || prioLower.includes("urgently")
+            ? "Patient must be treated urgently"
+            : prioLower === "medium" || prioLower.includes("soon as possible")
+              ? "Patient must be treated as soon as possible"
+              : prioLower === "low" || prioLower.includes("not urgent")
+                ? "Patient is not urgent"
+                : "no answer";
+      }
+    }
+
+    const rationale =
+      (coercedPayload.orientation_rationale as string | null | undefined) ??
+      (coercedPayload.clinical_rationale as string | null | undefined) ??
+      null;
+    const priorityReason = (coercedPayload.priority_reason as string | null | undefined) ?? null;
+
+    if (props && Object.keys(props).length > 0) {
+      const strictOut: Record<string, unknown> = {};
+      if ("care_adaptation_suggested" in props) {
+        strictOut.care_adaptation_suggested = Boolean(coercedPayload.care_adaptation_suggested);
+      }
+      if ("suggested_priority" in props) {
+        strictOut.suggested_priority = mappedPriority;
+      }
+      if ("priority_reason" in props) {
+        strictOut.priority_reason = priorityReason;
+      }
+      if ("proposed_care_type" in props) {
+        strictOut.proposed_care_type = coercedPayload.proposed_care_type ?? null;
+      }
+      if ("orientation_rationale" in props) {
+        strictOut.orientation_rationale = rationale;
+      }
+      if ("clinical_rationale" in props) {
+        strictOut.clinical_rationale = String(rationale ?? priorityReason ?? "");
+      }
+      return strictOut;
+    }
+
+    return {
+      care_adaptation_suggested: Boolean(coercedPayload.care_adaptation_suggested),
+      suggested_priority: mappedPriority,
+      priority_reason: priorityReason,
+      proposed_care_type: coercedPayload.proposed_care_type ?? null,
+      orientation_rationale: rationale,
+    };
+  }
+
   if (canonical === "MTDCompleted") {
     return {
       mtd_complete: coercedPayload.mtd_complete,

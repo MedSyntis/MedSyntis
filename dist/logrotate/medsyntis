@@ -1,6 +1,6 @@
-# Configuration logrotate pour MedSyntis
-# Installée automatiquement dans /etc/logrotate.d/medsyntis via :
-#   make logrotate-prod (ou make init-prod)
+# Logrotate configuration for MedSyntis application logs
+# Installed into /etc/logrotate.d/medsyntis (mode 0644, root:root) via:
+#   make logrotate-prod (or make init-prod)
 
 __MEDSYNTIS_LOG_DIR__/*.log
 /tmp/medsyntis-*.log

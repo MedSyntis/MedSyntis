@@ -148,24 +148,34 @@ def collaborative_debate(
                 )
                 try:
                     res = magent.ask(opinion_prompt, DebateTurn, callbacks=callbacks)
-                    opinions[magent.agent_name] = res.response
+                    if res and getattr(res, "response", None):
+                        opinions[magent.agent_name] = res.response
                 except Exception as e:
                     round1_all_ok = False
-                    logger.error(f"Error getting opinion from {magent.agent_name}: {e}")
-                    opinions[magent.agent_name] = "Erreur ou pas d'avis fourni."
+                    logger.error(
+                        "Error getting Round 1 opinion from %s (skipping failed expert): %s",
+                        magent.agent_name,
+                        e,
+                    )
+
+            if not opinions:
+                raise RuntimeError(
+                    "All specialist agents failed during Round 1 of collaborative debate."
+                )
 
             if round1_all_ok and opinions:
                 _save_debate_checkpoint(checkpoint_key, "round1", opinions)
 
-        # Step 2: Cross-Review & Debate Turn
+        # Step 2: Cross-Review & Debate Turn (only for experts with valid Round 1 opinions)
         compiled_opinions = "\n".join(
             f"- **{name}** : {text}" for name, text in opinions.items()
         )
-        logger.debug(f"Debate: Compiled initial opinions:\n{compiled_opinions}")
 
         updated_opinions = {}
         round2_all_ok = round1_all_ok
         for magent in agents:
+            if magent.agent_name not in opinions:
+                continue
             logger.info(f"Debate: Requesting cross-review from {magent.agent_name}...")
 
             debate_prompt = (
@@ -173,7 +183,7 @@ def collaborative_debate(
                 f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
                 f"{compiled_opinions}\n\n"
                 f"The overall question is: {question}\n\n"
-                f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help reach a collective consensus. "
+                f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help prepare a pre-MDT synthesis for collegial review. "
                 "Use Markdown formatting inside your `response` field (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections)."
             )
             try:
@@ -182,11 +192,12 @@ def collaborative_debate(
             except Exception as e:
                 round2_all_ok = False
                 logger.error(
-                    f"Error getting updated opinion from {magent.agent_name}: {e}"
+                    "Error getting Round 2 opinion from %s: %s",
+                    magent.agent_name,
+                    e,
                 )
-                updated_opinions[magent.agent_name] = opinions.get(
-                    magent.agent_name, "No opinion provided."
-                )
+                if magent.agent_name in opinions:
+                    updated_opinions[magent.agent_name] = opinions[magent.agent_name]
 
         if round2_all_ok and updated_opinions:
             _save_debate_checkpoint(checkpoint_key, "round2", updated_opinions)
@@ -196,18 +207,21 @@ def collaborative_debate(
         del agents
         gc.collect()
 
-    # Step 3: Synthesis & Final Structured Consensus
+    # Step 3: Synthesis & Final Structured Pre-MDT Synthesis
     final_compiled_opinions = "\n".join(
         f"- **{name}** : {text}" for name, text in updated_opinions.items()
     )
-    logger.debug(f"Debate: Compiled final opinions:\n{final_compiled_opinions}")
 
-    # Use the coordinator_agent_cls without document tools: all expert opinions are already in synthesis_prompt
+    prefetched_md = MedSyntisAgent._extract_prefetched_mtd_markdown(mtd=mtd)
     coordinator = coordinator_agent_cls(
-        config=config, mtd=None, output_format=output_format, reasoning=False
+        config=config,
+        mtd=None,
+        output_format=output_format,
+        reasoning=False,
+        prefetched_markdown=prefetched_md,
     )
     logger.info(
-        f"Debate: Synthesizing final structured consensus using {coordinator.agent_name}..."
+        f"Debate: Synthesizing final structured pre-MDT synthesis using {coordinator.agent_name}..."
     )
 
     synthesis_prompt = (
@@ -216,10 +230,9 @@ def collaborative_debate(
         f"Here is the summary of their final opinions:\n\n"
         f"{final_compiled_opinions}\n\n"
         f"The overall question is: {question}\n\n"
-        f"Based only on the opinions of the experts, synthesize the entire discussion, resolve any disagreements to reach a single consensus, and fill out the expected structured response format. "
+        f"Based on the opinions of the experts and grounded in the pre-loaded patient record context (if provided), synthesize the discussion, reconcile disagreements into a pre-MDT synthesis for collegial review, and fill out the expected structured response format. "
         f"Use Markdown formatting (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections) in free-text fields such as `reflection`, `what_missing`, `proposed_care_type`, and `clinical_rationale` (while keeping `Reference.name` and enum fields as plain strings). "
-        f"Do not add any additional information beyond what is provided in the opinions of the experts."
-        f"Do not hallucinate any information that is not present in the opinions of the experts."
+        f"Do not fabricate or hallucinate any clinical facts not grounded in the patient record or expert opinions."
     )
 
     try:

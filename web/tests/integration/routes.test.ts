@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../../src/config.js";
+import { bffRequestContext } from "../../src/infrastructure/api/http-medsyntis-api.adapter.js";
 import { InMemoryMedsyntisApiFake } from "../../src/infrastructure/api/in-memory-medsyntis-api.fake.js";
+import { validateStartupConfig } from "../../src/main.js";
 import {
   renderChatLogMessagePartial,
   renderSafeMarkdown,
@@ -12,6 +14,7 @@ import {
   verifyProxySecret,
 } from "../../src/ui/server.js";
 import { html, raw } from "../../src/ui/templates.js";
+import { renderStatusPage } from "../../src/ui/views/status.view.js";
 
 async function createTestApp() {
   const api = new InMemoryMedsyntisApiFake();
@@ -1184,6 +1187,344 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(smaRes.body).toContain("Voie orale");
     expect(smaRes.body).not.toContain(">MotorFunctionStatus.motor_milestones<");
     expect(smaRes.body).not.toContain(">RespiratoryFunction.ventilation_type<");
+
+    await app.close();
+  });
+
+  it("supports human editing, saving, and rollback of CareOrientationProposal with authenticated editedBy", async () => {
+    const api = new InMemoryMedsyntisApiFake();
+    const config = loadConfig({
+      APP_DEV_MODE: "false",
+      APP_AUTH_MODE: "oauth_proxy",
+      APP_PROXY_SECRET: "proxy-secret-xyz",
+      APP_API_TOKEN: "api-token-xyz",
+      APP_ADMIN_USERS: "dr.martin",
+    });
+    const app = await buildServer({ config, api });
+    const authHeaders = {
+      "x-proxy-secret": "proxy-secret-xyz",
+      "x-forwarded-user": "dr.martin",
+      "x-forwarded-preferred-username": "Dr Claire Martin",
+    };
+
+    const cards = await api.listPatientCards("oncology");
+    const targetFile = cards[0]!.file;
+
+    // 1. Inline edit partial for CareOrientationProposal renders editable fields
+    const editPartialRes = await app.inject({
+      method: "GET",
+      url: `/forms/${encodeURIComponent(targetFile)}/sections/CareOrientationProposal/edit?domain=oncology`,
+      headers: { ...authHeaders, "hx-request": "true" },
+    });
+    expect(editPartialRes.statusCode).toBe(200);
+    expect(editPartialRes.body).toContain('name="care_adaptation_suggested"');
+    expect(editPartialRes.body).toContain('name="suggested_priority"');
+    expect(editPartialRes.body).toContain('name="priority_reason"');
+    expect(editPartialRes.body).toContain('name="proposed_care_type"');
+    expect(editPartialRes.body).toContain('name="orientation_rationale"');
+
+    // 2. Save human-edited CareOrientationProposal and verify authenticated editedBy
+    const saveRes = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(targetFile)}/sections/CareOrientationProposal?domain=oncology`,
+      headers: { ...authHeaders, "hx-request": "true", "x-requested-with": "fetch" },
+      payload: {
+        care_adaptation_suggested: "true",
+        suggested_priority: "Patient must be seen quickly (urgent)",
+        priority_reason: "Validation collégiale urgente",
+        proposed_care_type: "Chirurgie pancréatique après réévaluation",
+        orientation_rationale: "Orientation validée par Dr Claire Martin (CSP Art. L. 4001-2).",
+      },
+    });
+    expect(saveRes.statusCode).toBe(200);
+    expect(saveRes.body).toContain("Modifié manuellement par dr.martin");
+    expect(saveRes.body).toContain("Chirurgie pancréatique après réévaluation");
+
+    // 3. Rollback restores original AI proposal
+    const rollbackRes = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(targetFile)}/sections/CareOrientationProposal/rollback?domain=oncology`,
+      headers: { ...authHeaders, "hx-request": "true", "x-requested-with": "fetch" },
+    });
+    expect(rollbackRes.statusCode).toBe(200);
+    expect(rollbackRes.body).not.toContain("Modifié manuellement par dr.martin");
+
+    await app.close();
+  });
+
+  it("surfaces non-200 errors (422 validation & 502 upstream) on failed clinical section save and rollback", async () => {
+    const { app, api } = await createTestApp();
+    const cards = await api.listPatientCards("oncology");
+    const targetFile = cards[0]!.file;
+
+    // 1. AJAX save with date_birth > date_rcp returns HTTP 422 JSON error instead of silently mutating date_birth or returning 200
+    const badDobRes = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(targetFile)}/sections/PatientAdministrative?domain=oncology`,
+      headers: { "hx-request": "true", "x-requested-with": "fetch" },
+      payload: {
+        first_name: "Jeanne",
+        last_name: "FICTIVE",
+        date_birth: "2028-05-01",
+        date_rcp: "2026-11-06",
+      },
+    });
+    expect(badDobRes.statusCode).toBe(422);
+    expect(badDobRes.json()).toEqual({
+      ok: false,
+      error: "La date de naissance ne peut pas être postérieure à la date de la RCP.",
+    });
+
+    // 2. Non-JS full-page form fallback redirects with save_error and renders visible danger alert banner
+    const nonJsBadDobRes = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(targetFile)}/sections/PatientAdministrative?domain=oncology`,
+      headers: { accept: "text/html,application/xhtml+xml" },
+      payload: {
+        first_name: "Jeanne",
+        last_name: "FICTIVE",
+        date_birth: "2028-05-01",
+        date_rcp: "2026-11-06",
+      },
+    });
+    expect(nonJsBadDobRes.statusCode).toBe(302);
+    expect(nonJsBadDobRes.headers.location).toContain("save_error=");
+    expect(nonJsBadDobRes.headers.location).not.toContain("saved=1");
+
+    const redirectedPage = await app.inject({
+      method: "GET",
+      url: nonJsBadDobRes.headers.location!,
+    });
+    expect(redirectedPage.statusCode).toBe(200);
+    expect(redirectedPage.body).toContain('data-testid="section-save-error-banner"');
+    expect(redirectedPage.body).toContain(
+      "La date de naissance ne peut pas être postérieure à la date de la RCP.",
+    );
+
+    // 3. Upstream API error on save or rollback returns HTTP 502 JSON error
+    const updateSpy = vi
+      .spyOn(api, "updateFormSection")
+      .mockRejectedValueOnce(new Error("MongoDB primary stepdown"));
+    const upstreamSaveErr = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(targetFile)}/sections/TumorBiology?domain=oncology`,
+      headers: { "hx-request": "true", "x-requested-with": "fetch" },
+      payload: { msi_state: "true" },
+    });
+    expect(upstreamSaveErr.statusCode).toBe(502);
+    expect(upstreamSaveErr.json()).toEqual({
+      ok: false,
+      error: "MongoDB primary stepdown",
+    });
+    updateSpy.mockRestore();
+
+    const rollbackSpy = vi
+      .spyOn(api, "rollbackSection")
+      .mockRejectedValueOnce(new Error("FastAPI connection refused"));
+    const upstreamRollbackErr = await app.inject({
+      method: "POST",
+      url: `/forms/${encodeURIComponent(targetFile)}/sections/TumorBiology/rollback?domain=oncology`,
+      headers: { "hx-request": "true", "x-requested-with": "fetch" },
+    });
+    expect(upstreamRollbackErr.statusCode).toBe(502);
+    expect(upstreamRollbackErr.json()).toEqual({
+      ok: false,
+      error: "FastAPI connection refused",
+    });
+    rollbackSpy.mockRestore();
+
+    await app.close();
+  });
+
+  it("enforces CSRF protection, HSTS, fail-closed prod RBAC, startup secret validation, and AsyncLocalStorage context isolation", async () => {
+    // 1. Startup config validation requires APP_PROXY_SECRET outside devMode for BOTH oauth_proxy and local auth modes
+    expect(() =>
+      validateStartupConfig(
+        loadConfig({
+          APP_DEV_MODE: "false",
+          APP_AUTH_MODE: "local",
+          APP_API_TOKEN: "tok",
+          APP_PROXY_SECRET: "",
+        }),
+      ),
+    ).toThrow(/APP_PROXY_SECRET/);
+    expect(() =>
+      validateStartupConfig(
+        loadConfig({
+          APP_DEV_MODE: "false",
+          APP_AUTH_MODE: "oauth_proxy",
+          APP_API_TOKEN: "tok",
+          APP_PROXY_SECRET: "",
+        }),
+      ),
+    ).toThrow(/APP_PROXY_SECRET/);
+
+    // 2. Production server with empty APP_ADMIN_USERS is fail-closed (isAdmin === false)
+    const api = new InMemoryMedsyntisApiFake();
+    const prodConfig = loadConfig({
+      APP_DEV_MODE: "false",
+      APP_AUTH_MODE: "oauth_proxy",
+      APP_PROXY_SECRET: "prod-secret",
+      APP_API_TOKEN: "prod-token",
+      APP_ADMIN_USERS: "",
+      APP_DOMAIN: "oncology",
+      APP_ALLOWED_DOMAINS: "oncology,sma",
+    });
+    const app = await buildServer({ config: prodConfig, api });
+    const nonAdminHeaders = {
+      "x-proxy-secret": "prod-secret",
+      "x-forwarded-user": "dr.dupont",
+      "x-real-ip": "10.99.0.12",
+      "x-forwarded-for": "203.0.113.99",
+    };
+
+    // HSTS header is emitted outside devMode
+    const getWorklist = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology",
+      headers: nonAdminHeaders,
+    });
+    expect(getWorklist.statusCode).toBe(200);
+    expect(getWorklist.headers["strict-transport-security"]).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+
+    // CSRF guard rejects cross-site Sec-Fetch-Site and mismatched Origin host
+    const csrfSecFetchRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        ...nonAdminHeaders,
+        "sec-fetch-site": "cross-site",
+      },
+      payload: { theme: "dark" },
+    });
+    expect(csrfSecFetchRes.statusCode).toBe(403);
+
+    const csrfOriginMismatchRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        ...nonAdminHeaders,
+        host: "medsyntis.chu.local",
+        origin: "https://evil.example",
+      },
+      payload: { theme: "dark" },
+    });
+    expect(csrfOriginMismatchRes.statusCode).toBe(403);
+
+    const csrfSameOriginRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        ...nonAdminHeaders,
+        host: "medsyntis.chu.local",
+        origin: "https://medsyntis.chu.local",
+        "hx-request": "true",
+      },
+      payload: { theme: "dark" },
+    });
+    expect(csrfSameOriginRes.statusCode).toBe(204);
+
+    // Non-admin user receives HTTP 403 on all destructive admin routes
+    for (const route of [
+      { method: "POST" as const, url: "/patients/A-1042/delete?domain=oncology" },
+      { method: "DELETE" as const, url: "/patients/A-1042?domain=oncology" },
+      { method: "POST" as const, url: "/forms/jeanne_2026_11.pdf/delete?domain=oncology" },
+      { method: "POST" as const, url: "/guidelines/TNCD_Pancreas.pdf/delete?domain=oncology" },
+      { method: "POST" as const, url: "/feedback/BUG-001/status?domain=oncology" },
+      { method: "POST" as const, url: "/feedback/BUG-001/delete?domain=oncology" },
+      { method: "POST" as const, url: "/admin/queue/locks/release?domain=oncology" },
+      { method: "POST" as const, url: "/admin/queue/clean?domain=oncology" },
+      { method: "POST" as const, url: "/admin/queue/jobs/JOB-1/delete?domain=oncology" },
+    ]) {
+      const forbiddenRes = await app.inject({
+        method: route.method,
+        url: route.url,
+        headers: nonAdminHeaders,
+      });
+      expect(forbiddenRes.statusCode).toBe(403);
+    }
+
+    // Domain-scoped queue visibility: non-admin requesting /queue?domain=oncology only gets oncology jobs (allDomains === false)
+    const listJobsSpy = vi.spyOn(api, "listQueueJobs");
+    const queuePageRes = await app.inject({
+      method: "GET",
+      url: "/queue?domain=oncology",
+      headers: nonAdminHeaders,
+    });
+    expect(queuePageRes.statusCode).toBe(200);
+    expect(listJobsSpy).toHaveBeenCalledWith("oncology", false);
+    listJobsSpy.mockRestore();
+
+    // Spoof-resistant clientIp & concurrent AsyncLocalStorage context isolation
+    const observedContexts: Array<{ userId?: string; clientIp?: string }> = [];
+    const listCardsOrig = api.listPatientCards.bind(api);
+    vi.spyOn(api, "listPatientCards").mockImplementation(async (d) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const store = bffRequestContext.getStore();
+      observedContexts.push({ userId: store?.userId, clientIp: store?.clientIp });
+      return listCardsOrig(d);
+    });
+
+    await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/worklist?domain=oncology",
+        headers: {
+          "x-proxy-secret": "prod-secret",
+          "x-forwarded-user": "dr.alpha",
+          "x-real-ip": "10.1.1.1",
+          "x-forwarded-for": "198.51.100.77",
+        },
+      }),
+      app.inject({
+        method: "GET",
+        url: "/worklist?domain=oncology",
+        headers: {
+          "x-proxy-secret": "prod-secret",
+          "x-forwarded-user": "dr.beta",
+          // No x-real-ip -> falls back to Fastify req.ip (127.0.0.1 in inject), NOT forged x-forwarded-for
+          "x-forwarded-for": "198.51.100.88",
+        },
+      }),
+    ]);
+
+    expect(observedContexts).toContainEqual({ userId: "dr.alpha", clientIp: "10.1.1.1" });
+    expect(observedContexts).toContainEqual({ userId: "dr.beta", clientIp: "127.0.0.1" });
+
+    // UI medico-legal & GDPR notices and retry link fallback
+    const dossierRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology",
+      headers: nonAdminHeaders,
+    });
+    expect(dossierRes.body).toContain('data-testid="ai-chat-disclaimer"');
+    expect(dossierRes.body).toContain('id="btn_fab_ai_chat"');
+
+    const feedbackRes = await app.inject({
+      method: "GET",
+      url: "/feedback?domain=oncology",
+      headers: nonAdminHeaders,
+    });
+    expect(feedbackRes.body).toContain('data-testid="feedback-gdpr-warning"');
+
+    const statusHtml = renderStatusPage({
+      statusCode: 503,
+      kind: "maintenance",
+      session: {
+        userId: "dr.dupont",
+        userName: "Dr Dupont",
+        domain: "oncology",
+        allowedDomains: ["oncology"],
+        hostBoundDomain: false,
+        language: "fr",
+        theme: "auto",
+        expertMode: false,
+        isAdmin: false,
+      },
+    });
+    expect(statusHtml).toContain('href="/" data-testid="btn_status_retry"');
 
     await app.close();
   });

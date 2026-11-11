@@ -710,14 +710,26 @@ class PatientMDTFormExtractionService:
             pct = float(raw_pct) if raw_pct is not None else 0.0
             error = doc.get("processing_error")
 
-            active_jobs = [
-                j for j in file_jobs if j.get("status") in ("RUNNING", "PENDING")
-            ]
+            def _is_running_job(st: Any) -> bool:
+                if not isinstance(st, str):
+                    return False
+                up = st.strip().upper()
+                return up in ("RUNNING", "PROCESSING") or up.startswith("PROCESSING_")
+
+            def _is_active_job(st: Any) -> bool:
+                if not isinstance(st, str):
+                    return False
+                up = st.strip().upper()
+                return (
+                    _is_running_job(up) or up == "PENDING" or up.startswith("PENDING_")
+                )
+
+            active_jobs = [j for j in file_jobs if _is_active_job(j.get("status"))]
             failed_jobs = [j for j in file_jobs if j.get("status") == "FAILED"]
 
             if active_jobs:
                 running_job = next(
-                    (j for j in active_jobs if j.get("status") == "RUNNING"),
+                    (j for j in active_jobs if _is_running_job(j.get("status"))),
                     active_jobs[0],
                 )
                 if not processing_status:
@@ -730,7 +742,9 @@ class PatientMDTFormExtractionService:
             elif failed_jobs and not processing_status:
                 processing_status = "FAILED"
                 if not error:
-                    error = failed_jobs[0].get("error")
+                    error = failed_jobs[0].get("error_message") or failed_jobs[0].get(
+                        "error"
+                    )
             elif not processing_status and file_jobs:
                 if all(j.get("status") == "COMPLETED" for j in file_jobs):
                     processing_status = RCPProcessingStatus.COMPLETED.value
@@ -821,7 +835,7 @@ class PatientMDTFormExtractionService:
             "processing_status": top_job.get("status"),
             "processing_step": top_job.get("current_step") or top_job.get("step_label"),
             "processing_progress_pct": float(top_job.get("progress_pct") or 0.0),
-            "processing_error": top_job.get("error"),
+            "processing_error": top_job.get("error_message") or top_job.get("error"),
             "patient_id": top_job.get("target_patient_id"),
         }
 

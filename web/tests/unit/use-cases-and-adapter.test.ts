@@ -325,7 +325,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
           }),
         };
       }
-      if (url.includes("/api/v1/patientmdtform/patients?") && method === "GET") {
+      if (url.includes("/api/v1/patients?") && method === "GET") {
         return {
           ok: true,
           status: 200,
@@ -337,7 +337,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
               born_name: "Martin",
               date_birth: "1960-05-14",
               gender: "F",
-              rcp_count: 2,
+              files: ["doc.pdf", "doc_prev.pdf"],
             },
           ],
         };
@@ -1022,5 +1022,186 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
     expect(sectionTitles.get("HepaticStatus")).toContain("Child-Pugh A5");
     expect(sectionTitles.get("NutritionalStatus")).toContain("64 kg");
     expect(sectionTitles.get("SurgicalStatus")).toContain("R0");
+  });
+
+  it("reconciles all 6 FastAPI <-> BFF adapter contracts (patients, thinking, batch status, rerun, uploadResource, createBug)", async () => {
+    const capturedRequests: Array<{ url: string; method: string; body?: string }> = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      capturedRequests.push({
+        url,
+        method,
+        body: typeof init?.body === "string" ? init.body : undefined,
+      });
+
+      if (url.includes("/api/v1/patients?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              patient_id: "A-1042",
+              first_name: "Jeanne",
+              last_name: "FICTIVE",
+              born_name: "MARTIN",
+              date_birth: "1958-03-02",
+              gender: "Female",
+              files: ["jeanne_2025.pdf", "jeanne_2026.pdf", "jeanne_2026_11.pdf"],
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/v1/queue/stats")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            pending: 0,
+            processing: 1,
+            completed: 4,
+            failed: 0,
+            cancelled: 0,
+            active_locks: 1,
+          }),
+        };
+      }
+      if (url.includes("/api/v1/queue/thinking")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            active: true,
+            filename: "jeanne_2026_11.pdf",
+            current_step: "CareOrientationProposal",
+            current_thinking: "Synthèse collégiale TNCD en cours...",
+          }),
+        };
+      }
+      if (url.includes("/api/v1/patientmdtform/batches/")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            batch_id: "batch-6",
+            files: [
+              { filename: "f1.pdf", status: "PROCESSING", progress_pct: 20 },
+              { filename: "f2.pdf", status: "PROCESSING_ADMIN", progress_pct: 35 },
+              { filename: "f3.pdf", status: "PROCESSING_CLINICAL", progress_pct: 55 },
+              { filename: "f4.pdf", status: "PROCESSING_EXPERTS", progress_pct: 80 },
+              { filename: "f5.pdf", status: "FAILED", error_message: "Timeout Ollama OCR" },
+              { filename: "f6.pdf", status: "COMPLETED", progress_pct: 100 },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/api/v1/queue/rerun")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [{ job_id: "job-from-jobs-array-42" }],
+          }),
+        };
+      }
+      if (url.includes("/api/v1/resources/upload")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            filename: "TNCD_Pancreas_2026.pdf",
+            size_bytes: 2048,
+            is_indexed: false,
+            chunk_count: 0,
+          }),
+        };
+      }
+      if (url.includes("/api/v1/bug-reports") && method === "POST") {
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({ bug_id: "BUG-99", status: "open", created_at: "2026-11-11" }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    const adapter = new HttpMedsyntisApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      cacheTtlMs: 0,
+    });
+
+    // 1. listPatients calls /api/v1/patients?domain=...&identified_only=... and maps files -> rcpCount
+    const patients = await adapter.listPatients("oncology", true);
+    expect(capturedRequests[0]?.url).toBe(
+      "http://127.0.0.1:8000/api/v1/patients?domain=oncology&identified_only=true",
+    );
+    expect(patients).toEqual([
+      {
+        id: "A-1042",
+        firstName: "Jeanne",
+        lastName: "FICTIVE",
+        bornName: "MARTIN",
+        dateBirth: "1958-03-02",
+        gender: "Female",
+        rcpCount: 3,
+      },
+    ]);
+
+    // 2. getQueueStats / getQueueThinking reads active, current_step, current_thinking
+    const stats = await adapter.getQueueStats("oncology");
+    expect(stats.activeFormFile).toBe("jeanne_2026_11.pdf");
+    expect(stats.activeStep).toBe("CareOrientationProposal");
+    expect(stats.thinkingPreview).toBe("Synthèse collégiale TNCD en cours...");
+
+    // 3. getBatchStatus counts PROCESSING* states toward running and maps error_message
+    const batch = await adapter.getBatchStatus("batch-6", "oncology");
+    expect(batch.running).toBe(4);
+    expect(batch.failed).toBe(1);
+    expect(batch.completed).toBe(1);
+    expect(batch.files.find((f) => f.filename === "f5.pdf")?.error).toBe("Timeout Ollama OCR");
+
+    // 4. rerunSection extracts res.jobs[0].job_id
+    const rerun = await adapter.rerunSection("f1.pdf", "CareOrientationProposal", true, "oncology");
+    expect(rerun.jobId).toBe("job-from-jobs-array-42");
+
+    // 5. uploadResource reads is_indexed: false instead of hardcoding true
+    const uploadedRes = await adapter.uploadResource(
+      "TNCD_Pancreas_2026.pdf",
+      Buffer.from("%PDF"),
+      "oncology",
+    );
+    expect(uploadedRes.indexed).toBe(false);
+
+    // 6. createBug populates rcp_file for .pdf (case-insensitive) and patient_id otherwise
+    await adapter.createBug({
+      title: "Erreur PDF",
+      description: "Desc",
+      category: "extraction",
+      severity: "medium",
+      domain: "oncology",
+      patientOrFile: "CompteRendu_Test.PDF",
+      author: "dr.martin",
+    });
+    const pdfBugReq = capturedRequests.at(-1);
+    expect(JSON.parse(pdfBugReq?.body ?? "{}")).toMatchObject({
+      patient_id: null,
+      rcp_file: "CompteRendu_Test.PDF",
+    });
+
+    await adapter.createBug({
+      title: "Erreur Patient",
+      description: "Desc",
+      category: "extraction",
+      severity: "medium",
+      domain: "oncology",
+      patientOrFile: "A-1042",
+      author: "dr.martin",
+    });
+    const patientBugReq = capturedRequests.at(-1);
+    expect(JSON.parse(patientBugReq?.body ?? "{}")).toMatchObject({
+      patient_id: "A-1042",
+      rcp_file: null,
+    });
   });
 });

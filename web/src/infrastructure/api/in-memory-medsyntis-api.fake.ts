@@ -36,6 +36,7 @@ import type {
   PatientDashboardView,
   PatientListItem,
   PatientRecordSummaryView,
+  PriorityLevel,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -1047,6 +1048,20 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       ...previousSectionObj,
       ...coerced,
     };
+    if (section === "CareOrientationProposal") {
+      if (typeof coerced.care_adaptation_suggested === "boolean") {
+        form.metrics.care_adaptation_suggested = coerced.care_adaptation_suggested;
+      }
+      if (coerced.proposed_care_type !== undefined) {
+        form.metrics.proposed_care_type =
+          typeof coerced.proposed_care_type === "string" && coerced.proposed_care_type.trim()
+            ? coerced.proposed_care_type.trim()
+            : null;
+      }
+      if (typeof coerced.suggested_priority === "string" && coerced.suggested_priority) {
+        form.metrics.priority_level = coerced.suggested_priority as PriorityLevel;
+      }
+    }
     form.manualEdits[section] = {
       is_manual: true,
       edited_at: new Date().toISOString(),
@@ -1129,7 +1144,21 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       (existingMeta as Record<string, unknown> | undefined)?.ai_original;
     if (aiOriginal && typeof aiOriginal === "object" && !Array.isArray(aiOriginal)) {
       const targetKey = form.sections[section] !== undefined ? section : canonical;
-      form.sections[targetKey] = { ...(aiOriginal as Record<string, unknown>) };
+      const restored = { ...(aiOriginal as Record<string, unknown>) };
+      form.sections[targetKey] = restored;
+      if (canonical === "CareOrientationProposal") {
+        if (typeof restored.care_adaptation_suggested === "boolean") {
+          form.metrics.care_adaptation_suggested = restored.care_adaptation_suggested;
+        }
+        if (restored.proposed_care_type !== undefined) {
+          form.metrics.proposed_care_type = restored.proposed_care_type
+            ? String(restored.proposed_care_type)
+            : null;
+        }
+        if (typeof restored.suggested_priority === "string" && restored.suggested_priority) {
+          form.metrics.priority_level = restored.suggested_priority as PriorityLevel;
+        }
+      }
     }
     delete form.manualEdits[section];
     delete form.manualEdits[canonical];
@@ -1217,6 +1246,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     filename: string,
     patientId: string | null,
     _domain: ClinicalDomain,
+    _editedBy?: string,
   ): Promise<void> {
     const form = this.forms.get(filename);
     if (form) {

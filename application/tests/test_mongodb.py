@@ -271,13 +271,19 @@ class TestMongodbDocumentStore(unittest.TestCase):
         self.assertEqual([b["bug_id"] for b in all_bugs], ["bug_new", "bug_old"])
 
         # update_bug_report
-        mock_collection.find_one.return_value = {**saved, "status": "resolved"}
+        mock_collection.find_one_and_update.return_value = {
+            **saved,
+            "status": "resolved",
+        }
         updated = db.update_bug_report("bug_12345678", {"status": BugStatus.resolved})
+        assert updated is not None
         self.assertEqual(updated["status"], "resolved")
 
         # delete_bug_report
-        db.delete_bug_report("bug_12345678")
-        mock_collection.delete_many.assert_called_once_with({"bug_id": "bug_12345678"})
+        mock_collection.delete_one.return_value.deleted_count = 1
+        deleted = db.delete_bug_report("bug_12345678")
+        self.assertTrue(deleted)
+        mock_collection.delete_one.assert_called_once_with({"bug_id": "bug_12345678"})
 
     @patch("scripts.get_bugs.Mongodb")
     @patch("scripts.get_bugs.AppConfig")

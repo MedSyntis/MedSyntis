@@ -1,14 +1,17 @@
-from typing import List, Optional, ClassVar
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING, ClassVar, List, Optional
 
 from pydantic import Field
 
 from src.domain.common.common_ressources import *  # noqa: F403
 from src.domain.common.common_ressources import MarkdownStr
-
-from src.application.agent.agent import MedSyntisAgent
-from src.domain.oncology.agents import Agents
 from src.domain.common.patient_mdt_common_form import PatientMDTForm
+from src.domain.oncology.agents import Agents
+
+if TYPE_CHECKING:
+    from src.application.agent.agent import MedSyntisAgent
 
 
 class PatientMDTOncologicForm(PatientMDTForm):
@@ -21,12 +24,13 @@ class PatientMDTOncologicForm(PatientMDTForm):
         Patient WHO performance status
         """
 
-        performance_status: WHOPerformanceStatus = Field(  # noqa: F405
-            description="WHO/OMS performance status of the patient, score from 0 to 4"
+        performance_status: Optional[WHOPerformanceStatus] = Field(  # noqa: F405
+            default=None,
+            description="WHO/OMS performance status of the patient, score from 0 to 4",
         )
 
         question: ClassVar[str] = (
-            "Determine the WHO performance status of the patient (0-4). Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, indicate it."
+            "Determine the WHO performance status of the patient (0-4). Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, set it to null."
         )
 
     class TumorLocation(PatientMDTForm.default_model):
@@ -226,15 +230,17 @@ class PatientMDTOncologicForm(PatientMDTForm):
         Previous curative surgery
         """
 
-        previous_curative_surgery: bool = Field(
-            description="If a curative surgery has already been done"
+        previous_curative_surgery: Optional[bool] = Field(
+            default=None,
+            description="If a curative surgery has already been done",
         )
         previous_curative_surgery_date: Optional[datetime] = Field(
-            description="Date of the surgery"
+            default=None,
+            description="Date of the surgery",
         )
 
         question: ClassVar[str] = (
-            "Has a curative surgery already been performed for this tumor? If yes, provide the date."
+            "Has a curative surgery already been performed for this tumor? If yes, provide the date. Set to null if not mentioned."
         )
 
     class PlannedCurativeSurgery(PatientMDTForm.default_model):
@@ -242,26 +248,31 @@ class PatientMDTOncologicForm(PatientMDTForm):
         Planned curative surgery
         """
 
-        planned_curative_surgery: bool = Field(
-            description="If a curative surgery has been planned"
+        planned_curative_surgery: Optional[bool] = Field(
+            default=None,
+            description="If a curative surgery has been planned",
         )
 
-        question: ClassVar[str] = "Is a curative surgery planned for this tumor?"
+        question: ClassVar[str] = (
+            "Is a curative surgery planned for this tumor? Set to null if not mentioned."
+        )
 
     class ChemotherapyTreament(PatientMDTForm.default_model):
         """
         Chemotherapy treatments
         """
 
-        chemotherapy: bool = Field(
-            description="If a chemotherapy has already been done"
+        chemotherapy: Optional[bool] = Field(
+            default=None,
+            description="If a chemotherapy has already been done",
         )
         chemotherapy_list: Optional[List[ChemotherapyData]] = Field(  # noqa: F405
-            description="List of chemotherapies that have been done"
+            default=None,
+            description="List of chemotherapies that have been done",
         )
 
         question: ClassVar[str] = (
-            "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments."
+            "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments. Set to null if not mentioned."
         )
 
     class ExpertAnswer(PatientMDTForm.ExpertAnswer):

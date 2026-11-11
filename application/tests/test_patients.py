@@ -22,12 +22,20 @@ class TestPatientDomainAndLogic(unittest.TestCase):
     def test_build_patient_id_normalizes_accents_and_dates(self):
         pid1 = Patient.build_id("Jean-Pierre", "D'Hérémont", datetime(1958, 3, 14))
         pid2 = Patient.build_id("  jean pierre ", "d heremont", "1958-03-14T00:00:00")
-        self.assertEqual(pid1, "d_heremont_jean_pierre_1958_03_14")
+        self.assertTrue(pid1.startswith("pat_"))
+        self.assertEqual(len(pid1), 20)
+        self.assertNotIn("heremont", pid1)
         self.assertEqual(pid1, pid2)
+        self.assertEqual(
+            Patient.build_legacy_id("Jean-Pierre", "D'Hérémont", datetime(1958, 3, 14)),
+            "d_heremont_jean_pierre_1958_03_14",
+        )
 
     def test_build_patient_id_without_birth_date(self):
         pid = Patient.build_id("Marie", "Curie", None)
-        self.assertEqual(pid, "curie_marie")
+        self.assertTrue(pid.startswith("pat_"))
+        self.assertNotIn("curie", pid)
+        self.assertEqual(Patient.build_legacy_id("Marie", "Curie", None), "curie_marie")
 
     def test_from_administrative_and_labels(self):
         admin = PatientMDTForm.PatientAdministrative(
@@ -40,7 +48,10 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             gender=Gender.female,
         )
         patient = Patient.from_administrative(admin, filename="rcp_2026_02.pdf")
-        self.assertEqual(patient.patient_id, "martin_claire_1962_07_21")
+        self.assertEqual(
+            patient.patient_id,
+            Patient.build_id("Claire", "Martin", datetime(1962, 7, 21)),
+        )
         self.assertEqual(patient.full_name, "Claire Martin")
         self.assertIn("21-07-1962", patient.display_label)
         self.assertEqual(patient.files, ["rcp_2026_02.pdf"])
@@ -197,27 +208,37 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             mdt_form_repo=mdt_form_repo,
         )
 
+        expected_pid = Patient.build_id("Marion", "Roussel", datetime(1970, 5, 12))
         cards = record_service.list_patient_cards()
         self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["patient_id"], "roussel_marion_1970_05_12")
+        self.assertEqual(cards[0]["patient_id"], expected_pid)
         self.assertEqual(cards[0]["file"], "rcp_latest.pdf")
         self.assertEqual(cards[0]["rcp_count"], 2)
         self.assertEqual(
             cards[0]["link"],
-            "datas?patient_id=roussel_marion_1970_05_12&file=rcp_latest.pdf",
+            f"datas?patient_id={expected_pid}&file=rcp_latest.pdf",
         )
 
-        # Opening the PatientRecord by patient_id alone must also resolve both forms and select rcp_latest.pdf
+        # Opening the PatientRecord by patient_id (or legacy slug) resolves both forms and selects rcp_latest.pdf
         patient_obj, patient_rcps, selected_file = (
             record_service.resolve_patient_record(
-                patient_id_param="roussel_marion_1970_05_12",
+                patient_id_param=expected_pid,
                 file_param=None,
             )
         )
         self.assertIsNotNone(patient_obj)
-        self.assertEqual(patient_obj.patient_id, "roussel_marion_1970_05_12")
+        assert patient_obj is not None
+        self.assertEqual(patient_obj.patient_id, expected_pid)
         self.assertEqual(len(patient_rcps), 2)
         self.assertEqual(selected_file, "rcp_latest.pdf")
+
+        legacy_obj, _, _ = record_service.resolve_patient_record(
+            patient_id_param="roussel_marion_1970_05_12",
+            file_param=None,
+        )
+        self.assertIsNotNone(legacy_obj)
+        assert legacy_obj is not None
+        self.assertEqual(legacy_obj.patient_id, expected_pid)
 
     def test_resolve_upload_hash_and_duplicate_detection(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -335,7 +356,10 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         self.assertEqual(
             models_called, ["PatientMDTFormCheck", "PatientAdministrative"]
         )
-        self.assertEqual(patient_obj.patient_id, "lambert_sophie_1968_04_12")
+        self.assertEqual(
+            patient_obj.patient_id,
+            Patient.build_id("Sophie", "Lambert", datetime(1968, 4, 12)),
+        )
 
     def test_verify_patient_mdt_form_rejects_non_mdt_form_and_cleans_up(
         self,

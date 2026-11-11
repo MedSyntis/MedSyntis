@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from src.application.use_cases import PatientRecordService
 from src.domain.bug_report import BugCategory, BugSeverity, BugStatus
+from src.domain.patient import Patient
 from src.infrastructure.documents.repositories import (
     InMemoryBugReportRepository,
     InMemoryDocumentCacheRepository,
@@ -79,7 +80,7 @@ def test_patientmdtform_record_service_dependency_override(api_app, client, tmp_
     assert resp.status_code == 200
     cards = resp.json()
     assert len(cards) == 1
-    assert cards[0]["patient_id"] == "martin_alice_1980_04_12"
+    assert cards[0]["patient_id"] == Patient.build_id("Alice", "Martin", "1980-04-12")
 
 
 def test_bug_reports_crud_lifecycle_with_in_memory_repo(api_app, client):

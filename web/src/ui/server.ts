@@ -185,7 +185,45 @@ export interface BuildServerOptions {
 }
 
 export async function buildServer({ config, api }: BuildServerOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
+  const isTestEnv = process.env.NODE_ENV === "test" || Boolean(process.env.VITEST);
+  const app = Fastify({
+    logger:
+      config.devMode || isTestEnv
+        ? false
+        : {
+            level: "info",
+            serializers: {
+              req(req) {
+                return {
+                  method: req.method,
+                  url: String(req.url || "").split("?")[0],
+                  remoteAddress: req.ip,
+                };
+              },
+            },
+          },
+  });
+
+  function hasVerifiedProxySecret(req: FastifyRequest): boolean {
+    const providedSecret =
+      (req.headers["x-medsyntis-proxy-secret"] as string | undefined) ||
+      (req.headers["x-proxy-secret"] as string | undefined);
+    return Boolean(config.proxySecret) && verifyProxySecret(providedSecret, config.proxySecret);
+  }
+
+  // Callback-style AsyncLocalStorage isolation wrapping ALL routes (prevents HTTP keep-alive context bleed)
+  app.addHook("onRequest", (req, _reply, done) => {
+    const requestId = String(req.headers["x-request-id"] || "").trim() || crypto.randomUUID();
+    const proxyMatched = hasVerifiedProxySecret(req);
+    const trustedRealIp = proxyMatched ? String(req.headers["x-real-ip"] || "").trim() : "";
+    const forwardedIp = proxyMatched
+      ? String(req.headers["x-forwarded-for"] || "")
+          .split(",")[0]
+          ?.trim() || ""
+      : "";
+    const clientIp = trustedRealIp || req.ip || forwardedIp || "127.0.0.1";
+    bffRequestContext.run({ clientIp, requestId }, done);
+  });
 
   await app.register(fastifyCookie);
   await app.register(fastifyFormbody);
@@ -245,12 +283,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   });
 
   function isProxyTrusted(req: FastifyRequest): boolean {
-    const providedSecret =
-      (req.headers["x-medsyntis-proxy-secret"] as string | undefined) ||
-      (req.headers["x-proxy-secret"] as string | undefined);
-    return config.proxySecret
-      ? verifyProxySecret(providedSecret, config.proxySecret)
-      : config.devMode !== false;
+    return config.proxySecret ? hasVerifiedProxySecret(req) : config.devMode !== false;
   }
 
   function detectHostDomain(
@@ -282,24 +315,55 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     return undefined;
   }
 
-  // Zero-Trust Proxy Secret Verification when running behind Caddy + OAuth2-Proxy
+  // Zero-Trust Proxy Secret Verification + State-Changing CSRF Guard
   app.addHook("onRequest", async (req, reply) => {
+    const methodUpper = req.method.toUpperCase();
+    if (
+      methodUpper === "POST" ||
+      methodUpper === "PUT" ||
+      methodUpper === "PATCH" ||
+      methodUpper === "DELETE"
+    ) {
+      const secFetchSite = String(req.headers["sec-fetch-site"] ?? "")
+        .trim()
+        .toLowerCase();
+      if (secFetchSite === "cross-site") {
+        return reply
+          .code(403)
+          .type("text/plain; charset=utf-8")
+          .send("Requête cross-site refusée (CSRF).");
+      }
+      const rawOrigin = req.headers.origin;
+      if (typeof rawOrigin === "string" && rawOrigin.trim().length > 0) {
+        let originHost = "";
+        try {
+          originHost = new URL(rawOrigin.trim()).host.toLowerCase();
+        } catch {
+          return reply
+            .code(403)
+            .type("text/plain; charset=utf-8")
+            .send("En-tête Origin invalide (CSRF).");
+        }
+        const expectedHost =
+          String(req.headers.host ?? "")
+            .split(",")[0]
+            ?.trim()
+            .toLowerCase() ?? "";
+        if (!originHost || !expectedHost || originHost !== expectedHost) {
+          return reply
+            .code(403)
+            .type("text/plain; charset=utf-8")
+            .send("Origine non autorisée (CSRF).");
+        }
+      }
+    }
+
     if (req.url === "/health" || req.url.startsWith("/public/")) {
       return;
     }
-    const rawForwarded = String(req.headers["x-forwarded-for"] || "")
-      .split(",")[0]
-      ?.trim();
-    const rawRealIp = String(req.headers["x-real-ip"] || "").trim();
-    const clientIp = rawForwarded || rawRealIp || req.ip || "127.0.0.1";
-    const requestId = String(req.headers["x-request-id"] || "").trim() || crypto.randomUUID();
-    bffRequestContext.enterWith({ clientIp, requestId });
 
     if (config.authMode === "oauth_proxy") {
-      const providedSecret =
-        (req.headers["x-medsyntis-proxy-secret"] as string | undefined) ||
-        (req.headers["x-proxy-secret"] as string | undefined);
-      if (!verifyProxySecret(providedSecret, config.proxySecret)) {
+      if (!hasVerifiedProxySecret(req)) {
         return reply
           .code(403)
           .type("text/plain; charset=utf-8")
@@ -338,6 +402,9 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     );
     reply.header("Cross-Origin-Opener-Policy", "same-origin");
     reply.header("Cross-Origin-Resource-Policy", "same-origin");
+    if (!config.devMode) {
+      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
     if (!req.url.startsWith("/public/") && !reply.getHeader("cache-control")) {
       reply.header("Cache-Control", "no-store, max-age=0");
     }
@@ -392,11 +459,13 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const headerUser = trustIdentityHeaders
       ? (req.headers["x-auth-request-preferred-username"] as string | undefined) ||
         (req.headers["x-auth-request-user"] as string | undefined) ||
+        (req.headers["x-forwarded-user"] as string | undefined) ||
         (req.headers["x-medsyntis-user"] as string | undefined)
       : undefined;
     const headerEmailOrName = trustIdentityHeaders
       ? (req.headers["x-medsyntis-user-name"] as string | undefined) ||
         (req.headers["x-auth-request-email"] as string | undefined) ||
+        (req.headers["x-forwarded-email"] as string | undefined) ||
         headerUser
       : undefined;
 
@@ -414,10 +483,9 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     }
 
     const adminList = config.adminUsers ?? [];
-    const isAdmin =
-      adminList.length === 0 ||
-      adminList.includes(userId.toLowerCase()) ||
-      adminList.includes(userName.toLowerCase());
+    const isExplicitAdmin =
+      adminList.includes(userId.toLowerCase()) || adminList.includes(userName.toLowerCase());
+    const isAdmin = adminList.length === 0 ? Boolean(config.devMode) : isExplicitAdmin;
 
     return {
       userId,
@@ -432,10 +500,11 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     };
   }
 
-  async function loadShellQueue(domain: ClinicalDomain) {
+  async function loadShellQueue(domain: ClinicalDomain, isAdmin: boolean) {
+    const allDomains = Boolean(isAdmin);
     const [queueStats, queueJobs] = await Promise.all([
-      api.getQueueStats(domain, true),
-      api.listQueueJobs(domain, true),
+      api.getQueueStats(domain, allDomains),
+      api.listQueueJobs(domain, allDomains),
     ]);
     return { queueStats, queueJobs };
   }
@@ -517,7 +586,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     const [view, { queueStats, queueJobs }] = await Promise.all([
       worklistUseCase.execute(session.domain, filter),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
 
     const html = renderWorklistPage(view, session, queueStats, queueJobs);
@@ -526,6 +595,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/patients/:patientId/delete", async (req, reply) => {
     const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply
+        .code(403)
+        .type("text/plain; charset=utf-8")
+        .send("Accès réservé aux administrateurs.");
+    }
     const { patientId } = req.params as { patientId: string };
     if (patientId.toLowerCase().endsWith(".pdf")) {
       await worklistUseCase.deleteForm(patientId, session.domain);
@@ -537,6 +612,9 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.delete("/patients/:patientId", async (req, reply) => {
     const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply.code(403).send({ ok: false, error: "Accès réservé aux administrateurs." });
+    }
     const { patientId } = req.params as { patientId: string };
     if (patientId.toLowerCase().endsWith(".pdf")) {
       await worklistUseCase.deleteForm(patientId, session.domain);
@@ -548,6 +626,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/forms/:filename/delete", async (req, reply) => {
     const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply
+        .code(403)
+        .type("text/plain; charset=utf-8")
+        .send("Accès réservé aux administrateurs.");
+    }
     const { filename } = req.params as { filename: string };
     await worklistUseCase.deleteForm(filename, session.domain);
     return reply.redirect(`/worklist?domain=${encodeURIComponent(session.domain)}`);
@@ -555,6 +639,9 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.delete("/forms/:filename", async (req, reply) => {
     const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply.code(403).send({ ok: false, error: "Accès réservé aux administrateurs." });
+    }
     const { filename } = req.params as { filename: string };
     await worklistUseCase.deleteForm(filename, session.domain);
     return reply.code(200).send({ deleted: filename });
@@ -568,7 +655,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const focusExpert = query.focusExpert?.trim() || null;
     const [agenda, { queueStats, queueJobs }] = await Promise.all([
       agendaUseCase.getAgenda(session.domain),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
     const html = renderAgendaPage(
       agenda,
@@ -687,7 +774,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       query.batchId
         ? ingestUseCase.getBatchStatus(query.batchId, session.domain)
         : Promise.resolve(null),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
 
     const html = renderIngestPage(
@@ -813,7 +900,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
       dossierUseCase.getDossier(patientId, session.domain, session.language, query.file),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
     if (!dossier) {
       return reply
@@ -836,13 +923,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       patientId,
       query.file,
     );
+    const editTargetTab = query.editSection
+      ? dossier.sections.find((s) => s.name === query.editSection)?.meta.tab
+      : undefined;
     const activeTab =
       query.view === "dashboard" ||
       query.view === "patient-dashboard" ||
       query.tab === "patient-dashboard" ||
       query.tab === "dashboard"
         ? "patient-dashboard"
-        : query.tab === "opinions"
+        : query.tab === "opinions" || editTargetTab === "opinions"
           ? "opinions"
           : "clinical";
     const html = renderDossierPage(
@@ -854,6 +944,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       query.editSection,
       agendaNav,
       activeTab,
+      query.save_error ?? null,
     );
     return reply.type("text/html; charset=utf-8").send(html);
   });
@@ -877,7 +968,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
       dossierUseCase.getDossier(filename, session.domain, session.language, filename),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
     if (!dossier) {
       return reply
@@ -900,13 +991,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       filename,
       filename,
     );
+    const editTargetTab = query.editSection
+      ? dossier.sections.find((s) => s.name === query.editSection)?.meta.tab
+      : undefined;
     const activeTab =
       query.view === "dashboard" ||
       query.view === "patient-dashboard" ||
       query.tab === "patient-dashboard" ||
       query.tab === "dashboard"
         ? "patient-dashboard"
-        : query.tab === "opinions"
+        : query.tab === "opinions" || editTargetTab === "opinions"
           ? "opinions"
           : "clinical";
     const html = renderDossierPage(
@@ -918,6 +1012,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       query.editSection,
       agendaNav,
       activeTab,
+      query.save_error ?? null,
     );
     return reply.type("text/html; charset=utf-8").send(html);
   });
@@ -962,8 +1057,17 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       return reply.redirect(targetUrl);
     }
 
-    const { queueStats, queueJobs } = await loadShellQueue(session.domain);
-    const html = renderDossierPage(dossier, session, queueStats, queueJobs, [], section);
+    const { queueStats, queueJobs } = await loadShellQueue(session.domain, session.isAdmin);
+    const html = renderDossierPage(
+      dossier,
+      session,
+      queueStats,
+      queueJobs,
+      [],
+      section,
+      undefined,
+      secView.meta.tab,
+    );
     return reply.type("text/html; charset=utf-8").send(html);
   });
 
@@ -972,6 +1076,49 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const schema = await api.getDomainSchema(session.domain);
     return reply.type("application/json; charset=utf-8").send(schema);
   });
+
+  function classifySectionMutationError(err: unknown): { statusCode: 422 | 502; message: string } {
+    const rawMsg = err instanceof Error ? err.message : String(err ?? "Erreur d'enregistrement");
+    const isValidation =
+      /postérieure|validation|invalide|invalid|valueerror|zoderror|http (400|422)\b/i.test(rawMsg);
+    const cleanMsg = rawMsg.replace(/^MedSyntis API HTTP \d+ on [^:]+:\s*/i, "").trim();
+    return {
+      statusCode: isValidation ? 422 : 502,
+      message: cleanMsg || "Impossible d'enregistrer les modifications de la rubrique.",
+    };
+  }
+
+  async function sendSectionMutationError(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    session: ReturnType<typeof resolveSession>,
+    filename: string,
+    section: string,
+    err: unknown,
+  ) {
+    const { statusCode, message } = classifySectionMutationError(err);
+    const acceptHeader = String(req.headers.accept ?? "").toLowerCase();
+    const isPureFullPageNav =
+      !req.headers["hx-request"] &&
+      !req.headers["x-requested-with"] &&
+      acceptHeader.includes("text/html") &&
+      !acceptHeader.includes("application/json");
+
+    if (!isPureFullPageNav) {
+      return reply
+        .code(statusCode)
+        .type("application/json; charset=utf-8")
+        .send({ ok: false, error: message });
+    }
+
+    const dossier = await dossierUseCase
+      .getDossier(filename, session.domain, session.language, filename)
+      .catch(() => null);
+    const targetUrl = dossier?.patientId
+      ? `/patients/${encodeURIComponent(dossier.patientId)}?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}&editSection=${encodeURIComponent(section)}&save_error=${encodeURIComponent(message)}#section-${encodeURIComponent(section)}`
+      : `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}&editSection=${encodeURIComponent(section)}&save_error=${encodeURIComponent(message)}#section-${encodeURIComponent(section)}`;
+    return reply.redirect(targetUrl);
+  }
 
   async function sendSectionMutationResponse(
     req: FastifyRequest,
@@ -1009,11 +1156,13 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       section: string;
     };
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const editedBy = session.userId || session.userName;
 
     try {
-      await dossierUseCase.updateSection(filename, section, body, session.userName, session.domain);
+      await dossierUseCase.updateSection(filename, section, body, editedBy, session.domain);
     } catch (err) {
-      req.log.warn({ err, filename, section }, "Section update validation warning");
+      req.log.warn({ filename, section }, "Section update failed");
+      return sendSectionMutationError(req, reply, session, filename, section, err);
     }
 
     return sendSectionMutationResponse(req, reply, session, filename, section);
@@ -1029,7 +1178,8 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     try {
       await dossierUseCase.rollbackSection(filename, section, session.domain);
     } catch (err) {
-      req.log.warn({ err, filename, section }, "Section rollback warning");
+      req.log.warn({ filename, section }, "Section rollback failed");
+      return sendSectionMutationError(req, reply, session, filename, section, err);
     }
 
     return sendSectionMutationResponse(req, reply, session, filename, section);
@@ -1039,6 +1189,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const session = resolveSession(req);
     const { filename } = req.params as { filename: string };
     const body = MissingItemsBodySchema.parse(req.body ?? {});
+    const editedBy = session.userId || session.userName;
 
     await dossierUseCase.updateMissingItems(
       filename,
@@ -1046,7 +1197,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
         toggleItem: body.toggle_item,
         hideMissingItems: body.restore_all ? false : body.hide_missing_items,
         hiddenMissingItems: body.restore_all ? [] : undefined,
-        editedBy: session.userName,
+        editedBy,
       },
       session.domain,
     );
@@ -1086,8 +1237,9 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const { filename } = req.params as { filename: string };
     const body = (req.body ?? {}) as Record<string, string | undefined>;
     const patientId = (body.patientId ?? "").trim() || null;
+    const editedBy = session.userId || session.userName;
 
-    await dossierUseCase.linkPatient(filename, patientId, session.domain);
+    await dossierUseCase.linkPatient(filename, patientId, session.domain, editedBy);
     if (patientId) {
       return reply.redirect(
         `/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(session.domain)}`,
@@ -1123,7 +1275,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
       dossierUseCase.getDossier(patientId, session.domain, session.language, body.filename),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
     if (!dossier) return reply.redirect(`/worklist?domain=${encodeURIComponent(session.domain)}`);
     return reply
@@ -1156,7 +1308,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
       dossierUseCase.getDossier(filename, session.domain, session.language, filename),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
     if (!dossier) return reply.redirect(`/worklist?domain=${encodeURIComponent(session.domain)}`);
     return reply
@@ -1219,7 +1371,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const query = (req.query ?? {}) as Record<string, string | undefined>;
     const [overview, { queueStats, queueJobs }] = await Promise.all([
       guidelinesUseCase.getOverview(session.domain, session.language, query.file),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
 
     const html = renderGuidelinesPage(overview, session, queueStats, queueJobs);
@@ -1231,7 +1383,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const [agents, resources, { queueStats, queueJobs }] = await Promise.all([
       api.listAgents(session.domain, session.language),
       api.listResources(session.domain),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
     const html = renderAgentsPage(agents, session, queueStats, queueJobs, resources);
     return reply.type("text/html; charset=utf-8").send(html);
@@ -1267,6 +1419,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/guidelines/:filename/delete", async (req, reply) => {
     const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply
+        .code(403)
+        .type("text/plain; charset=utf-8")
+        .send("Accès réservé aux administrateurs.");
+    }
     const { filename } = req.params as { filename: string };
     if (!isSafeFilename(filename)) {
       return reply.code(400).send("Nom de fichier invalide");
@@ -1293,7 +1451,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     const [overview, { queueStats, queueJobs }] = await Promise.all([
       guidelinesUseCase.getOverview(session.domain, session.language, body.filename),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
     return reply
       .type("text/html; charset=utf-8")
@@ -1313,7 +1471,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
         status: query.status,
         category: query.category,
       }),
-      loadShellQueue(session.domain),
+      loadShellQueue(session.domain, session.isAdmin),
     ]);
 
     const html = renderFeedbackPage(bugs, session, queueStats, queueJobs);
@@ -1337,16 +1495,58 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/feedback/:bugId/status", async (req, reply) => {
     const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply
+        .code(403)
+        .type("text/plain; charset=utf-8")
+        .send("Accès réservé aux administrateurs.");
+    }
     const { bugId } = req.params as { bugId: string };
     const body = FeedbackStatusBodySchema.parse(req.body ?? {});
     await feedbackUseCase.updateStatus(bugId, body.status, session.domain);
     return reply.redirect(`/feedback?domain=${encodeURIComponent(session.domain)}`);
   });
 
+  app.post("/feedback/:bugId/delete", async (req, reply) => {
+    const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply
+        .code(403)
+        .type("text/plain; charset=utf-8")
+        .send("Accès réservé aux administrateurs.");
+    }
+    const { bugId } = req.params as { bugId: string };
+    await feedbackUseCase.deleteBug(bugId, session.domain);
+    return reply.redirect(`/feedback?domain=${encodeURIComponent(session.domain)}`);
+  });
+
+  app.delete("/feedback/:bugId", async (req, reply) => {
+    const session = resolveSession(req);
+    if (!session.isAdmin) {
+      return reply.code(403).send({ ok: false, error: "Accès réservé aux administrateurs." });
+    }
+    const { bugId } = req.params as { bugId: string };
+    await feedbackUseCase.deleteBug(bugId, session.domain);
+    return reply.code(200).send({ deleted: bugId });
+  });
+
   // 9. Queue Supervision & SSE Stream
   app.get("/admin/queue", async (req, reply) => {
     const session = resolveSession(req);
-    const dashboard = await queueAdminUseCase.getDashboard(session.domain, true);
+    const dashboard = await queueAdminUseCase.getDashboard(
+      session.domain,
+      Boolean(session.isAdmin),
+    );
+    const html = renderQueueAdminPage(dashboard, session);
+    return reply.type("text/html; charset=utf-8").send(html);
+  });
+
+  app.get("/queue", async (req, reply) => {
+    const session = resolveSession(req);
+    const dashboard = await queueAdminUseCase.getDashboard(
+      session.domain,
+      Boolean(session.isAdmin),
+    );
     const html = renderQueueAdminPage(dashboard, session);
     return reply.type("text/html; charset=utf-8").send(html);
   });
@@ -1392,7 +1592,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.get("/events/queue", async (req, reply) => {
     const session = resolveSession(req);
-    const stats = await api.getQueueStats(session.domain, true);
+    const stats = await api.getQueueStats(session.domain, Boolean(session.isAdmin));
     const bannerHtml = renderQueueBannerPartial(stats, session).replace(/\n/g, " ");
     const badgesHtml = renderQueueNavBadges(stats, session.language).replace(/\n/g, " ");
     const retryMs = stats.running > 0 || stats.pending > 0 ? 3000 : 8000;

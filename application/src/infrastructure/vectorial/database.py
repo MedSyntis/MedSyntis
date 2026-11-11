@@ -1,13 +1,31 @@
+import hashlib
+import re
 import uuid
-
-
 from typing import Any
 
+from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore, VectorStoreRetriever
 
 from src.application.config import AppConfig
 from src.infrastructure.llm.factory import get_llm_client
-# Legacy import to support existing patch-based unit tests
+
+
+def sanitize_collection_name(raw_name: str) -> str:
+    """
+    Sanitize a vector collection name for Milvus and Chroma compatibility:
+    - Restrict characters to `[a-zA-Z0-9_]`.
+    - Prefix `doc_` when the first character is not `[a-zA-Z_]` (e.g. digit-prefixed filenames).
+    - Truncate names longer than 240 characters using a deterministic `_{sha256[:12]}` suffix.
+    """
+    cleaned = re.sub(r"[^a-zA-Z0-9_]", "_", (raw_name or "").strip())
+    if not cleaned:
+        cleaned = "doc_unknown"
+    elif not (cleaned[0].isalpha() or cleaned[0] == "_"):
+        cleaned = f"doc_{cleaned}"
+    if len(cleaned) > 240:
+        digest = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()[:12]
+        cleaned = f"{cleaned[:227]}_{digest}"
+    return cleaned
 
 
 class VectorialDataBase:
@@ -15,7 +33,6 @@ class VectorialDataBase:
     clientdb: VectorStore
     collection: Any = None
 
-    # Initialize the client, collection and embeddings based on configuration.
     """Initialize the client, collection and embeddings based on configuration."""
 
     def __init__(self, config: AppConfig, coll_prefix: str | None = None):
@@ -24,11 +41,12 @@ class VectorialDataBase:
             config.llm.embeddings.replace("/", "_").replace(":", "_").replace("-", "_")
         )
         if coll_prefix is None:
-            self.coll_name = f"{config.dbvec.collection}_{embedding_suffix}"
+            raw_coll_name = f"{config.dbvec.collection}_{embedding_suffix}"
         else:
-            self.coll_name = (
+            raw_coll_name = (
                 f"{coll_prefix}_{config.dbvec.collection}_{embedding_suffix}"
             )
+        self.coll_name = sanitize_collection_name(raw_coll_name)
 
         llm_client = get_llm_client(config)
         self.llm_embeddings = llm_client.embedding
@@ -136,10 +154,23 @@ class VectorialDataBase:
             ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content
         )
 
+    def _add_documents_batch(self, batch: list[Document]) -> None:
+        """Insert a bounded batch of LangChain `Document` chunks into the vector collection."""
+        if self.collection is not None and hasattr(self.collection, "add_documents"):
+            self.collection.add_documents(batch)
+        elif (
+            hasattr(self, "clientdb")
+            and self.clientdb is not None
+            and hasattr(self.clientdb, "add_documents")
+        ):
+            self.clientdb.add_documents(batch)
+        else:
+            for doc in batch:
+                self.add_to_collection(doc)
+
     def add_chunked_to_collection(self, chunked_documents, flush_before=False):
         """
-        This method adds a chunked list of documents to the collection. It first checks if flushing is required
-        and then iterates over each document in the chunked list, adding it to the collection using the add_to_collection method.
+        Add a chunked list of documents to the collection in batches of 32.
 
         Parameters:
             - chunked_documents: A list of documents that need to be added to the collection
@@ -149,9 +180,14 @@ class VectorialDataBase:
             None
         """
         if flush_before:
-            # Flush and recreate the clientdb before adding the chunked documents.
             self.set_clientdb(flush=True)
-        # chunked_documents = filter_complex_metadata(chunked_documents)
-        for doc in chunked_documents:
-            # Add each document to the collection.
-            self.add_to_collection(doc)
+        docs = [
+            Document(metadata=doc.metadata, page_content=doc.page_content)
+            for doc in (chunked_documents or [])
+        ]
+        if not docs:
+            return
+        batch_size = 32
+        for idx in range(0, len(docs), batch_size):
+            batch = docs[idx : idx + batch_size]
+            self._add_documents_batch(batch)

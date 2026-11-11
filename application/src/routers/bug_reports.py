@@ -13,7 +13,7 @@ from src.models.bug_reports import (
     BugReportResponse,
     BugReportStatusUpdateRequest,
 )
-from src.routers.dependencies import DomainConfigDep, require_db
+from src.routers.dependencies import DomainConfigDep, require_admin, require_db
 
 router = APIRouter(prefix="/bug-reports", tags=["bug-reports"])
 
@@ -63,13 +63,17 @@ def create_bug_report(
     return repo.save(report)
 
 
-@router.patch("/{report_id}/status", response_model=BugReportResponse)
+@router.patch(
+    "/{report_id}/status",
+    response_model=BugReportResponse,
+    dependencies=[Depends(require_admin)],
+)
 def update_bug_report_status(
     report_id: str,
     request: BugReportStatusUpdateRequest,
     repo: BugReportRepoDep,
 ):
-    """Update the resolution status of an existing bug report."""
+    """Update the resolution status of an existing bug report (admin required)."""
     updated = repo.update_status(report_id, request.status)
     if updated is None:
         raise HTTPException(
@@ -79,12 +83,16 @@ def update_bug_report_status(
     return updated
 
 
-@router.delete("/{report_id}", response_model=BugReportDeleteResponse)
+@router.delete(
+    "/{report_id}",
+    response_model=BugReportDeleteResponse,
+    dependencies=[Depends(require_admin)],
+)
 def delete_bug_report(
     report_id: str,
     repo: BugReportRepoDep,
 ):
-    """Delete a bug report by its identifier."""
+    """Delete a bug report by its identifier (admin required)."""
     deleted = repo.delete(report_id)
     if not deleted:
         raise HTTPException(

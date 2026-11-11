@@ -47,12 +47,13 @@ MedSyntis is organized into two cleanly decoupled workspaces communicating exclu
 * **`public/`**: Self-hosted M3 design tokens (`public/css/tokens.css`, `public/css/components.css`), progressive-enhancement Vanilla JS client (`public/js/app.js`), and a **73-icon SVG sprite** (`public/img/icons.svg`).
 
 ### 2. Module Breakdown under `application/` (Python FastAPI & Multi-Agent Backend)
-* **`src/domain/`**: Pure domain entities, value objects, and repository contracts (`patient.py`, `patient_mdt_form/` for `OncologyPatientMDTForm` and `SMAPatientMDTForm`, `mdt_agenda.py`, `bug_report.py`, `agents/` for Oncology and SMA specialist personas, `repositories.py`).
+* **`src/domain/`**: Pure domain entities, value objects, and repository contracts (`patient.py`, `patient_mdt_form.py`, `common/patient_mdt_common_form.py`, `oncology/patient_mdt_oncologic_form.py` for `PatientMDTOncologicForm`, `sma/patient_mdt_sma_form.py` for `PatientMDTSmaForm`, `patient_dashboard.py`, `mdt_agenda.py`, `bug_report.py`, `agents.py` & domain `agents/`, `repositories.py`).
 * **`src/application/`**:
   * **`use_cases/`**:
-    * `patient_record_management.py` (`PatientRecordService`): Deterministic `patient_id` computation from normalized `(last_name, first_name, date_birth)`, patient card synthesis, dossier resolution, manual section updates (`manual_edits`), section rollback to original AI extraction, missing-item visibility toggling, and administrative identity reconciliation.
-    * `mdt_form_extraction.py` (`PatientMDTFormExtractionService`): Orchestrates PDF SHA-256 duplicate detection, 3-wave extraction (`Wave 1` Administrative, `Wave 2` Clinical & Completeness, `Wave 3` Specialist Opinions & Care Orientation), and `preserve_manual_edits` enforcement.
+    * `patient_record.py` (`PatientRecordService`): Deterministic `patient_id` computation from normalized `(last_name, first_name, date_birth)`, patient card synthesis, longitudinal dashboard & summary state, dossier resolution, manual section updates (`manual_edits`), section rollback to original AI extraction, missing-item visibility toggling, and administrative identity reconciliation.
+    * `patient_mdt_form_extraction.py` (`PatientMDTFormExtractionService`): Orchestrates PDF SHA-256 duplicate detection, 3-wave extraction (`Wave 1` Administrative, `Wave 2` Clinical & Completeness, `Wave 3` Specialist Opinions & Care Orientation), and `preserve_manual_edits` enforcement.
     * `mdt_agenda.py` (`MDTAgendaService`): Schedules the Next MDT Session Agenda across 4 sorting strategies (`hybrid`, `expert_grouping`, `urgency_first`, `manual`), computes specialist attendance windows and quorum warnings, handles `defer_incomplete_files`, and manages case pinning/reordering.
+    * `queue_executor.py`: Dispatches asynchronous extraction and longitudinal summary jobs onto domain-scoped services inside the `PriorityQueue`.
   * **`agent/`**: LangChain multi-expert coordinator (`agent.py`) and context-isolated tools (`tools.py` with `Context` for single-MDT form RAG and `PatientContext` for longitudinal multi-MDT patient history queries).
   * **`reader.py` & `ressources.py`**: Document chunking, bounding-box (`bbox`) PDF annotation, and vector indexing pipeline for patient records and scientific guidelines (TNCD / PNDS).
   * **`config.py`**: Centralized `pydantic-settings` configuration (`AppConfig`) with domain-scoped overrides (`AppConfig.for_domain(domain)`).
@@ -62,7 +63,7 @@ MedSyntis is organized into two cleanly decoupled workspaces communicating exclu
   * **`queue/`**: Thread-safe in-process / cross-domain GPU `PriorityQueue` manager (`InMemoryQueueManager`, `QueueBroker`) with real-time SSE token streaming (`stream_job_thinking`) and startup crash recovery from MongoDB.
   * **`parsers/`**: Multi-engine PDF layout and OCR parsers (`Docling`, `PyMuPDF`, `OpenParse`, and local `Ollama OCR` with `granite3.2-vision`).
 * **`src/routers/`**: Versioned FastAPI routers mounted under `/api/v1` (`patientmdtform.py`, `mdt_agenda.py`, `agents.py`, `resources.py`, `queue.py`, `bug_reports.py`, `dependencies.py`).
-* **`src/ui/`**: Optional legacy Streamlit dashboard (`app-ui.py`). Note: importing `streamlit` outside `src/ui/` is strictly prohibited by architectural rules.
+* **`src/ui/`**: Deprecated / legacy Streamlit dashboard (`app-ui.py`), superseded by `web/`. Note: importing `streamlit` outside `src/ui/` and `app-ui.py` is strictly prohibited by architectural rules.
 
 ---
 
@@ -244,7 +245,7 @@ Used for local development and standalone hospital intranet deployments:
 
 ### 2. Zero-Trust Reverse Proxy SSO Mode (`APP_AUTH_MODE="oauth_proxy"`)
 Used in production Docker stacks (`dist/docker/compose/docker-compose.prod.yml`) behind **Caddy TLS** and **OAuth2-Proxy**:
-1. **Caddy (`dist/docker/caddy/Caddyfile`)** terminates TLS (`https://oncologic.<domain>` and `https://sma.<domain>`) and authenticates every request against `oauth2-proxy` via `forward_auth`.
+1. **Caddy (`dist/docker/compose/Caddyfile`)** terminates TLS (`https://oncologic.<domain>` and `https://sma.<domain>`) and authenticates every request against `oauth2-proxy` via `forward_auth`.
 2. Upon successful SSO authentication, Caddy strips any client-supplied identity headers and injects trusted headers:
    * `X-MedSyntis-User` (authenticated email/username)
    * `X-MedSyntis-User-Name` (display name)

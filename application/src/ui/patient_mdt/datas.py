@@ -2124,7 +2124,7 @@ def _compute_longitudinal_deltas(
     if c_int is not None and p_int is not None and c_int != p_int:
         if c_int is True:
             deltas.append(
-                ":red-badge[🧭 Orientation : Suivi habituel → Adaptation suggérée]"
+                ":blue-badge[🧭 Orientation : Suivi habituel → Adaptation suggérée]"
             )
         else:
             deltas.append(
@@ -2255,7 +2255,7 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
         short_int = (
             f" · {translate(int_type)}" if int_type and len(str(int_type)) <= 24 else ""
         )
-        int_badge = f":red-badge[🧭 Adaptation suggérée{short_int}]"
+        int_badge = f":blue-badge[🧭 Adaptation suggérée{short_int}]"
     elif int_req is False:
         int_badge = ":gray-badge[Suivi habituel]"
     else:
@@ -2921,23 +2921,67 @@ def _render_inline_section_editor(
                     if isinstance(dt_v, date)
                     else None
                 )
+            elif field_info.annotation == (bool | None):
+                bool_opts: list[bool | None] = [None, True, False]
+                bool_labels = {
+                    None: "Non renseigné",
+                    True: "Oui",
+                    False: "Non",
+                }
+                b_idx = (
+                    bool_opts.index(cur_val)
+                    if isinstance(cur_val, bool) or cur_val is None
+                    else 0
+                )
+                updated_values[field_name] = st.selectbox(
+                    label,
+                    options=bool_opts,
+                    index=b_idx,
+                    format_func=lambda v: bool_labels.get(v, str(v)),
+                )
             elif field_info.annotation is bool or isinstance(cur_val, bool):
                 updated_values[field_name] = st.toggle(label, value=bool(cur_val))
-            elif field_info.annotation in (int, int | None):
+            elif field_info.annotation is int:
                 updated_values[field_name] = st.number_input(
                     label,
-                    value=int(cur_val) if isinstance(cur_val, (int, float)) else 0,
+                    value=int(cur_val)
+                    if isinstance(cur_val, (int, float))
+                    and not isinstance(cur_val, bool)
+                    else 0,
                     step=1,
                 )
-            elif field_info.annotation in (float, float | None):
+            elif field_info.annotation == (int | None):
+                updated_values[field_name] = st.number_input(
+                    label,
+                    value=int(cur_val)
+                    if isinstance(cur_val, (int, float))
+                    and not isinstance(cur_val, bool)
+                    else None,
+                    step=1,
+                )
+            elif field_info.annotation is float:
                 updated_values[field_name] = float(
                     st.number_input(
                         label,
                         value=(
-                            float(cur_val) if isinstance(cur_val, (int, float)) else 0.0
+                            float(cur_val)
+                            if isinstance(cur_val, (int, float))
+                            and not isinstance(cur_val, bool)
+                            else 0.0
                         ),
                         step=0.5,
                     )
+                )
+            elif field_info.annotation == (float | None):
+                updated_values[field_name] = st.number_input(
+                    label,
+                    value=(
+                        float(cur_val)
+                        if isinstance(cur_val, (int, float))
+                        and not isinstance(cur_val, bool)
+                        else None
+                    ),
+                    step=0.5,
                 )
             elif isinstance(cur_val, list) or "list" in str(field_info.annotation):
                 joined = (
@@ -3576,7 +3620,7 @@ def form():
     latest_doc = (
         PatientMDTForm.select_latest_analyzed(patient_rcps) if patient_rcps else None
     )
-    latest_file = (
+    latest_file: str = (
         str(latest_doc["file"]) if latest_doc and latest_doc.get("file") else filename
     )
 

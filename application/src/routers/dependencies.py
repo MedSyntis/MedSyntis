@@ -1,6 +1,6 @@
 """FastAPI middlewares and dependencies (auth, security headers, rate limiting, domain routing, database session)."""
 
-from collections import defaultdict, deque
+from collections import deque
 import hmac
 from functools import lru_cache
 import re
@@ -27,8 +27,9 @@ _SWAGGER_CSP = (
     "img-src 'self' data: https://fastapi.tiangolo.com; "
     "frame-ancestors 'none'; base-uri 'self'"
 )
+_MAX_RATE_LIMIT_BUCKETS = 4096
 _RATE_LIMIT_LOCK = threading.Lock()
-_RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
+_RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
 
 
 def reset_rate_limit_buckets() -> None:
@@ -108,19 +109,35 @@ class ApiSecurityMiddleware(BaseHTTPMiddleware):
         return api_key.strip() if api_key else None
 
     @staticmethod
-    def _resolve_client_ip(request: Request) -> str:
+    def _resolve_client_ip(request: Request, base_conf: AppConfig | None = None) -> str:
+        conf = base_conf or get_base_config()
+        expected_secret = conf.proxy_secret
+        raw_proxy_secret = request.headers.get("X-MedSyntis-Proxy-Secret")
+        proxy_trusted = (
+            expected_secret is not None
+            and raw_proxy_secret is not None
+            and hmac.compare_digest(
+                raw_proxy_secret.encode(),
+                expected_secret.get_secret_value().encode(),
+            )
+        )
+
         ip = "unknown"
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            first = forwarded.split(",")[0].strip()
-            if first:
-                ip = first
-        if ip == "unknown":
+        if proxy_trusted:
             real_ip = request.headers.get("X-Real-IP")
             if real_ip and real_ip.strip():
                 ip = real_ip.strip()
-            elif request.client and request.client.host:
-                ip = request.client.host
+
+        if ip == "unknown" and request.client and request.client.host:
+            ip = request.client.host
+
+        if ip == "unknown":
+            forwarded = request.headers.get("X-Forwarded-For")
+            if forwarded:
+                first = forwarded.split(",")[0].strip()
+                if first:
+                    ip = first
+
         user = (
             request.headers.get("X-MedSyntis-User")
             or request.headers.get("X-Auth-Request-Preferred-Username")
@@ -134,11 +151,13 @@ class ApiSecurityMiddleware(BaseHTTPMiddleware):
         request: Request, response, base_conf: AppConfig, request_id: str
     ) -> None:
         response.headers["X-Request-ID"] = request_id
+        path = request.url.path
+        if path.endswith("/thinking/stream"):
+            response.headers.setdefault("X-Accel-Buffering", "no")
         api_sec = base_conf.api
         if not api_sec.security_headers_enabled:
             return
 
-        path = request.url.path
         is_docs = path in _DOCS_PATHS
         is_pdf = path.endswith("/pdf") or path.endswith("/file")
 
@@ -220,13 +239,28 @@ class ApiSecurityMiddleware(BaseHTTPMiddleware):
 
         # 3. Enforce optional sliding-window per-IP rate limiting (exempting /health)
         if api_sec.rate_limit_enabled and request.url.path != "/health":
-            client_ip = self._resolve_client_ip(request)
+            client_ip = self._resolve_client_ip(request, base_conf=base_conf)
             now = time.monotonic()
             window = float(api_sec.rate_limit_window_seconds)
             max_reqs = api_sec.rate_limit_requests
             with _RATE_LIMIT_LOCK:
-                bucket = _RATE_LIMIT_BUCKETS[client_ip]
                 cutoff = now - window
+                if (
+                    client_ip not in _RATE_LIMIT_BUCKETS
+                    and len(_RATE_LIMIT_BUCKETS) >= _MAX_RATE_LIMIT_BUCKETS
+                ):
+                    stale_keys = [
+                        k
+                        for k, q in _RATE_LIMIT_BUCKETS.items()
+                        if not q or q[-1] <= cutoff
+                    ]
+                    for k in stale_keys:
+                        _RATE_LIMIT_BUCKETS.pop(k, None)
+                    while len(_RATE_LIMIT_BUCKETS) >= _MAX_RATE_LIMIT_BUCKETS:
+                        oldest_key = next(iter(_RATE_LIMIT_BUCKETS))
+                        _RATE_LIMIT_BUCKETS.pop(oldest_key, None)
+
+                bucket = _RATE_LIMIT_BUCKETS.setdefault(client_ip, deque())
                 while bucket and bucket[0] <= cutoff:
                     bucket.popleft()
                 if len(bucket) >= max_reqs:
@@ -419,15 +453,31 @@ def require_admin(
     ] = None,
 ) -> None:
     """
-    Enforce admin privileges on destructive endpoints.
+    Enforce administrator privileges on destructive endpoints.
 
-    - When user headers (`X-MedSyntis-User`) are present (e.g. requests coming through the
-      BFF / OAuth2 reverse proxy on behalf of a human user), the proxy secret must be
-      valid AND the user must be listed in `APP_ADMIN_USERS` (`AppConfig.is_admin`).
-    - When `X-MedSyntis-User` is absent, internal service-to-service calls (`QueueBroker`,
-      worker, BFF service client) already authenticated via `APP_API_TOKEN` are permitted.
+    - Outside `dev_mode`, strictly requires `bool(user_info.get("is_admin"))`
+      (missing `X-MedSyntis-User` or empty `admin_users` fails closed with HTTP 403).
+    - In `dev_mode`, preserves convenience when `admin_users` is empty and `x_user`
+      is absent, while rejecting non-admin `x_user` when `admin_users` is configured.
     """
-    if x_user is None:
+    base_conf = get_base_config()
+    if not base_conf.dev_mode:
+        user_info = get_current_user_info(
+            x_user=x_user,
+            x_user_name=x_user_name,
+            x_proxy_secret=x_proxy_secret,
+        )
+        if not bool(user_info.get("is_admin")):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Droits d'administrateur requis.",
+            )
+        return
+
+    configured_admins = {
+        u.strip().lower() for u in base_conf.admin_users.split(",") if u.strip()
+    }
+    if x_user is None and not configured_admins:
         return
 
     user_info = get_current_user_info(
@@ -435,7 +485,7 @@ def require_admin(
         x_user_name=x_user_name,
         x_proxy_secret=x_proxy_secret,
     )
-    if not user_info["is_admin"]:
+    if not bool(user_info.get("is_admin")):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Droits d'administrateur requis.",
