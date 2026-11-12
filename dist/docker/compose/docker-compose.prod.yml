@@ -463,50 +463,46 @@ services:
       - ingress_net
       - backend_internal
 
-  # ─── Optional Local MLflow OTLP Tracing Server (--profile mlflow) ───────────
-  mlflow:
-    image: ${MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.1.1}
-    container_name: medsyntis-mlflow
+  # ─── Optional Local Grafana OTel LGTM Observability Stack (--profile grafana) ─
+  # Bundles OpenTelemetry Collector (:4317/:4318) + Tempo (Traces) + Prometheus (Metrics)
+  # + Loki (Logs) + Grafana UI (bound strictly to 127.0.0.1:3001) on air-gapped backend_internal.
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/otel-lgtm:0.40.0}
+    container_name: medsyntis-grafana
     restart: unless-stopped
     logging: *default-logging
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     ports:
-      - "127.0.0.1:${MLFLOW_PORT:-5000}:5000"
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
     environment:
       <<: *telemetry-off
-      MLFLOW_DISABLE_TELEMETRY: "true"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      ENABLE_LOGS_ALL: "false"
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/mlflow:/mlflow
-    command:
-      - "mlflow"
-      - "server"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "5000"
-      - "--backend-store-uri"
-      - "sqlite:////mlflow/mlflow.db"
-      - "--default-artifact-root"
-      - "/mlflow/artifacts"
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/grafana:/data
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)",
-        ]
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3000/api/health"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 15s
+      start_period: 20s
     networks:
       - backend_internal
     profiles:
-      - "mlflow"
+      - "grafana"
 
   # ─── OAuth2 Proxy (Zero-Trust SSO across *.medsyntis.fr: OIDC / Pro Sante Connect / GitHub) ──
   oauth2-proxy:

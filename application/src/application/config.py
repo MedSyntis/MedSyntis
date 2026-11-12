@@ -615,15 +615,15 @@ class OTelSettings(BaseSettings):
     )
     exporter_otlp_endpoint: str = Field(
         default="",
-        description="Base OTLP collector or MLflow endpoint (OTEL_EXPORTER_OTLP_ENDPOINT).",
+        description="Base OTLP collector endpoint, e.g. http://grafana:4318 (OTEL_EXPORTER_OTLP_ENDPOINT).",
     )
     exporter_otlp_traces_endpoint: str = Field(
         default="",
-        description="Signal-specific OTLP traces endpoint, e.g. http://mlflow:5000/v1/traces (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).",
+        description="Signal-specific OTLP traces endpoint, e.g. http://grafana:4318/v1/traces (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).",
     )
     exporter_otlp_metrics_endpoint: str = Field(
         default="",
-        description="Signal-specific OTLP metrics endpoint (OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).",
+        description="Signal-specific OTLP metrics endpoint, e.g. http://grafana:4318/v1/metrics (OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).",
     )
     exporter_otlp_protocol: str = Field(
         default="http/protobuf",
@@ -631,7 +631,7 @@ class OTelSettings(BaseSettings):
     )
     exporter_otlp_headers: str = Field(
         default="",
-        description="Comma-separated OTLP request headers, e.g. x-mlflow-experiment-id=0 (OTEL_EXPORTER_OTLP_HEADERS).",
+        description="Comma-separated OTLP request headers, e.g. Authorization=Bearer%20token (OTEL_EXPORTER_OTLP_HEADERS).",
     )
     exporter_otlp_timeout: int = Field(
         default=10_000,

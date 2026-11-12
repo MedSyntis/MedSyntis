@@ -255,7 +255,7 @@ Used in production Docker stacks (`dist/docker/compose/docker-compose.prod.yml`)
 
 ---
 
-## 🔭 OpenTelemetry Observability & Optional Local MLflow Tracing
+## 🔭 OpenTelemetry Observability & Optional Local Grafana LGTM Stack
 
 MedSyntis uses the official **OpenTelemetry** SDKs (`opentelemetry-sdk` + upstream FastAPI/HTTPX/PyMongo/Logging instrumentors in Python, and `@opentelemetry/sdk-node` + `@fastify/otel` in Node.js) as its end-to-end instrumentation backbone.
 
@@ -263,9 +263,11 @@ MedSyntis uses the official **OpenTelemetry** SDKs (`opentelemetry-sdk` + upstre
 * **Zero-PHI Sanitization (`SanitizingSpanProcessor`)**: All spans in both `medsyntis-web` and `medsyntis-api` scrub clinical/identity keys (`first_name`, `last_name`, `date_birth`, `prompt`, `thinking`, `query`, `db.statement`, `url.query`), enforce `capture_statement=False` on PyMongo, redact non-pseudonymized `patient_id` values, and hash cleartext filenames (`sha256:<12hex>`).
 * **Local Sovereignty Guardrail**: When `APP_ALLOW_REMOTE_LLM=false`, any non-local `OTEL_EXPORTER_OTLP_*ENDPOINT` is rejected at startup.
 * **End-to-End W3C Correlation**: `medsyntis-web` injects W3C `traceparent` headers into FastAPI requests (`HttpMedsyntisApiAdapter`), `InMemoryQueueManager` propagates trace context into background worker jobs, and `stdout` logs automatically include `trace_id` and `span_id` whenever a recording span is active.
-* **Optional Production MLflow Profile**: Start the hardened local MLflow container (`127.0.0.1:5000`, `backend_internal` network) and enable OTLP export via:
+* **Optional Production Grafana OTel LGTM Profile (`grafana/otel-lgtm:0.40.0`)**: Start the hardened all-in-one local OpenTelemetry Collector + Tempo (Traces) + Prometheus (Metrics) + Loki (Logs) + Grafana UI (`127.0.0.1:3001`, isolated on `backend_internal`) and automatically enable OTLP Traces & Metrics export (`http://grafana:4318`) via:
   ```bash
-  make start-prod-mlflow
-  # Or toggle MLflow tracing on an already running stack without unloading GPU VRAM:
-  make restart-prod-mlflow
+  # Note: run 'make build-prod' first if deploying local branch changes before GHCR publish
+  make start-prod-grafana
+  # Or toggle Grafana OTel observability on an already running stack without unloading GPU VRAM:
+  make restart-prod-grafana
   ```
+* **Bring-Your-Own Internal OTLP Backend**: Because MedSyntis uses standard `OTEL_EXPORTER_OTLP_*` environment variables, administrators can alternatively point `.env.prod` to any internal hospital OTLP collector (e.g. an internal Grafana Alloy/Collector or internal Langfuse v3 endpoint `http://langfuse.internal:3000/api/public/otel/v1/traces` with `OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic%20...`).

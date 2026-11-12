@@ -253,6 +253,7 @@ export function configureWebObservability(
     OTEL_LOGS_EXPORTER: otelConfig.logsExporter || "none",
     OTEL_TRACES_SAMPLER: otelConfig.tracesSampler || "parentbased_traceidratio",
     OTEL_TRACES_SAMPLER_ARG: String(otelConfig.tracesSamplerArg ?? 1.0),
+    OTEL_METRIC_EXPORT_INTERVAL: String(otelConfig.metricExportInterval || 60000),
     OTEL_PROPAGATORS: otelConfig.propagators || "tracecontext,baggage",
   };
   if (otelConfig.resourceAttributes) {

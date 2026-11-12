@@ -3,13 +3,13 @@ TDD test suite for End-to-End OpenTelemetry Observability (MedSyntis#14).
 
 Covers:
 1. Official `OTEL_*` environment variables (`OTelSettings`) and safe defaults (`OTEL_SDK_DISABLED=true`, stdout logs, No-Op tracing/metrics).
-2. Local sovereignty guardrail (`APP_ALLOW_REMOTE_LLM=false` blocks non-local OTLP endpoints while allowing local Docker services like `http://mlflow:5000`).
+2. Local sovereignty guardrail (`APP_ALLOW_REMOTE_LLM=false` blocks non-local OTLP endpoints while allowing local Docker services like `http://grafana:4318`).
 3. Zero-PHI span & metric attribute sanitization (`SanitizingSpanProcessor` + `sanitize_otel_attributes`).
 4. Automatic `trace_id` and `span_id` correlation in text and JSON `stdout` logs when a span is recording.
 5. End-to-end W3C `traceparent` propagation: FastAPI HTTP ingress -> `InMemoryQueueManager` enqueue -> worker execution (Wave 1/2/3) -> DocumentReader / CachedEmbeddingsProxy / MedSyntisAgent / MongoDB.
 6. Pertinent clinical & operational OpenTelemetry metrics (`Counter` & `Histogram` instruments), including `medsyntis.manual_edits.total`.
-7. Official OTLP HTTP/Protobuf exporter (`application/x-protobuf` + `OTEL_EXPORTER_OTLP_HEADERS` for MLflow `/v1/traces`).
-8. Optional hardened `mlflow` service (`--profile mlflow`) in `dist/docker/compose/docker-compose.prod.yml` and `start-prod-mlflow` in `Makefile`.
+7. Official OTLP HTTP/Protobuf exporter (`application/x-protobuf` + `OTEL_EXPORTER_OTLP_HEADERS` for `/v1/traces` and `/v1/metrics`).
+8. Optional hardened `grafana` (`grafana/otel-lgtm`) service (`--profile grafana`) in `dist/docker/compose/docker-compose.prod.yml` and `start-prod-grafana` in `Makefile`.
 """
 
 from __future__ import annotations
@@ -105,13 +105,14 @@ def test_otel_settings_reads_official_env_vars_and_propagates_across_domains(
     monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
     monkeypatch.setenv("OTEL_SERVICE_NAME", "medsyntis-api-prod")
     monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
-    monkeypatch.setenv("OTEL_METRICS_EXPORTER", "console")
+    monkeypatch.setenv("OTEL_METRICS_EXPORTER", "otlp")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://grafana:4318")
     monkeypatch.setenv(
-        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://mlflow:5000/v1/traces"
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://grafana:4318/v1/traces"
     )
     monkeypatch.setenv(
         "OTEL_EXPORTER_OTLP_HEADERS",
-        "x-mlflow-experiment-id=0,Authorization=Bearer%20tok",
+        "X-Scope-OrgID=medsyntis,Authorization=Bearer%20tok",
     )
     monkeypatch.setenv("OTEL_TRACES_SAMPLER_ARG", "0.5")
 
@@ -119,17 +120,21 @@ def test_otel_settings_reads_official_env_vars_and_propagates_across_domains(
     assert conf.otel.sdk_disabled is False
     assert conf.otel.service_name == "medsyntis-api-prod"
     assert conf.otel.traces_exporter == "otlp"
-    assert conf.otel.metrics_exporter == "console"
-    assert conf.otel.exporter_otlp_traces_endpoint == "http://mlflow:5000/v1/traces"
+    assert conf.otel.metrics_exporter == "otlp"
+    assert conf.otel.exporter_otlp_endpoint == "http://grafana:4318"
+    assert conf.otel.exporter_otlp_traces_endpoint == "http://grafana:4318/v1/traces"
     assert conf.otel.traces_sampler_arg == pytest.approx(0.5)
     assert parse_otlp_headers(conf.otel.exporter_otlp_headers) == {
-        "x-mlflow-experiment-id": "0",
+        "X-Scope-OrgID": "medsyntis",
         "Authorization": "Bearer tok",
     }
 
     sma_conf = conf.for_domain("sma")
     assert sma_conf.otel.sdk_disabled is False
-    assert sma_conf.otel.exporter_otlp_traces_endpoint == "http://mlflow:5000/v1/traces"
+    assert sma_conf.otel.exporter_otlp_endpoint == "http://grafana:4318"
+    assert (
+        sma_conf.otel.exporter_otlp_traces_endpoint == "http://grafana:4318/v1/traces"
+    )
 
 
 def test_local_sovereignty_guardrail_blocks_remote_otlp_endpoint(
@@ -144,10 +149,10 @@ def test_local_sovereignty_guardrail_blocks_remote_otlp_endpoint(
     with pytest.raises(ValueError, match="OTLP"):
         AppConfig()
 
-    # Local Docker service (`mlflow`) and loopback (`127.0.0.1`) must pass
-    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://mlflow:5000")
+    # Local Docker service (`grafana`) and loopback (`127.0.0.1`) must pass
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://grafana:4318")
     valid_conf = AppConfig()
-    assert valid_conf.otel.exporter_otlp_endpoint == "http://mlflow:5000"
+    assert valid_conf.otel.exporter_otlp_endpoint == "http://grafana:4318"
 
 
 def test_zero_phi_sanitizer_strips_clinical_and_identity_fields():
@@ -359,8 +364,8 @@ def test_distributed_trace_propagation_fastapi_to_priority_queue_worker_and_metr
     assert expected_metrics.issubset(metric_names)
 
 
-def test_otlp_http_protobuf_exporter_posts_valid_payload_with_mlflow_headers():
-    """Verify official OTLPSpanExporter & OTLPMetricExporter send x-protobuf to MLflow /v1/traces."""
+def test_otlp_http_protobuf_exporter_posts_valid_payload_to_grafana_otlp():
+    """Verify official OTLPSpanExporter & OTLPMetricExporter send x-protobuf to /v1/traces and /v1/metrics."""
     from http.server import BaseHTTPRequestHandler, HTTPServer
     import threading
 
@@ -389,7 +394,7 @@ def test_otlp_http_protobuf_exporter_posts_valid_payload_with_mlflow_headers():
     thread.start()
 
     try:
-        headers = parse_otlp_headers("x-mlflow-experiment-id=0")
+        headers = parse_otlp_headers("X-Scope-OrgID=medsyntis")
         span_exporter = OTLPSpanExporter(
             endpoint=f"http://127.0.0.1:{port}/v1/traces",
             headers=headers,
@@ -420,7 +425,7 @@ def test_otlp_http_protobuf_exporter_posts_valid_payload_with_mlflow_headers():
         )
 
         with start_span(
-            "medsyntis.mlflow.smoke", attributes={"medsyntis.domain": "oncology"}
+            "medsyntis.grafana.smoke", attributes={"medsyntis.domain": "oncology"}
         ):
             get_metrics().record_document_parse(
                 domain="oncology", parser="docling", cache_hit=True, duration_ms=12.0
@@ -442,7 +447,7 @@ def test_otlp_http_protobuf_exporter_posts_valid_payload_with_mlflow_headers():
 
     assert len(trace_calls) >= 1
     assert trace_calls[-1]["headers"].get("content-type") == "application/x-protobuf"
-    assert trace_calls[-1]["headers"].get("x-mlflow-experiment-id") == "0"
+    assert trace_calls[-1]["headers"].get("x-scope-orgid") == "medsyntis"
     assert len(trace_calls[-1]["data"]) > 0
 
     assert len(metric_calls) >= 1
@@ -479,25 +484,27 @@ def test_w3c_carrier_inject_and_extract_roundtrip():
         assert f"{child.get_span_context().trace_id:032x}" == expected_tid
 
 
-def test_prod_docker_compose_and_makefile_define_optional_mlflow_profile():
-    """Verify mlflow is optional (--profile mlflow), hardened, loopback-bound, and off by default."""
+def test_prod_docker_compose_and_makefile_define_optional_grafana_profile():
+    """Verify grafana (otel-lgtm) is optional (--profile grafana), hardened, loopback-bound, and off by default."""
     compose_path = REPO_ROOT / "dist/docker/compose/docker-compose.prod.yml"
     compose_raw = compose_path.read_text(encoding="utf-8")
     compose_data = yaml.safe_load(compose_raw)
 
     services = compose_data.get("services", {})
-    assert "mlflow" in services, (
-        "Optional mlflow service must exist in docker-compose.prod.yml"
+    assert "mlflow" not in services
+    assert "grafana" in services, (
+        "Optional grafana service must exist in docker-compose.prod.yml"
     )
-    mlflow_svc = services["mlflow"]
+    grafana_svc = services["grafana"]
 
-    assert mlflow_svc.get("profiles") == ["mlflow"]
-    assert ":" in mlflow_svc["image"] and not mlflow_svc["image"].endswith(":latest")
-    assert "ALL" in mlflow_svc.get("cap_drop", [])
-    assert "no-new-privileges:true" in mlflow_svc.get("security_opt", [])
-    ports = mlflow_svc.get("ports", [])
+    assert grafana_svc.get("profiles") == ["grafana"]
+    assert "grafana/otel-lgtm:" in grafana_svc["image"]
+    assert not grafana_svc["image"].endswith(":latest")
+    assert "ALL" in grafana_svc.get("cap_drop", [])
+    assert "no-new-privileges:true" in grafana_svc.get("security_opt", [])
+    ports = grafana_svc.get("ports", [])
     assert any(str(p).startswith("127.0.0.1:") for p in ports)
-    assert "backend_internal" in mlflow_svc.get("networks", [])
+    assert "backend_internal" in grafana_svc.get("networks", [])
 
     # Verify OTEL_SDK_DISABLED defaults to true in medsyntis-api and medsyntis-web
     api_env = services["medsyntis-api"]["environment"]
@@ -508,5 +515,8 @@ def test_prod_docker_compose_and_makefile_define_optional_mlflow_profile():
     assert "true" in str(web_env["OTEL_SDK_DISABLED"])
 
     makefile_raw = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    assert "start-prod-mlflow:" in makefile_raw
-    assert "--profile mlflow" in makefile_raw
+    assert "start-prod-mlflow" not in makefile_raw
+    assert "start-prod-grafana:" in makefile_raw
+    assert "restart-prod-grafana:" in makefile_raw
+    assert "--profile grafana" in makefile_raw
+    assert "http://grafana:4318" in makefile_raw

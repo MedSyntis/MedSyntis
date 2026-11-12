@@ -55,10 +55,11 @@ describe("OpenTelemetry Web BFF Observability (MedSyntis#14)", () => {
       APP_ALLOW_REMOTE_LLM: "false",
       OTEL_SDK_DISABLED: "false",
       OTEL_TRACES_EXPORTER: "otlp",
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://mlflow:5000/v1/traces",
+      OTEL_METRICS_EXPORTER: "otlp",
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://grafana:4318",
     });
     expect(allowed.otel?.sdkDisabled).toBe(false);
-    expect(allowed.otel?.exporterOtlpTracesEndpoint).toBe("http://mlflow:5000/v1/traces");
+    expect(allowed.otel?.exporterOtlpEndpoint).toBe("http://grafana:4318");
   });
 
   it("strips PHI attributes while preserving pseudonymized IDs and technical metadata", () => {
