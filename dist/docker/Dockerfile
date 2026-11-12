@@ -1,7 +1,7 @@
 # ==============================================================================
 # Stage 1: Build Python Virtualenv with Legacy Streamlit UI Group (Debian 13 Trixie)
 # ==============================================================================
-FROM python:3.13-slim-trixie AS builder
+FROM python:3.15-slim-trixie AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /bin/uv
 
@@ -27,7 +27,7 @@ RUN uv sync --frozen --no-dev --group ui && rm -rf /tmp/.uv-cache
 # ==============================================================================
 # Stage 2: Hardened Non-Root Streamlit Runtime without Compilers (UID/GID 1002)
 # ==============================================================================
-FROM python:3.13-slim-trixie AS runtime
+FROM python:3.15-slim-trixie AS runtime
 
 COPY --from=builder /bin/uv /bin/uv
 
