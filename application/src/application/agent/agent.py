@@ -302,6 +302,8 @@ class MedSyntisAgent:
             self.models if self.models is not None else config.llm.models.split(",")
         )
         self.models = models_list
+        self._llm_provider = str(getattr(config.llm, "type", None) or "LiteLLM")
+        self._default_model_id = models_list[0].strip() if models_list else "default"
 
         if reasoning is None:
             reasoning = config.llm.reasoning
@@ -598,17 +600,28 @@ class MedSyntisAgent:
                     logger=self.logger,
                 )
             )
-            reader_conf = self.reader.config if self.reader is not None else None
+            reader_conf = (
+                getattr(self.reader, "config", None)
+                if self.reader is not None
+                else None
+            )
             provider_name = (
-                reader_conf.llm.type
-                if reader_conf is not None and reader_conf.llm.type
-                else "LiteLLM"
+                getattr(self, "_llm_provider", None)
+                or (
+                    getattr(reader_conf.llm, "type", None)
+                    if reader_conf is not None
+                    and getattr(reader_conf, "llm", None) is not None
+                    else None
+                )
+                or "LiteLLM"
             )
             model_id = (
                 self.model
+                or getattr(self, "_default_model_id", None)
                 or (
-                    reader_conf.llm.models
-                    if reader_conf is not None and reader_conf.llm.models
+                    getattr(reader_conf.llm, "models", None)
+                    if reader_conf is not None
+                    and getattr(reader_conf, "llm", None) is not None
                     else None
                 )
                 or "default"
