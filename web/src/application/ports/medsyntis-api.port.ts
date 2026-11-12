@@ -107,11 +107,7 @@ export interface MedsyntisApiPort {
     domain: ClinicalDomain,
     editedBy?: string,
   ): Promise<void>;
-  getFormPdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    variant?: "plain" | "bbox",
-  ): Promise<Buffer | null>;
+  getFormPdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null>;
   askDossierQuestion(
     target: { filename?: string; patientId?: string },
     question: string,
@@ -137,11 +133,7 @@ export interface MedsyntisApiPort {
   ): Promise<ResourceDocument>;
   reindexResource(filename: string, domain: ClinicalDomain): Promise<void>;
   deleteResource(filename: string, domain: ClinicalDomain): Promise<void>;
-  getResourcePdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    formFile?: string,
-  ): Promise<Buffer | null>;
+  getResourcePdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null>;
   listAgents(domain: ClinicalDomain, language: Language): Promise<AgentModuleInfo[]>;
   askGuidelineQuestion(
     question: string,

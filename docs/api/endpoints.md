@@ -89,7 +89,7 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 | `GET` | `/api/v1/patientmdtform/{filename}` | Retrieve the complete structured `PatientMDTForm` document enriched with `metrics` and `mdt_date` (`PatientMDTFormDetailResponse`). |
 | `GET` | `/api/v1/patientmdtform/{filename}/status` | Retrieve lightweight extraction status (`processing_status`, `processing_step`, `processing_progress_pct`, `processing_error`, `patient_id`) (`PatientMDTFormStatusResponse`). |
 | `GET` | `/api/v1/patientmdtform/{filename}/jobs-state` | Retrieve active `PriorityQueue` jobs and currently running model names for `{filename}` (`ActiveJobsStateResponse`). |
-| `GET` | `/api/v1/patientmdtform/{filename}/pdf` | Download or stream inline (`?inline=true`) the source PDF or its bounding-box highlighted variant (`?variant=bbox`). |
+| `GET` | `/api/v1/patientmdtform/{filename}/pdf` | Download or stream inline (`?inline=true`) the source `PatientMDTForm` PDF. |
 | `POST` | `/api/v1/patientmdtform/upload` | Upload a PDF (`multipart/form-data`), check SHA-256 duplicates, and enqueue 3-wave extraction (`UploadResponse`). |
 | `POST` | `/api/v1/patientmdtform/{filename}/process` | Enqueue or run full-form or single-section (`model_name`) AI extraction while respecting `preserve_manual_edits` (`ProcessResponse`). |
 | `POST` | `/api/v1/patientmdtform/{filename}/chat` | Chat with a specialist agent scoped to a single `PatientMDTForm` document (`ChatRequest` -> `ChatResponse`). |

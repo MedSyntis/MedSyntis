@@ -151,7 +151,7 @@ def test_sma_motor_function_rejects_out_of_bounds_numeric_scores():
 def test_parse_raw_metric_value_preserves_raw_and_extracts_numeric_or_bilateral():
     """parse_raw_metric_value must keep raw_value untouched while extracting plotting coordinates."""
     desc_list = get_domain_metric_descriptors("sma")
-    # MFM metrics must be prioritized at the top of SMA_METRIC_DESCRIPTORS, and HFMSE removed from dashboard descriptors
+    # MFM metrics must be prioritized at the top of SMA_METRIC_DESCRIPTORS alongside RULM, CHOP-INTEND, and HFMSE
     motor_keys = [
         d.metric_key
         for d in desc_list
@@ -164,8 +164,8 @@ def test_parse_raw_metric_value_preserves_raw_and_extracts_numeric_or_bilateral(
         "MotorFunctionStatus.mfm_d3_score",
         "MotorFunctionStatus.rulm_score",
         "MotorFunctionStatus.chop_intend_score",
+        "MotorFunctionStatus.hfmse_score",
     ]
-    assert "MotorFunctionStatus.hfmse_score" not in motor_keys
     descriptors = {d.metric_key: d for d in desc_list}
     rulm_desc = descriptors["MotorFunctionStatus.rulm_score"]
 
@@ -828,15 +828,15 @@ def test_oncology_enriched_clinical_sections_and_longitudinal_metrics():
     assert "SurgicalStatus.resectability_status" in by_key
     assert "SurgicalStatus.resection_margin" in by_key
 
-    # Chemotherapy fallback from ChemotherapyTreament.chemotherapy_list[0]
-    assert "Chemotherapy.chemotherapy_name" in by_key
+    # Chemotherapy series from ChemotherapyTreament.chemotherapy_list[0]
+    assert "ChemotherapyTreament.chemotherapy_name" in by_key
     assert (
-        by_key["Chemotherapy.chemotherapy_name"].points[0].display_value
+        by_key["ChemotherapyTreament.chemotherapy_name"].points[0].display_value
         == "FOLFIRINOX néo-adjuvant"
     )
-    assert "Chemotherapy.chemotherapy_tolerance" in by_key
+    assert "ChemotherapyTreament.chemotherapy_tolerance" in by_key
     assert (
-        by_key["Chemotherapy.chemotherapy_tolerance"].points[1].display_value
+        by_key["ChemotherapyTreament.chemotherapy_tolerance"].points[1].display_value
         == "Medium"
     )
 

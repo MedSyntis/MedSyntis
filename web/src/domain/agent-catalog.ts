@@ -56,15 +56,41 @@ export function getDomainUserPromptsForAgent(
   const isAdmin = clean.includes("admin");
   const isResource = clean.includes("ressource") || clean.includes("resource");
 
+  const factualWave2Keys =
+    domain === "sma"
+      ? [
+          "GeneticDiagnosis",
+          "MotorFunctionStatus",
+          "RespiratoryFunction",
+          "OrthopedicAndSpineStatus",
+          "BulbarAndNutritionalStatus",
+          "PatientPerformanceStatus",
+          "RadiologicExams",
+        ]
+      : [
+          "TumorLocation",
+          "CancerDescription",
+          "TumorBiology",
+          "HepaticStatus",
+          "PatientPerformanceStatus",
+          "NutritionalStatus",
+          "RadiologicExams",
+          "SurgicalStatus",
+          "PreviousCurativeSurgery",
+          "ChemotherapyTreament",
+          "PlannedCurativeSurgery",
+        ];
+
   if (isAdmin) {
-    const meta = getSectionPresentation("PatientAdministrative", domain, lang);
-    return [
-      {
-        section: "PatientAdministrative",
+    // Administrative / factual extractor runs Wave-1 PatientAdministrative + Wave-2 factual clinical sections
+    return ["PatientAdministrative", ...factualWave2Keys].map((key) => {
+      const meta = getSectionPresentation(key, domain, lang);
+      return {
+        section: key,
         title: meta.title,
         prompt: meta.userPrompt,
-      },
-    ];
+      };
+    });
   }
   if (isCoordinator) {
     const m1 = getSectionPresentation("CareOrientationProposal", domain, lang);
@@ -92,37 +118,8 @@ export function getDomainUserPromptsForAgent(
     ];
   }
 
-  // Specialist clinical agents run factual section extractions + ExpertAnswer + collaborative debate
-  const canonicalKeys =
-    domain === "sma"
-      ? [
-          "GeneticDiagnosis",
-          "MotorFunctionStatus",
-          "RespiratoryFunction",
-          "OrthopedicAndSpineStatus",
-          "BulbarAndNutritionalStatus",
-          "PatientPerformanceStatus",
-          "RadiologicExams",
-          "ExpertAnswer",
-          "CareOrientationProposal",
-        ]
-      : [
-          "TumorLocation",
-          "CancerDescription",
-          "TumorBiology",
-          "HepaticStatus",
-          "PatientPerformanceStatus",
-          "NutritionalStatus",
-          "RadiologicExams",
-          "SurgicalStatus",
-          "PreviousCurativeSurgery",
-          "ChemotherapyTreament",
-          "PlannedCurativeSurgery",
-          "ExpertAnswer",
-          "CareOrientationProposal",
-        ];
-
-  return canonicalKeys.map((key) => {
+  // Specialist clinical agents run Wave-3 ExpertAnswer + collaborative CareOrientationProposal debate
+  return ["ExpertAnswer", "CareOrientationProposal"].map((key) => {
     const meta = getSectionPresentation(key, domain, lang);
     return {
       section: key,

@@ -3,7 +3,7 @@ import hashlib
 import re
 from typing import Any, Optional, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 from slugify import slugify
 
 from src.domain.common.common_ressources import Gender
@@ -152,11 +152,22 @@ class PatientIdentity(BaseModel):
             return f"patient_{digest}"
 
         dob_str = _normalize_birth_date_slug(date_birth)
-        canonical = f"{name_key}_{dob_str}" if dob_str else name_key
+        if dob_str:
+            canonical = f"{name_key}_{dob_str}"
+        elif fallback_file:
+            file_slug = slugify(fallback_file, separator="_")
+            canonical = f"{name_key}:unverified:{file_slug}"
+        else:
+            canonical = f"{name_key}:unverified"
         digest = hashlib.sha256(
             f"medsyntis:patient:{canonical}".encode("utf-8")
         ).hexdigest()[:16]
         return f"pat_{digest}"
+
+    @property
+    def identity_verification_required(self) -> bool:
+        """Return True when civil identity lacks `date_birth` or `name_key` and requires human verification."""
+        return self.date_birth is None or not self.name_key
 
     @staticmethod
     def is_pseudonymized_id(patient_id: str | None) -> bool:
@@ -236,6 +247,12 @@ class Patient(BaseModel):
     @property
     def name_key(self) -> str:
         return self.identity.name_key
+
+    @computed_field
+    @property
+    def identity_verification_required(self) -> bool:
+        """Return True when `date_birth` or `name_key` is missing and manual identity verification is required."""
+        return self.identity.identity_verification_required
 
     @staticmethod
     def build_name_key(first_name: str | None, last_name: str | None) -> str:
@@ -377,7 +394,11 @@ class Patient(BaseModel):
     @classmethod
     def from_persistence(cls, raw: dict[str, Any]) -> Self:
         """Hydrate a `Patient` aggregate from a persistence dictionary."""
-        clean = {k: v for k, v in raw.items() if k not in ("_id", "name_key")}
+        clean = {
+            k: v
+            for k, v in raw.items()
+            if k not in ("_id", "name_key", "identity_verification_required")
+        }
         return cls.model_validate(clean)
 
     def to_persistence(self) -> dict[str, Any]:
@@ -385,6 +406,7 @@ class Patient(BaseModel):
         payload: dict[str, Any] = {
             "patient_id": self.patient_id,
             "name_key": self.name_key,
+            "identity_verification_required": self.identity_verification_required,
             "first_name": self.first_name,
             "last_name": self.last_name,
             "born_name": self.born_name,

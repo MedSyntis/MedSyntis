@@ -70,9 +70,9 @@ Used jointly by **MDT Medical Secretaries** (to verify identity and chase missin
 The dossier view combines longitudinal context with side-by-side source verification:
 * **Synoptic Header & Longitudinal Clinical Deltas**: Displays patient identity, urgency badge, completeness indicator, pre-MDT orientation, required specialties, and automated **longitudinal deltas** across MDT sessions (e.g., CA 19-9 trend in oncology or ΔHFMSE / ΔRULM motor score evolution in SMA).
 * **Collapsible Multi-MDT Timeline**: Switch effortlessly between all historical MDT forms (`rcps`) for the patient to compare disease evolution over time.
-* **Side-by-Side Native PDF Viewer with Bounding-Box Highlights**:
+* **Side-by-Side Native PDF Viewer**:
   * The left pane displays the original PDF report (with a one-click **Expand PDF** toggle).
-  * Switch between the plain PDF and the **Bounding-Box (`bbox`) Highlight** view, or click any citation badge in the clinical synthesis to jump directly to the corresponding page in the PDF.
+  * Click any citation badge in the clinical synthesis to jump directly to the corresponding page in the PDF.
 
 ### 3. Missing-Document Warnings & Checklist Management
 * Under the **Pre-MDT Orientation & Opinions** tab, MedSyntis highlights every missing exam or data point flagged by `MTDCompleted` (for example, a missing definitive EUS biopsy pathology report or a missing anti-AAV9 antibody titer).

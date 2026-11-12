@@ -279,10 +279,10 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(editMtdRes.body).toContain('data-testid="missing-items-panel"');
     expect(editMtdRes.body).toContain("Éléments facultatifs manquants");
 
-    // Save a manual edit on Chemotherapy section
+    // Save a manual edit on ChemotherapyTreament section
     const editRes = await app.inject({
       method: "POST",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         "hx-request": "true",
@@ -296,22 +296,22 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(editRes.body).toContain("ds-kv--manual");
     expect(editRes.body).toContain('data-testid="field-manual-chemotherapy_name"');
     expect(editRes.body).toContain("Valeur IA initiale : FOLFIRINOX modifié, 6 cures");
-    expect(editRes.body).toContain('data-testid="btn_rollback_section_Chemotherapy"');
+    expect(editRes.body).toContain('data-testid="btn_rollback_section_ChemotherapyTreament"');
 
     // Cancel edit returns read-only partial without is-editing
     const cancelEditRes = await app.inject({
       method: "GET",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/edit?view=1",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament/edit?view=1",
       headers: { "hx-request": "true" },
     });
     expect(cancelEditRes.statusCode).toBe(200);
     expect(cancelEditRes.body).not.toContain("is-editing");
     expect(cancelEditRes.body).toContain("FOLFIRINOX modifié 7 cures");
 
-    // Rerun Chemotherapy while preserving manual edits by default
+    // Rerun ChemotherapyTreament while preserving manual edits by default
     const rerunRes = await app.inject({
       method: "POST",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rerun",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament/rerun",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: "preserve_manual_edits=true",
     });
@@ -325,13 +325,13 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(checkRes.body).toContain("FOLFIRINOX modifié 7 cures");
     // Expert mode shows user prompt, AI vs Human trace, and Chunks
     expect(checkRes.body).toContain('data-testid="prompt-TumorLocation"');
-    expect(checkRes.body).toContain('data-testid="trace-Chemotherapy"');
+    expect(checkRes.body).toContain('data-testid="trace-ChemotherapyTreament"');
     expect(checkRes.body).toContain("Chunk #1");
 
-    // Rollback Chemotherapy restores the original AI value and removes manual badge + field highlight
+    // Rollback ChemotherapyTreament restores the original AI value and removes manual badge + field highlight
     const rollbackRes = await app.inject({
       method: "POST",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rollback",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament/rollback",
       headers: { "hx-request": "true" },
     });
     expect(rollbackRes.statusCode).toBe(200);
@@ -993,20 +993,20 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
 
     const secCancelRedirect = await app.inject({
       method: "GET",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/edit?view=1&domain=oncology",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament/edit?view=1&domain=oncology",
     });
     expect(secCancelRedirect.statusCode).toBe(302);
 
     const secFullPageEdit = await app.inject({
       method: "GET",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/edit?domain=oncology",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament/edit?domain=oncology",
     });
     expect(secFullPageEdit.statusCode).toBe(200);
 
     // Non-htmx POST section update & rollback redirect
     const secUpdateRedirect = await app.inject({
       method: "POST",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy?domain=oncology",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament?domain=oncology",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: "chemotherapy_name=FOLFIRINOX",
     });
@@ -1014,7 +1014,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
 
     const secRollbackRedirect = await app.inject({
       method: "POST",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rollback?domain=oncology",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/ChemotherapyTreament/rollback?domain=oncology",
     });
     expect(secRollbackRedirect.statusCode).toBe(302);
 
@@ -1165,11 +1165,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(badFormPdf.statusCode).toBe(400);
 
-    const bboxFormPdf = await app.inject({
+    const plainFormPdf = await app.inject({
       method: "GET",
-      url: "/files/forms/jeanne_fictive_2026_11_06.pdf/pdf?variant=bbox",
+      url: "/files/forms/jeanne_fictive_2026_11_06.pdf/pdf",
     });
-    expect(bboxFormPdf.statusCode).toBe(200);
+    expect(plainFormPdf.statusCode).toBe(200);
 
     const badResPdf = await app.inject({
       method: "GET",
@@ -1182,12 +1182,13 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/files/resources/unknown_ref.pdf?formFile=jeanne_fictive_2026_11_06.pdf&domain=oncology",
     });
     expect(fallbackResPdf.statusCode).toBe(200);
+    expect(fallbackResPdf.rawPayload.equals(plainFormPdf.rawPayload)).toBe(true);
 
-    const synthResPdf = await app.inject({
+    const missingResPdf = await app.inject({
       method: "GET",
       url: "/files/resources/unknown_ref.pdf?domain=oncology",
     });
-    expect(synthResPdf.statusCode).toBe(200);
+    expect(missingResPdf.statusCode).toBe(404);
 
     // 7. Feedback status update & Queue job delete
     const feedbackStatusRes = await app.inject({
@@ -1285,7 +1286,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(dossierRes.body).toContain('data-testid="patient_dashboard_raw_table"');
     expect(dossierRes.body).toContain("<svg ");
     expect(dossierRes.body).not.toContain(">CancerDescription.tnm_status<");
-    expect(dossierRes.body).not.toContain(">Chemotherapy.chemotherapy_name<");
+    expect(dossierRes.body).not.toContain(">ChemotherapyTreament.chemotherapy_name<");
 
     // 2. Trigger on-demand summary regeneration via POST /patients/A-1042/summary
     const triggerRes = await app.inject({

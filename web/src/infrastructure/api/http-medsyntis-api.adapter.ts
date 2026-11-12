@@ -938,24 +938,20 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     }
   }
 
-  async getFormPdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    variant: "plain" | "bbox" = "plain",
-  ): Promise<Buffer | null> {
-    const cacheKey = `${domain}:${variant}:${filename}`;
+  async getFormPdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null> {
+    const cacheKey = `${domain}:${filename}`;
     const now = Date.now();
     const cached = this.pdfBufferCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
       return cached.data;
     }
     try {
-      const url = `${this.baseUrl}/api/v1/patientmdtform/${encodeURIComponent(filename)}/pdf?inline=true&variant=${variant}&domain=${encodeURIComponent(domain)}`;
+      const url = `${this.baseUrl}/api/v1/patientmdtform/${encodeURIComponent(filename)}/pdf?inline=true&domain=${encodeURIComponent(domain)}`;
       const resp = await this.fetchImpl(url, {
         headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
       });
       if (!resp.ok) {
-        if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain, variant);
+        if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain);
         return null;
       }
       const arr = await resp.arrayBuffer();
@@ -972,7 +968,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       }
       return buf;
     } catch (err) {
-      if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain, variant);
+      if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain);
       throw err;
     }
   }
@@ -1191,36 +1187,50 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     }
   }
 
-  async getResourcePdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    formFile?: string,
-  ): Promise<Buffer | null> {
+  async getResourcePdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null> {
     try {
-      const formParam = formFile ? `&form_file=${encodeURIComponent(formFile)}` : "";
-      const url = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(filename)}/file?domain=${encodeURIComponent(domain)}${formParam}`;
+      const url = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(filename)}/file?domain=${encodeURIComponent(domain)}`;
       const resp = await this.fetchImpl(url, {
         headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
       });
       if (resp.ok) {
         return Buffer.from(await resp.arrayBuffer());
       }
-      // If citation title did not match a resource filename directly, resolve against domain resources
+      // Resolve fuzzy guideline citation titles strictly against matching domain resources (never arbitrary available[0])
       const available = await this.listResources(domain).catch(() => []);
       if (available.length > 0) {
+        const stopWords = new Set([
+          "compte",
+          "rendu",
+          "dossier",
+          "patient",
+          "fiche",
+          "document",
+          "missing",
+          "citation",
+        ]);
         const lowerQuery = filename.toLowerCase();
+        const queryTokens = lowerQuery
+          .split(/[^a-z0-9]+/)
+          .filter((t) => t.length >= 4 && /[a-z]/.test(t) && !stopWords.has(t));
         const best =
           available.find(
             (r) => lowerQuery.includes("pnds") && r.filename.toLowerCase().includes("pnds"),
+          ) ??
+          available.find(
+            (r) => lowerQuery.includes("tncd") && r.filename.toLowerCase().includes("tncd"),
           ) ??
           available.find(
             (r) =>
               lowerQuery.includes("argumentaire") &&
               r.filename.toLowerCase().includes("argumentaire"),
           ) ??
-          available[0];
+          available.find((r) => {
+            const stem = r.filename.toLowerCase().replace(/\.pdf$/i, "");
+            return queryTokens.some((tok) => stem.includes(tok));
+          });
         if (best && best.filename !== filename) {
-          const fallbackUrl = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(best.filename)}/file?domain=${encodeURIComponent(domain)}${formParam}`;
+          const fallbackUrl = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(best.filename)}/file?domain=${encodeURIComponent(domain)}`;
           const fallbackResp = await this.fetchImpl(fallbackUrl, {
             headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
           });
@@ -1229,10 +1239,10 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           }
         }
       }
-      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
+      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain);
       return null;
     } catch (err) {
-      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
+      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain);
       throw err;
     }
   }

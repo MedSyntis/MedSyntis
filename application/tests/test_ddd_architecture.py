@@ -927,8 +927,6 @@ class TestRepositoriesAndApplicationUseCases:
 
         pdf_path = tmp_path / "doc_a.pdf"
         pdf_path.write_bytes(b"%PDF-1.4")
-        bbox_path = tmp_path / "doc_a.pdf.bbox"
-        bbox_path.write_text("{}")
 
         svc = PatientRecordService(
             patient_repo=patient_repo,
@@ -953,10 +951,9 @@ class TestRepositoriesAndApplicationUseCases:
         assert svc.resolve_patient_record() == (None, [], None)
         assert svc.delete_patient_record("NON-EXISTENT") is False
 
-        # Delete patient record including PDF and .bbox file
+        # Delete patient record including PDF file
         assert svc.delete_patient_record("P-200", delete_files=True) is True
         assert not pdf_path.exists()
-        assert not bbox_path.exists()
         mock_broker.delete_jobs_for_file.assert_called()
 
     def test_queue_executor_single_model_and_clear_manual_edit(self):

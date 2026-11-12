@@ -262,12 +262,10 @@ def _best_token_match(raw_query: str, candidates: list[str]) -> str | None:
     return best_file if best_score >= 3 else None
 
 
-def _resolve_resource_pdf_path(
-    config, raw_name: str, form_file: str | None = None
-) -> tuple[str, str] | None:
+def _resolve_resource_pdf_path(config, raw_name: str) -> tuple[str, str] | None:
     """
-    Dynamically resolve a citation label or filename against the domain's indexed
-    resources directory (`additional_path`) or patient records directory (`rcp.path`).
+    Dynamically resolve a citation label or filename strictly against the domain's indexed
+    clinical reference resources directory (`additional_path`).
     """
     cleaned = os.path.basename((raw_name or "").strip().replace("\\", "/"))
     if not cleaned or ".." in raw_name or "\0" in raw_name:
@@ -299,32 +297,6 @@ def _resolve_resource_pdf_path(
     if matched_resource:
         return matched_resource, os.path.join(base_dir, matched_resource)
 
-    # 3. Check if the citation or fallback `form_file` resolves to a patient PDF in `config.rcp.path`
-    rcp_dir = str(config.rcp.path)
-    try:
-        rcp_files = [
-            f
-            for f in os.listdir(rcp_dir)
-            if f.lower().endswith(".pdf") and os.path.isfile(os.path.join(rcp_dir, f))
-        ]
-    except OSError:
-        rcp_files = []
-    rcp_lower_map = {f.lower(): f for f in rcp_files}
-    for cand in exact_candidates:
-        if cand.lower() in rcp_lower_map:
-            matched = rcp_lower_map[cand.lower()]
-            return matched, os.path.join(rcp_dir, matched)
-
-    matched_rcp = _best_token_match(raw_name, rcp_files)
-    if matched_rcp:
-        return matched_rcp, os.path.join(rcp_dir, matched_rcp)
-
-    if form_file:
-        clean_form = os.path.basename(form_file.strip().replace("\\", "/"))
-        if clean_form and ".." not in form_file and clean_form.lower() in rcp_lower_map:
-            matched = rcp_lower_map[clean_form.lower()]
-            return matched, os.path.join(rcp_dir, matched)
-
     return None
 
 
@@ -336,7 +308,6 @@ def _resolve_resource_pdf_path(
 def get_resource_file(
     filename: str,
     config: DomainConfigDep,
-    form_file: str | None = None,
 ):
     """Serve a clinical reference resource PDF inline after validating safe path boundaries."""
     if ".." in filename or "\0" in filename:
@@ -345,7 +316,7 @@ def get_resource_file(
             detail="Nom de fichier invalide.",
         )
 
-    resolved = _resolve_resource_pdf_path(config, filename, form_file=form_file)
+    resolved = _resolve_resource_pdf_path(config, filename)
     if resolved is None:
         if not is_safe_filename(filename):
             raise HTTPException(

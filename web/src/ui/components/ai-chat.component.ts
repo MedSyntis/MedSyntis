@@ -33,6 +33,9 @@ export function resolveCitationPdfHref(
   if (!cleaned && fallbackFormFile) {
     return `/files/forms/${encodeURIComponent(fallbackFormFile)}/pdf?domain=${domainParam}${pageHash}`;
   }
+  if (cleaned && (cleaned === fallbackFormFile || /^doc_[0-9a-f]{16}\.pdf$/i.test(cleaned))) {
+    return `/files/forms/${encodeURIComponent(cleaned)}/pdf?domain=${domainParam}${pageHash}`;
+  }
   const formQuery = fallbackFormFile ? `&amp;formFile=${encodeURIComponent(fallbackFormFile)}` : "";
   return `/files/resources/${encodeURIComponent(cleaned || "document.pdf")}?domain=${domainParam}${formQuery}${pageHash}`;
 }

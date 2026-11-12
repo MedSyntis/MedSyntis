@@ -140,6 +140,8 @@ export const AgendaOptionsBodySchema = z.object({
 export const AgendaScheduleBodySchema = z.object({
   sortStrategy: AgendaSortStrategySchema.catch("hybrid" as MdtAgendaSortStrategy),
   sessionDate: optionalTrimmedString,
+  deferIncompleteFilesPresent: optionalTrimmedString,
+  deferIncompleteFiles: optionalTrimmedString,
   attendingExpertsPresent: optionalTrimmedString,
   attendingExperts: stringOrStringArray,
   patientIdsPresent: optionalTrimmedString,

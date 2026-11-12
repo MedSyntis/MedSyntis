@@ -1356,8 +1356,6 @@ class TestPriorityQueueAndCrossDomainAPI:
         conf.rcp.path = tmp_path
         pdf_path = tmp_path / "rollback_case.pdf"
         pdf_path.write_bytes(b"%PDF-1.4 dummy pdf")
-        bbox_path = Path(f"{pdf_path}.bbox")
-        bbox_path.write_bytes(b"%PDF-1.4 dummy bbox pdf")
 
         app_api = import_module("app-api")
         app_api.app.dependency_overrides[get_domain_config] = lambda: conf
@@ -1444,15 +1442,11 @@ class TestPriorityQueueAndCrossDomainAPI:
                 rb_admin.json().get("manual_edits") or {}
             )
 
-            # 4. Download PDF (plain + bbox + inline) and status endpoint
+            # 4. Download PDF (inline) and status endpoint
             pdf_plain = client.get(
                 "/api/v1/patientmdtform/rollback_case.pdf/pdf?inline=true"
             )
             assert pdf_plain.status_code == 200
-            pdf_bbox = client.get(
-                "/api/v1/patientmdtform/rollback_case.pdf/pdf?variant=bbox&inline=true"
-            )
-            assert pdf_bbox.status_code == 200
 
             status_resp = client.get("/api/v1/patientmdtform/rollback_case.pdf/status")
             assert status_resp.status_code == 200

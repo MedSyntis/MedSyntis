@@ -190,7 +190,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         PatientPerformanceStatus: { performance_status: 0 },
         TumorLocation: { tumor_location: "Pancreas" },
         TumorBiology: { msi_state: "MSS", ca19_9: "180 U/mL" },
-        RadiologicalExams: {
+        RadiologicExams: {
           exams_list: [
             {
               exam_name: "TDM TAP initial",
@@ -200,7 +200,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             },
           ],
         },
-        Chemotherapy: {
+        ChemotherapyTreament: {
           chemotherapy: true,
           chemotherapy_name: "FOLFIRINOX néo-adjuvant (initiation)",
           chemotherapy_start_date: "2026-06-10",
@@ -215,7 +215,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         },
       },
       manualEdits: {},
-      executionTimes: { TumorLocation: 6.2, Chemotherapy: 8.1 },
+      executionTimes: { TumorLocation: 6.2, ChemotherapyTreament: 8.1 },
       metrics: {
         priority_level: "low",
         is_complete: true,
@@ -247,7 +247,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         PatientPerformanceStatus: { performance_status: 1 },
         TumorLocation: { tumor_location: "Pancreas" },
         TumorBiology: { msi_state: "MSS", ca19_9: "298 U/mL" },
-        RadiologicalExams: {
+        RadiologicExams: {
           exams_list: [
             {
               exam_name: "TDM TAP réévaluation",
@@ -257,7 +257,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             },
           ],
         },
-        Chemotherapy: {
+        ChemotherapyTreament: {
           chemotherapy: true,
           chemotherapy_name: "FOLFIRINOX (4 cures)",
           chemotherapy_start_date: "2026-06-10",
@@ -272,7 +272,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         },
       },
       manualEdits: {},
-      executionTimes: { TumorLocation: 7.4, Chemotherapy: 9.0 },
+      executionTimes: { TumorLocation: 7.4, ChemotherapyTreament: 9.0 },
       metrics: {
         priority_level: "medium",
         is_complete: true,
@@ -314,7 +314,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           reasoning_thinking:
             "Statut microsatellite stable (MSS) vérifié sur biopsie initiale. Dosage du marqueur CA 19-9 du 04/11/2026 à 412 U/mL contre 298 U/mL le 14/10/2026 (+38 %).",
         },
-        RadiologicalExams: {
+        RadiologicExams: {
           exams_list: [
             {
               exam_name: "TDM TAP de contrôle",
@@ -327,16 +327,16 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           reasoning_thinking:
             "Extraction structurée de l'examen TDM thoraco-abdomino-pelvien du 28/10/2026 montrant la persistance d'un contact VMS < 180° sans lésion secondaire hépatique.",
         },
-        PreviousSurgery: {
+        PreviousCurativeSurgery: {
           previous_curative_surgery: false,
           reasoning_thinking: "Aucun antécédent de chirurgie d'exérèse pancréatique mentionné.",
         },
-        PlannedSurgery: {
+        PlannedCurativeSurgery: {
           planned_curative_surgery: false,
           reasoning_thinking:
             "Réévaluation chirurgicale différée dans l'attente du contrôle biologique et d'un TEP-TDM.",
         },
-        Chemotherapy: {
+        ChemotherapyTreament: {
           chemotherapy: true,
           chemotherapy_name: "FOLFIRINOX modifié, 6 cures (juillet -> octobre 2026)",
           chemotherapy_tolerance: "Neuropathie périphérique grade 1",
@@ -439,7 +439,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       executionTimes: {
         PatientAdministrative: 3.2,
         TumorLocation: 12.4,
-        Chemotherapy: 9.8,
+        ChemotherapyTreament: 9.8,
         ExpertAnswer: 18.5,
       },
       metrics: {
@@ -1382,11 +1382,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     }
   }
 
-  async getFormPdfBuffer(
-    filename: string,
-    _domain: ClinicalDomain,
-    _variant?: "plain" | "bbox",
-  ): Promise<Buffer | null> {
+  async getFormPdfBuffer(filename: string, _domain: ClinicalDomain): Promise<Buffer | null> {
     const form = this.forms.get(filename);
     if (!form) return MINIMAL_PDF_BUFFER;
     const admin = (form.sections.Administrative ?? {}) as Record<string, unknown>;
@@ -1564,12 +1560,19 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     this.resources.delete(filename);
   }
 
-  async getResourcePdfBuffer(
-    filename: string,
-    domain: ClinicalDomain,
-    _formFile?: string,
-  ): Promise<Buffer | null> {
+  async getResourcePdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null> {
     const res = this.resources.get(filename);
+    const lower = filename.toLowerCase();
+    const isGuidelineCitation =
+      Boolean(res) ||
+      lower.includes("tncd") ||
+      lower.includes("pnds") ||
+      lower.includes("argumentaire") ||
+      lower.includes("referentiel") ||
+      lower.includes("thesaurus");
+    if (!isGuidelineCitation) {
+      return null;
+    }
     const domainLabel =
       domain === "sma"
         ? "PNDS — Maladies Neuromusculaires Rares (SMA)"

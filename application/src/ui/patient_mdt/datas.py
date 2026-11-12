@@ -3453,10 +3453,8 @@ def render_rcp_detail_view(
 
     with col_left:
         if has_pdf and file_path is not None:
-            bbox_path = f"{file_path}.bbox"
-            viewer_path = bbox_path if os.path.exists(bbox_path) else file_path
             pdf_viewer(
-                viewer_path,
+                file_path,
                 height=800,
                 key=f"pdf_viewer_{section_key}_{target_filename}",
             )

@@ -167,6 +167,7 @@ class PatientRecordService:
         """Return dashboard card metrics for all visible `PatientMDTForm` records."""
         projection = {
             "file": 1,
+            "original_filename": 1,
             "patient_id": 1,
             "ui_date": 1,
             "date_refresh": 1,
@@ -741,6 +742,8 @@ class PatientRecordService:
                     "processing_status": card.get("processing_status"),
                     "processing_step": card.get("processing_step"),
                     "processing_progress_pct": card.get("processing_progress_pct", 100),
+                    "identity_verification_required": patient.identity_verification_required,
+                    "original_filename": latest_doc.get("original_filename"),
                 }
             )
 
@@ -1266,9 +1269,6 @@ class PatientRecordService:
                 target_path = safe_path(self.mdt_form_storage_path, filename)
                 if os.path.exists(target_path):
                     os.remove(target_path)
-                bbox_path = f"{target_path}.bbox"
-                if os.path.exists(bbox_path):
-                    os.remove(bbox_path)
             except (UnsafePathError, OSError):
                 pass
 

@@ -36,15 +36,8 @@ export interface SectionFieldSchema {
   options?: FieldSelectOption[];
 }
 
-const CANONICAL_SECTION_ALIASES: Record<string, string> = {
-  RadiologicalExams: "RadiologicExams",
-  PreviousSurgery: "PreviousCurativeSurgery",
-  PlannedSurgery: "PlannedCurativeSurgery",
-  Chemotherapy: "ChemotherapyTreament",
-};
-
 export function resolveCanonicalSectionName(sectionName: string): string {
-  return CANONICAL_SECTION_ALIASES[sectionName] ?? sectionName;
+  return sectionName;
 }
 
 export const BOOLEAN_SELECT_OPTIONS: FieldSelectOption[] = [

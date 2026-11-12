@@ -422,6 +422,12 @@ export function computeLongitudinalDeltas(
   const trackedKeys = (
     [
       ["PatientPerformanceStatus", "performance_status", true],
+      ["TumorBiology", "ca19_9", true],
+      ["TumorBiology", "ace", true],
+      ["TumorBiology", "afp", true],
+      ["CancerDescription", "target_lesion_size_mm", true],
+      ["NutritionalStatus", "weight_kg", false],
+      ["HepaticStatus", "bilirubin_umol_l", true],
       ["MotorFunctionStatus", "mfm_total_score", false],
       ["MotorFunctionStatus", "mfm_d1_score", false],
       ["MotorFunctionStatus", "mfm_d2_score", false],

@@ -207,17 +207,6 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
     defaultUserPrompt:
       "List all radiological exams found in the documents. Include date, name, type, and a summary of results for each.",
   },
-  RadiologicalExams: {
-    icon: "ic-radiation",
-    pole: "paraclinical",
-    tab: "clinical",
-    editable: true,
-    order: 90,
-    titleFr: "Examens radiologiques & imagerie",
-    titleEn: "Radiological Examinations",
-    defaultUserPrompt:
-      "List all radiological exams found in the documents. Include date, name, type, and a summary of results for each.",
-  },
   SurgicalStatus: {
     icon: "ic-pill",
     pole: "treatments",
@@ -242,18 +231,6 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
       "Has a curative surgery already been performed for this tumor? If yes, provide the date.",
     domains: ["oncology"],
   },
-  PreviousSurgery: {
-    icon: "ic-pill",
-    pole: "treatments",
-    tab: "clinical",
-    editable: true,
-    order: 100,
-    titleFr: "Chirurgie curative antérieure",
-    titleEn: "Previous Curative Surgery",
-    defaultUserPrompt:
-      "Has a curative surgery already been performed for this tumor? If yes, provide the date.",
-    domains: ["oncology"],
-  },
   ChemotherapyTreament: {
     icon: "ic-pill",
     pole: "treatments",
@@ -266,30 +243,7 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
       "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments.",
     domains: ["oncology"],
   },
-  Chemotherapy: {
-    icon: "ic-pill",
-    pole: "treatments",
-    tab: "clinical",
-    editable: true,
-    order: 110,
-    titleFr: "Traitements systémiques & chimiothérapie",
-    titleEn: "Chemotherapy & Systemic Treatments",
-    defaultUserPrompt:
-      "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments.",
-    domains: ["oncology"],
-  },
   PlannedCurativeSurgery: {
-    icon: "ic-calendar",
-    pole: "treatments",
-    tab: "clinical",
-    editable: true,
-    order: 120,
-    titleFr: "Chirurgie curative prévue",
-    titleEn: "Planned Curative Surgery",
-    defaultUserPrompt: "Is a curative surgery planned for this tumor?",
-    domains: ["oncology"],
-  },
-  PlannedSurgery: {
     icon: "ic-calendar",
     pole: "treatments",
     tab: "clinical",

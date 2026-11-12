@@ -120,6 +120,8 @@ class _RcpTriageCardBase(BaseModel):
     processing_status: Optional[str] = None
     processing_step: Optional[str] = None
     processing_progress_pct: Optional[float] = None
+    identity_verification_required: bool = False
+    original_filename: Optional[str] = None
 
 
 class RCPCardResponse(_RcpTriageCardBase):
@@ -143,6 +145,7 @@ class PatientResponse(BaseModel):
     born_name: Optional[str] = None
     date_birth: Optional[datetime] = None
     gender: Optional[str] = None
+    identity_verification_required: bool = False
     files: List[str] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 
@@ -161,7 +164,9 @@ class PatientMDTFormDetailResponse(BaseModel):
 
     id: Optional[str] = None
     file: str
+    original_filename: Optional[str] = None
     patient_id: Optional[str] = None
+    identity_verification_required: bool = False
     processing_status: Optional[str] = None
     manually_edited_sections: List[str] = Field(default_factory=list)
     last_manual_edit: Optional[dict[str, Any]] = None
@@ -195,6 +200,7 @@ class MessageResponse(BaseModel):
 
 class UploadResponse(BaseModel):
     filename: str
+    original_filename: Optional[str] = None
     domain: str
     message: str
     is_duplicate: bool = False

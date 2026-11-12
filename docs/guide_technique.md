@@ -55,7 +55,7 @@ MedSyntis is organized into two cleanly decoupled workspaces communicating exclu
     * `mdt_agenda.py` (`MDTAgendaService`): Schedules the Next MDT Session Agenda across 4 sorting strategies (`hybrid`, `expert_grouping`, `urgency_first`, `manual`), computes specialist attendance windows and quorum warnings, handles `defer_incomplete_files`, and manages case pinning/reordering.
     * `queue_executor.py`: Dispatches asynchronous extraction and longitudinal summary jobs onto domain-scoped services inside the `PriorityQueue`.
   * **`agent/`**: LangChain multi-expert coordinator (`agent.py`) and context-isolated tools (`tools.py` with `Context` for single-MDT form RAG and `PatientContext` for longitudinal multi-MDT patient history queries).
-  * **`reader.py` & `ressources.py`**: Document chunking, bounding-box (`bbox`) PDF annotation, and vector indexing pipeline for patient records and scientific guidelines (TNCD / PNDS).
+  * **`reader.py` & `ressources.py`**: Document chunking and vector indexing pipeline for patient records and scientific guidelines (TNCD / PNDS).
   * **`config.py`**: Centralized `pydantic-settings` configuration (`AppConfig`) with domain-scoped overrides (`AppConfig.for_domain(domain)`).
 * **`src/infrastructure/`**:
   * **`vectorial/`**: Milvus (`milvus.py`) and Chroma (`chroma.py`) vector store adapters.

@@ -35,10 +35,10 @@ describe("Application Use-Cases with InMemoryMedsyntisApiFake", () => {
     expect(dossier?.timeline.length).toBeGreaterThanOrEqual(2);
     expect(dossier?.opinions.length).toBeGreaterThanOrEqual(1);
 
-    // Inline manual edit of Chemotherapy section
+    // Inline manual edit of ChemotherapyTreament section
     const updated = await useCase.updateSection(
       dossier!.currentForm.file,
-      "Chemotherapy",
+      "ChemotherapyTreament",
       {
         chemotherapy: true,
         chemotherapy_name: "FOLFIRINOX modifié (8 cures)",
@@ -47,8 +47,8 @@ describe("Application Use-Cases with InMemoryMedsyntisApiFake", () => {
       "Dr A. Exemple",
       "oncology",
     );
-    expect(updated.manualEdits.Chemotherapy).toBeDefined();
-    expect(updated.manualEdits.Chemotherapy?.edited_by).toBe("Dr A. Exemple");
+    expect(updated.manualEdits.ChemotherapyTreament).toBeDefined();
+    expect(updated.manualEdits.ChemotherapyTreament?.edited_by).toBe("Dr A. Exemple");
 
     // Rerun another section while preserving manual edits
     const rerunResult = await useCase.rerunSection(
@@ -59,7 +59,7 @@ describe("Application Use-Cases with InMemoryMedsyntisApiFake", () => {
     );
     expect(rerunResult.preserveManualEdits).toBe(true);
     const afterRerun = await useCase.getDossier("A-1042", "oncology", "fr");
-    expect(afterRerun?.currentForm.manualEdits.Chemotherapy).toBeDefined();
+    expect(afterRerun?.currentForm.manualEdits.ChemotherapyTreament).toBeDefined();
   });
 
   it("IngestUseCase uploads PDFs with a batch_id and tracks batch status", async () => {
@@ -421,7 +421,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
         };
       }
       if (url.includes("/api/v1/resources/") && url.includes("/file?")) {
-        if (url.includes("missing-citation")) {
+        if (url.includes("missing-citation") || url.includes("CR%20scanner")) {
           return { ok: false, status: 404 };
         }
         return {
@@ -718,7 +718,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
     expect((await adapter.processFullForm("doc.pdf", true, "oncology")).jobId).toBe("job-full-1");
     await adapter.linkFormToPatient("doc.pdf", "P-1", "oncology");
 
-    const pdfBuf = await adapter.getFormPdfBuffer("doc.pdf", "oncology", "bbox");
+    const pdfBuf = await adapter.getFormPdfBuffer("doc.pdf", "oncology");
     expect(pdfBuf).toBeInstanceOf(Buffer);
 
     const chatReply = await adapter.askDossierQuestion(
@@ -743,13 +743,13 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
     );
     await adapter.reindexResource("new.pdf", "oncology");
     await adapter.deleteResource("new.pdf", "oncology");
-    expect(
-      await adapter.getResourcePdfBuffer("PNDS_SMA.pdf", "oncology", "doc.pdf"),
-    ).toBeInstanceOf(Buffer);
-    // Fallback resolution when citation title doesn't match directly
+    expect(await adapter.getResourcePdfBuffer("PNDS_SMA.pdf", "oncology")).toBeInstanceOf(Buffer);
+    // Fallback resolution when citation title genuinely matches a guideline keyword
     expect(await adapter.getResourcePdfBuffer("missing-citation pnds", "oncology")).toBeInstanceOf(
       Buffer,
     );
+    // Non-guideline patient record citations must return null (so BFF falls back to formFile PDF)
+    expect(await adapter.getResourcePdfBuffer("CR scanner 28/10/2026", "oncology")).toBeNull();
 
     expect((await adapter.listAgents("oncology", "fr")).length).toBe(1);
     expect((await adapter.askGuidelineQuestion("Question ?", "oncology", "fr")).answer).toBe(

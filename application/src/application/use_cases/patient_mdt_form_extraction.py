@@ -1,7 +1,5 @@
 import hashlib
 import logging
-import os
-import re
 import time
 import uuid
 from datetime import date, datetime
@@ -547,16 +545,13 @@ class PatientMDTFormExtractionService:
         original_filename: str,
     ) -> tuple[str, bool]:
         """
-        Compute the SHA-256 digest of the uploaded PDF, generate a deterministic filename
-        `<stem>_<hash10>.pdf`, and detect duplicates on disk or in `self.mdt_form_repo`.
+        Compute the SHA-256 digest of the uploaded PDF, generate an opaque storage filename
+        `doc_<sha256[:16]>.pdf` (zero PII in filesystem/URLs/Milvus collections), and detect
+        whether an already-completed `doc_<sha256[:16]>.pdf` record exists.
         """
-        file_hash = hashlib.sha256(file_bytes).hexdigest()[:10]
-        base_name = os.path.basename(original_filename or "mdt_form.pdf")
-        stem, ext = os.path.splitext(base_name)
-        ext = ext if ext.lower() == ".pdf" else ".pdf"
-        stem = re.sub(r"_[0-9a-f]{10}$", "", stem)
-        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("_") or "mdt_form"
-        resolved_filename = f"{safe_stem}_{file_hash}{ext}"
+        _ = original_filename
+        full_digest = hashlib.sha256(file_bytes).hexdigest()
+        resolved_filename = f"doc_{full_digest[:16]}.pdf"
 
         target_path = Path(self.config.rcp.path) / resolved_filename
         doc = self.mdt_form_repo.get_by_file(resolved_filename)
@@ -564,8 +559,6 @@ class PatientMDTFormExtractionService:
             doc is not None
             and doc.get("processing_status") == RCPProcessingStatus.COMPLETED.value
         )
-        # A file is a genuine duplicate only if it exists on disk AND is already indexed with COMPLETED status.
-        # If it was never indexed or failed during a previous attempt, it must be (re)processed.
         if target_path.exists() and is_completed:
             return resolved_filename, True
 
@@ -626,6 +619,13 @@ class PatientMDTFormExtractionService:
             already_queued_count = 0
             for item in files_payload:
                 fname = item["filename"]
+                orig_name = item.get("original_filename")
+                if orig_name:
+                    self.mdt_form_repo.upsert_fields(
+                        fname,
+                        {"original_filename": str(orig_name)},
+                        set_on_insert={"file": fname, "ui_date": datetime.now()},
+                    )
                 target_pid = item.get("patient_id")
                 res = broker.enqueue_import_file(
                     filename=fname,
