@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { SpanKind } from "@opentelemetry/api";
 import type {
   ChatReply,
   MedsyntisApiPort,
@@ -39,6 +40,11 @@ import type {
   RawCompletenessStatus,
   ResourceDocument,
 } from "../../domain/types.js";
+import {
+  injectWebTraceHeaders,
+  recordWebUpstreamMetric,
+  withWebSpan,
+} from "../observability/otel.js";
 import {
   formatCleanIsoDate,
   RawBugReportSchema,
@@ -141,6 +147,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     if (this.proxySecret) {
       headers["X-MedSyntis-Proxy-Secret"] = this.proxySecret;
     }
+    injectWebTraceHeaders(headers);
     return headers;
   }
 
@@ -151,31 +158,75 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     timeoutOverrideMs?: number,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const headers = this.buildHeaders(
-      domain,
-      (init.headers as Record<string, string> | undefined) ?? {},
+    const method = (init.method || "GET").toUpperCase();
+    const cleanPath = path.split("?")[0] ?? path;
+    const operation = `${method} ${cleanPath}`;
+    const startedAt = performance.now();
+    return withWebSpan(
+      "medsyntis.bff.upstream_request",
+      {
+        kind: SpanKind.CLIENT,
+        attributes: {
+          "http.request.method": method,
+          "url.path": cleanPath,
+          "medsyntis.domain": domain,
+        },
+      },
+      async (span) => {
+        const headers = this.buildHeaders(
+          domain,
+          (init.headers as Record<string, string> | undefined) ?? {},
+        );
+        const effectiveTimeout = timeoutOverrideMs ?? this.timeoutMs;
+        const signal =
+          init.signal ??
+          (effectiveTimeout > 0 &&
+          typeof AbortSignal !== "undefined" &&
+          typeof AbortSignal.timeout === "function"
+            ? AbortSignal.timeout(effectiveTimeout)
+            : undefined);
+        let resp: Response;
+        try {
+          resp = await this.fetchImpl(url, {
+            ...init,
+            headers,
+            signal,
+          });
+        } catch (err) {
+          recordWebUpstreamMetric({
+            operation,
+            domain,
+            status: "error",
+            durationMs: performance.now() - startedAt,
+            errorType: err instanceof Error ? err.name : "FetchError",
+          });
+          throw err;
+        }
+        span.setAttribute("http.response.status_code", resp.status);
+        if (!resp.ok) {
+          recordWebUpstreamMetric({
+            operation,
+            domain,
+            status: "error",
+            durationMs: performance.now() - startedAt,
+            errorType: `HTTP_${resp.status}`,
+          });
+          const httpErr = new Error(`HTTP ${resp.status} on ${path}`) as Error & {
+            statusCode?: number;
+          };
+          httpErr.statusCode = resp.status;
+          throw httpErr;
+        }
+        const data = (await resp.json()) as T;
+        recordWebUpstreamMetric({
+          operation,
+          domain,
+          status: "ok",
+          durationMs: performance.now() - startedAt,
+        });
+        return data;
+      },
     );
-    const effectiveTimeout = timeoutOverrideMs ?? this.timeoutMs;
-    const signal =
-      init.signal ??
-      (effectiveTimeout > 0 &&
-      typeof AbortSignal !== "undefined" &&
-      typeof AbortSignal.timeout === "function"
-        ? AbortSignal.timeout(effectiveTimeout)
-        : undefined);
-    const resp = await this.fetchImpl(url, {
-      ...init,
-      headers,
-      signal,
-    });
-    if (!resp.ok) {
-      const httpErr = new Error(`HTTP ${resp.status} on ${path}`) as Error & {
-        statusCode?: number;
-      };
-      httpErr.statusCode = resp.status;
-      throw httpErr;
-    }
-    return (await resp.json()) as T;
   }
 
   private formatIsoDate(rawVal: unknown): string | null {

@@ -10,6 +10,13 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from src.application.config import AppConfig
 from src.infrastructure.documents.mongodb import close_all_mongo_clients
+from src.infrastructure.observability import (
+    attach_otel_handler_to_uvicorn_loggers,
+    configure_observability,
+    instrument_fastapi_app,
+    is_observability_enabled,
+    shutdown_observability,
+)
 from src.infrastructure.queue import get_global_queue_manager
 from src.models.queue import HealthResponse
 from src.models.rcp import MeResponse, PatientListItemResponse
@@ -31,7 +38,19 @@ from src.routers.queue import router as queue_router
 from src.routers.resources import router as resources_router
 
 app_conf = get_base_config()
+configure_observability(app_conf)
 logger = app_conf.set_logger("medsyntis.api")
+if is_observability_enabled():
+    logger.info(
+        "OpenTelemetry active: service=%s traces=%s metrics=%s logs=%s endpoint=%s",
+        app_conf.otel.service_name,
+        app_conf.otel.traces_exporter,
+        app_conf.otel.metrics_exporter,
+        app_conf.otel.logs_exporter,
+        app_conf.otel.exporter_otlp_endpoint or "signal-specific/console",
+    )
+else:
+    logger.info("OpenTelemetry disabled (OTEL_SDK_DISABLED=true).")
 
 if app_conf.api_token is None:
     if not app_conf.dev_mode:
@@ -69,6 +88,7 @@ def resolve_uvicorn_workers(conf: AppConfig) -> int:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    attach_otel_handler_to_uvicorn_loggers()
     logger.info(
         f"Starting Cross-Domain MedSyntis FastAPI App (allowed_domains={app_conf.enabled_domains_list}, "
         f"batch_size={app_conf.queue.batch_size})..."
@@ -94,6 +114,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error unloading active models during shutdown: {e}")
     close_all_mongo_clients()
+    shutdown_observability()
 
 
 def configure_security_middlewares(target_app: FastAPI, conf: AppConfig) -> None:
@@ -144,6 +165,7 @@ app = FastAPI(
 )
 
 configure_security_middlewares(app, app_conf)
+instrument_fastapi_app(app)
 
 
 @app.get("/health", tags=["system"], response_model=HealthResponse)

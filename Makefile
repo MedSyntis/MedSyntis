@@ -48,7 +48,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st stop-prod restart-prod prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-web-grafana start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st start-prod-grafana stop-prod restart-prod restart-prod-grafana prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
 
 ## Show available Makefile targets
 help:
@@ -63,6 +63,7 @@ help:
 	@echo -e "  $(YELLOW)make upgrade-web$(RESET)         Upgrade Node.js dependencies in $(WEB_DIR)/"
 	@echo -e "  $(YELLOW)make start-api$(RESET)           Start Cross-Domain FastAPI server (port $(PORT_API))"
 	@echo -e "  $(YELLOW)make start-web$(RESET)           Start Cross-Domain FastAPI + Primary M3 Web UI Fastify server (port $(PORT_WEB))"
+	@echo -e "  $(YELLOW)make start-web-grafana$(RESET)   Start local Grafana OTel LGTM (port 3001) + FastAPI + M3 Web UI with OTel Traces/Metrics/Logs"
 	@echo -e "  $(YELLOW)make start-ui$(RESET)            Start Cross-Domain FastAPI + Legacy Streamlit UI (port $(PORT_UI))"
 	@echo -e "  $(YELLOW)make start-web-dev$(RESET)       Start Docker proxy stack + Cloud Run benchmark proxy (requires APP_ALLOW_REMOTE_LLM=true) + Web UI"
 	@echo -e "  $(YELLOW)make start-ui-dev$(RESET)        Start Docker proxy stack + Cloud Run benchmark proxy (requires APP_ALLOW_REMOTE_LLM=true) + Legacy Streamlit"
@@ -77,8 +78,10 @@ help:
 	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Download Ornith-1.5-35B-A3B-IQ4_XS.gguf and bge-m3-Q4_K_M.gguf into $(MODELS_DIR)"
 	@echo -e "  $(YELLOW)make start-prod$(RESET)          Start prod stack (Milvus, Mongo, L4 LLM, M3 Web UI oncology/sma, OAuth2 Proxy, Caddy)"
 	@echo -e "  $(YELLOW)make start-prod-st$(RESET)       Start prod stack + optional legacy Streamlit services (oncologic-st/sma-st)"
+	@echo -e "  $(YELLOW)make start-prod-grafana$(RESET)  Start prod stack + optional local Grafana OTel LGTM stack (127.0.0.1:3001)"
 	@echo -e "  $(YELLOW)make stop-prod$(RESET)           Stop all production containers (preserving persistent data volumes)"
 	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Restart Web M3, API, LiteLLM, OAuth2 Proxy, and Caddy without unloading GPU VRAM"
+	@echo -e "  $(YELLOW)make restart-prod-grafana$(RESET) Restart Web M3, API, and local Grafana OTel LGTM stack without unloading GPU VRAM"
 	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + update Milvus & app images + hot-recreate containers while keeping LLM in VRAM"
 	@echo -e "  $(YELLOW)make prod-update-all$(RESET)     Full update of the entire production Docker stack (including LLM & infra)"
 	@echo -e "  $(YELLOW)make backup-prod$(RESET)         Create encrypted-ready compressed backup of MongoDB (mongodump) and Milvus/domain volumes"
@@ -185,6 +188,21 @@ start-web:
 	API_PID=$$!; \
 	trap "kill $$API_PID 2>/dev/null || true" INT TERM EXIT; \
 	WEB_FAKE_API_FALLBACK=false APP_API_URL=http://127.0.0.1:$(PORT_API) PORT_WEB=$(PORT_WEB) HOST_WEB=$(HOST_WEB) npm --prefix $(WEB_DIR) run dev
+
+## Start local Grafana OTel LGTM (127.0.0.1:3001) + FastAPI + M3 Web UI with OpenTelemetry Traces, Metrics & Logs enabled
+start-web-grafana:
+	@mkdir -p $(DEV_VOLUME_DIR)/grafana
+	@chmod 750 $(DEV_VOLUME_DIR)/grafana 2>/dev/null || true
+	@echo -e "$(CYAN)--> Starting local Grafana OTel LGTM on http://127.0.0.1:3001 (OTLP HTTP: http://127.0.0.1:4318)...$(RESET)"
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) --profile grafana up -d grafana
+	@OTEL_SDK_DISABLED=false \
+	OTEL_TRACES_EXPORTER=otlp \
+	OTEL_METRICS_EXPORTER=otlp \
+	OTEL_LOGS_EXPORTER=otlp \
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+	OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
+	OTEL_METRIC_EXPORT_INTERVAL=15000 \
+	$(MAKE) start-web
 
 ## Alias start-worker to start-api (the PriorityQueue worker runs in-process inside app-api.py)
 start-worker: start-api
@@ -496,7 +514,7 @@ docker-update:
 docker-down:
 	@echo -e "$(YELLOW)--> Stopping local Docker containers...$(RESET)"
 	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) down --remove-orphans
-	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) down --remove-orphans
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) --profile grafana down --remove-orphans
 
 ## Check status of running Docker containers
 docker-status:
@@ -551,10 +569,10 @@ init-prod:
 		echo -e "  [$(YELLOW)WARNING$(RESET)] nvidia-smi not found. Verify NVIDIA drivers and nvidia-container-toolkit."; \
 	fi
 	@echo -e "$(CYAN)--> Creating persistent volume and clinical domain directories (least-privilege permissions)...$(RESET)"
-	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana,caddy_data,caddy_config} 2>/dev/null || true
 	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
 	@mkdir -p application/ressources/PatientMDTForm/{oncology,sma} application/ressources/documents/{oncology,sma}
-	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue} 2>/dev/null || true
+	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana} 2>/dev/null || true
 	@chmod 700 "$(DOCKER_VOLUME_DIRECTORY)"/{caddy_data,caddy_config} 2>/dev/null || true
 	@chmod 750 /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
 	@if [ ! -f "$(ENV_PROD)" ]; then \
@@ -568,6 +586,7 @@ init-prod:
 		sed -i "s|LITELLM_MASTER_KEY=.*|LITELLM_MASTER_KEY=$${LITELLM_KEY}|" "$(ENV_PROD)"; \
 		sed -i "s|APP_API_TOKEN=.*|APP_API_TOKEN=$$(openssl rand -hex 32)|" "$(ENV_PROD)"; \
 		sed -i "s|APP_PROXY_SECRET=.*|APP_PROXY_SECRET=$$(openssl rand -hex 32)|" "$(ENV_PROD)"; \
+		sed -i "s|GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$$(openssl rand -hex 16)|" "$(ENV_PROD)"; \
 		echo -e "  [$(YELLOW)ACTION REQUIRED$(RESET)] Configure OAUTH2_PROXY_CLIENT_ID, OAUTH2_PROXY_CLIENT_SECRET, and OIDC/GitHub org restrictions in $(ENV_PROD)"; \
 	else \
 		chmod 0600 "$(ENV_PROD)" 2>/dev/null || true; \
@@ -671,7 +690,7 @@ build-prod:
 	fi
 	@echo -e "$(GREEN)--> Production Docker images built successfully.$(RESET)"
 
-## Start production Docker containers (API + M3 Web UI oncology & sma; set WITH_STREAMLIT=1 for optional Streamlit *-st)
+## Start production Docker containers (API + M3 Web UI oncology & sma; set WITH_STREAMLIT=1 for optional Streamlit *-st, WITH_GRAFANA=1 for local Grafana OTel LGTM)
 docker-up-prod:
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "  [$(RED)ERROR$(RESET)] Missing $(ENV_PROD). Run 'make init-prod' and configure SSO secrets first."; \
@@ -681,23 +700,42 @@ docker-up-prod:
 		echo -e "  [$(RED)ERROR$(RESET)] Unconfigured placeholder secrets remain in $(ENV_PROD) (check OAUTH2_PROXY_* and APP_MONGODB_PASSWORD)."; \
 		exit 1; \
 	fi
-	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana,caddy_data,caddy_config} 2>/dev/null || true
 	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
-	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue} 2>/dev/null || true
+	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana} 2>/dev/null || true
 	@chmod 700 "$(DOCKER_VOLUME_DIRECTORY)"/{caddy_data,caddy_config} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Starting Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Starting MedSyntis production stack (L4 GPU + API + M3 Web UI + OAuth2 Proxy + Caddy)...$(RESET)"
-	@if [ "$(WITH_STREAMLIT)" = "1" ]; then \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-build; \
+	@COMPOSE_PROFILES=""; \
+	if [ "$(WITH_STREAMLIT)" = "1" ]; then COMPOSE_PROFILES="$$COMPOSE_PROFILES --profile streamlit"; fi; \
+	if [ "$(WITH_GRAFANA)" = "1" ]; then \
+		COMPOSE_PROFILES="$$COMPOSE_PROFILES --profile grafana"; \
+		TMP_ENV=$$(mktemp) && chmod 0600 "$$TMP_ENV" && trap 'rm -f "$$TMP_ENV"' EXIT && \
+		grep -vE '^(OTEL_SDK_DISABLED|OTEL_TRACES_EXPORTER|OTEL_METRICS_EXPORTER|OTEL_LOGS_EXPORTER|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_PROTOCOL|OTEL_METRIC_EXPORT_INTERVAL)=' "$(ENV_PROD)" > "$$TMP_ENV"; \
+		CUSTOM_OTLP=$$(grep -E '^OTEL_EXPORTER_OTLP_ENDPOINT=.+' "$(ENV_PROD)" 2>/dev/null | tail -n1 | cut -d= -f2- || true); \
+		{ \
+			echo "OTEL_SDK_DISABLED=$${OTEL_SDK_DISABLED:-false}"; \
+			echo "OTEL_TRACES_EXPORTER=$${OTEL_TRACES_EXPORTER:-otlp}"; \
+			echo "OTEL_METRICS_EXPORTER=$${OTEL_METRICS_EXPORTER:-otlp}"; \
+			echo "OTEL_LOGS_EXPORTER=$${OTEL_LOGS_EXPORTER:-otlp}"; \
+			echo "OTEL_EXPORTER_OTLP_ENDPOINT=$${OTEL_EXPORTER_OTLP_ENDPOINT:-$${CUSTOM_OTLP:-http://grafana:4318}}"; \
+			echo "OTEL_EXPORTER_OTLP_PROTOCOL=$${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}"; \
+			echo "OTEL_METRIC_EXPORT_INTERVAL=$${OTEL_METRIC_EXPORT_INTERVAL:-15000}"; \
+		} >> "$$TMP_ENV" && \
+		docker compose --env-file "$$TMP_ENV" -f $(COMPOSE_PROD) $$COMPOSE_PROFILES up -d --no-build; \
 	else \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-build; \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) $$COMPOSE_PROFILES up -d --no-build; \
 	fi
 	@docker exec medsyntis-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
 
 ## Start production stack including optional legacy Streamlit services (oncologic-st & sma-st)
 start-prod-st:
 	@$(MAKE) start-prod WITH_STREAMLIT=1
+
+## Start production stack including optional local Grafana OTel LGTM observability stack (127.0.0.1:3001)
+start-prod-grafana:
+	@$(MAKE) start-prod WITH_GRAFANA=1
 
 ## Start full production stack and wait for local LLM readiness
 start-prod: docker-up-prod
@@ -729,12 +767,16 @@ start-prod: docker-up-prod
 		echo -e "     • Oncology (Legacy Streamlit) : $(CYAN)https://oncologic-st.$${BASE_DOM}$(RESET)"; \
 		echo -e "     • SMA (Legacy Streamlit)      : $(CYAN)https://sma-st.$${BASE_DOM}$(RESET)"; \
 	fi; \
+	if docker ps --format '{{.Names}}' | grep -q '^medsyntis-grafana$$'; then \
+		GF_PORT=$$(grep -E '^GRAFANA_PORT=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2 || echo "3001"); \
+		echo -e "     • Grafana OTel LGTM (Local)   : $(CYAN)http://127.0.0.1:$${GF_PORT:-3001}$(RESET) (SSH tunnel only)"; \
+	fi; \
 	echo -e "$(GREEN)======================================================================$(RESET)"
 
 ## Stop all production containers (preserving persistent data volumes)
 stop-prod:
 	@echo -e "$(YELLOW)--> Stopping MedSyntis production stack...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit down --remove-orphans
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit --profile grafana down --remove-orphans
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) down --remove-orphans
 	@echo -e "$(GREEN)--> Production stack stopped.$(RESET)"
 
@@ -751,7 +793,31 @@ restart-prod:
 	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit restart medsyntis-ui-oncology medsyntis-ui-sma; \
 	fi
+	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-grafana$$'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile grafana restart grafana; \
+	fi
 	@echo -e "$(GREEN)--> Application services restarted.$(RESET)"
+
+## Restart application services with local Grafana OTel LGTM observability enabled (preserving GPU VRAM)
+restart-prod-grafana:
+	@echo -e "$(CYAN)--> Recreating Grafana OTel LGTM + application services with OpenTelemetry Traces, Metrics & Logs enabled (preserving GPU VRAM)...$(RESET)"
+	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)/grafana" 2>/dev/null || true
+	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)/grafana" 2>/dev/null || true
+	@TMP_ENV=$$(mktemp) && chmod 0600 "$$TMP_ENV" && trap 'rm -f "$$TMP_ENV"' EXIT && \
+	grep -vE '^(OTEL_SDK_DISABLED|OTEL_TRACES_EXPORTER|OTEL_METRICS_EXPORTER|OTEL_LOGS_EXPORTER|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_PROTOCOL|OTEL_METRIC_EXPORT_INTERVAL)=' "$(ENV_PROD)" > "$$TMP_ENV" && \
+	CUSTOM_OTLP=$$(grep -E '^OTEL_EXPORTER_OTLP_ENDPOINT=.+' "$(ENV_PROD)" 2>/dev/null | tail -n1 | cut -d= -f2- || true) && \
+	{ \
+		echo "OTEL_SDK_DISABLED=$${OTEL_SDK_DISABLED:-false}"; \
+		echo "OTEL_TRACES_EXPORTER=$${OTEL_TRACES_EXPORTER:-otlp}"; \
+		echo "OTEL_METRICS_EXPORTER=$${OTEL_METRICS_EXPORTER:-otlp}"; \
+		echo "OTEL_LOGS_EXPORTER=$${OTEL_LOGS_EXPORTER:-otlp}"; \
+		echo "OTEL_EXPORTER_OTLP_ENDPOINT=$${OTEL_EXPORTER_OTLP_ENDPOINT:-$${CUSTOM_OTLP:-http://grafana:4318}}"; \
+		echo "OTEL_EXPORTER_OTLP_PROTOCOL=$${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}"; \
+		echo "OTEL_METRIC_EXPORT_INTERVAL=$${OTEL_METRIC_EXPORT_INTERVAL:-15000}"; \
+	} >> "$$TMP_ENV" && \
+	docker compose --env-file "$$TMP_ENV" -f $(COMPOSE_PROD) --profile grafana up -d --force-recreate --no-deps --no-build grafana medsyntis-api medsyntis-web
+	@GF_PORT=$$(grep -E '^GRAFANA_PORT=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2 || echo "3001"); \
+	echo -e "$(GREEN)--> Grafana OTel LGTM active on http://127.0.0.1:$${GF_PORT:-3001} (Traces + Metrics + Logs).$(RESET)"
 
 ## Pull latest Git changes, Milvus v3.0, and app Docker images without unloading LLM weights from GPU VRAM
 prod-update:
@@ -858,6 +924,8 @@ status-prod:
 	@ss -tlnp 2>/dev/null | grep -q ":19530 " && echo -e "$(GREEN)ACTIVE$(RESET)" || echo -e "$(RED)INACTIVE$(RESET)"
 	@echo -n "MongoDB ReplicaSet (27017)        : "
 	@docker ps --format '{{.Names}}' | grep -q '^medsyntis-mongod$$' && echo -e "$(GREEN)ACTIVE$(RESET)" || echo -e "$(RED)INACTIVE$(RESET)"
+	@echo -n "Grafana OTel LGTM (port 3001)     : "
+	@docker ps --format '{{.Names}}' | grep -q '^medsyntis-grafana$$' && echo -e "$(GREEN)ACTIVE$(RESET)" || echo -e "$(YELLOW)OPTIONAL (INACTIVE)$(RESET)"
 	@if command -v nvidia-smi >/dev/null 2>&1; then \
 		echo ""; \
 		echo -e "$(CYAN)=== NVIDIA L4 GPU Utilization ===$(RESET)"; \

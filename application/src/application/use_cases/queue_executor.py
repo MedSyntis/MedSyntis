@@ -1,4 +1,5 @@
 from datetime import datetime
+import time
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -13,6 +14,7 @@ from src.domain.patient_mdt_form import get_domain_mdt_form_cls
 from src.domain.worker import JobStatus, RCPProcessingStatus
 from src.infrastructure.documents.mongodb import Mongodb
 from src.infrastructure.documents.repositories import MongoPatientMDTFormRepository
+from src.infrastructure.observability import get_metrics, start_span
 
 
 class QueueThinkingCallbackHandler(BaseCallbackHandler):
@@ -250,49 +252,72 @@ class PatientMDTFormQueueJobExecutor:
         )
         queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
 
-        reader = DocumentReader(domain_conf, filename)
-        reader.read_document()
-        service = PatientMDTFormExtractionService(
-            config=domain_conf, filename=filename, reader=reader
-        )
-        thinking_cb = QueueThinkingCallbackHandler(
-            queue_manager=queue_manager,
-            job_id=job_id,
-            run_id=job.get("run_id"),
-            lease_id=lease_id,
-            section_name="PatientAdministrative",
-        )
-        try:
-            patient = service.process_patient_association(
-                target_patient_id=target_patient_id,
-                run_admin_ai=True,
-                verify_patient_mdt_form=True,
-                callbacks=[thinking_cb],
-                form=service.form,
-                reader=reader,
+        t0 = time.perf_counter_ns()
+        status_label = "ok"
+        with start_span(
+            "medsyntis.extraction.wave_1_identity",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.wave": "wave_1",
+                "medsyntis.section": "PatientAdministrative",
+                "medsyntis.doc_id": filename,
+            },
+        ):
+            reader = DocumentReader(domain_conf, filename)
+            reader.read_document()
+            service = PatientMDTFormExtractionService(
+                config=domain_conf, filename=filename, reader=reader
             )
-            resolved_pid = patient.patient_id if patient else target_patient_id
-
-            with queue_manager._lock:
-                has_wave2 = any(
-                    j.get("depends_on_job_id") == job_id
-                    and j["status"] == JobStatus.PENDING.value
-                    for j in queue_manager._jobs.values()
+            thinking_cb = QueueThinkingCallbackHandler(
+                queue_manager=queue_manager,
+                job_id=job_id,
+                run_id=job.get("run_id"),
+                lease_id=lease_id,
+                section_name="PatientAdministrative",
+            )
+            try:
+                patient = service.process_patient_association(
+                    target_patient_id=target_patient_id,
+                    run_admin_ai=True,
+                    verify_patient_mdt_form=True,
+                    callbacks=[thinking_cb],
+                    form=service.form,
+                    reader=reader,
                 )
-            next_status = (
-                RCPProcessingStatus.PENDING_CLINICAL
-                if has_wave2
-                else RCPProcessingStatus.COMPLETED
-            )
-            self.on_job_enqueued(
-                domain,
-                filename,
-                next_status,
-                extra_fields=({"patient_id": resolved_pid} if resolved_pid else None),
-            )
-            return resolved_pid
-        finally:
-            service.close()
+                resolved_pid = patient.patient_id if patient else target_patient_id
+
+                with queue_manager._lock:
+                    has_wave2 = any(
+                        j.get("depends_on_job_id") == job_id
+                        and j["status"] == JobStatus.PENDING.value
+                        for j in queue_manager._jobs.values()
+                    )
+                next_status = (
+                    RCPProcessingStatus.PENDING_CLINICAL
+                    if has_wave2
+                    else RCPProcessingStatus.COMPLETED
+                )
+                self.on_job_enqueued(
+                    domain,
+                    filename,
+                    next_status,
+                    extra_fields=(
+                        {"patient_id": resolved_pid} if resolved_pid else None
+                    ),
+                )
+                return resolved_pid
+            except Exception:
+                status_label = "error"
+                raise
+            finally:
+                service.close()
+                get_metrics().record_extraction_section(
+                    domain=domain,
+                    wave="wave_1",
+                    section="PatientAdministrative",
+                    status=status_label,
+                    duration_ms=(time.perf_counter_ns() - t0) / 1_000_000.0,
+                )
 
     def execute_wave2_clinical(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
@@ -305,83 +330,90 @@ class PatientMDTFormQueueJobExecutor:
 
         self.on_job_enqueued(domain, filename, RCPProcessingStatus.PROCESSING_CLINICAL)
 
-        reader = DocumentReader(domain_conf, filename)
-        reader.read_document()
-        service = PatientMDTFormExtractionService(
-            config=domain_conf, filename=filename, reader=reader
-        )
-        try:
-            clinical_models = service.form_cls.get_factual_clinical_models()
-            total = max(1, len(clinical_models))
-            completed_models: list[str] = list(job.get("completed_models") or [])
-            run_id = job.get("run_id")
-            is_Explicit_rerun = bool(job.get("force_replace", False))
-            preserve_manual = bool(job.get("preserve_manual_edits", True))
+        with start_span(
+            "medsyntis.extraction.wave_2_clinical",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.wave": "wave_2",
+                "medsyntis.doc_id": filename,
+            },
+        ):
+            reader = DocumentReader(domain_conf, filename)
+            reader.read_document()
+            service = PatientMDTFormExtractionService(
+                config=domain_conf, filename=filename, reader=reader
+            )
+            try:
+                clinical_models = service.form_cls.get_factual_clinical_models()
+                total = max(1, len(clinical_models))
+                completed_models: list[str] = list(job.get("completed_models") or [])
+                run_id = job.get("run_id")
+                is_Explicit_rerun = bool(job.get("force_replace", False))
+                preserve_manual = bool(job.get("preserve_manual_edits", True))
 
-            for idx, model_cls in enumerate(clinical_models, start=1):
-                if queue_manager._is_job_aborted(
-                    job_id, run_id=run_id, lease_id=lease_id
-                ):
-                    return
-                model_name = model_cls.__name__
+                for idx, model_cls in enumerate(clinical_models, start=1):
+                    if queue_manager._is_job_aborted(
+                        job_id, run_id=run_id, lease_id=lease_id
+                    ):
+                        return
+                    model_name = model_cls.__name__
 
-                is_manually_edited = (
-                    preserve_manual
-                    and service.form_cls.is_section_manually_edited(
-                        service.form, model_name
+                    is_manually_edited = (
+                        preserve_manual
+                        and service.form_cls.is_section_manually_edited(
+                            service.form, model_name
+                        )
+                        and model_name in service.form.sections
                     )
-                    and model_name in service.form.sections
-                )
 
-                # Skip sections already persisted on the form when resuming an unfinished job
-                # or when protecting manually edited sections during a global rerun
-                if is_manually_edited or (
-                    not is_Explicit_rerun
-                    and model_name in service.form.sections
-                    and service.form.sections.get(model_name)
-                ):
-                    if model_name not in completed_models:
-                        completed_models.append(model_name)
-                    queue_manager.update_job_progress(
-                        job_id=job_id,
-                        current_step=f"Analyse clinique ({idx}/{total}) — {model_name} (déjà extraite)",
+                    if is_manually_edited or (
+                        not is_Explicit_rerun
+                        and model_name in service.form.sections
+                        and service.form.sections.get(model_name)
+                    ):
+                        if model_name not in completed_models:
+                            completed_models.append(model_name)
+                        queue_manager.update_job_progress(
+                            job_id=job_id,
+                            current_step=f"Analyse clinique ({idx}/{total}) — {model_name} (déjà extraite)",
+                            completed_models=completed_models,
+                            progress_pct=round((idx / total) * 100.0, 1),
+                            run_id=run_id,
+                            lease_id=lease_id,
+                        )
+                        continue
+
+                    self._run_model_extraction_step(
+                        service=service,
+                        reader=reader,
+                        model_cls=model_cls,
+                        model_name=model_name,
+                        wave_name="wave_2",
+                        step_label=f"Extraction clinique ({idx}/{total}) — {model_name}",
+                        idx=idx,
+                        total=total,
                         completed_models=completed_models,
-                        progress_pct=round((idx / total) * 100.0, 1),
+                        preserve_manual=preserve_manual,
+                        queue_manager=queue_manager,
+                        job_id=job_id,
                         run_id=run_id,
                         lease_id=lease_id,
                     )
-                    continue
 
-                self._run_model_extraction_step(
-                    service=service,
-                    reader=reader,
-                    model_cls=model_cls,
-                    model_name=model_name,
-                    step_label=f"Extraction clinique ({idx}/{total}) — {model_name}",
-                    idx=idx,
-                    total=total,
-                    completed_models=completed_models,
-                    preserve_manual=preserve_manual,
-                    queue_manager=queue_manager,
-                    job_id=job_id,
-                    run_id=run_id,
-                    lease_id=lease_id,
+                with queue_manager._lock:
+                    has_wave3 = any(
+                        j.get("depends_on_job_id") == job_id
+                        and j["status"] == JobStatus.PENDING.value
+                        for j in queue_manager._jobs.values()
+                    )
+                next_status = (
+                    RCPProcessingStatus.PENDING_EXPERTS
+                    if has_wave3
+                    else RCPProcessingStatus.COMPLETED
                 )
-
-            with queue_manager._lock:
-                has_wave3 = any(
-                    j.get("depends_on_job_id") == job_id
-                    and j["status"] == JobStatus.PENDING.value
-                    for j in queue_manager._jobs.values()
-                )
-            next_status = (
-                RCPProcessingStatus.PENDING_EXPERTS
-                if has_wave3
-                else RCPProcessingStatus.COMPLETED
-            )
-            self.on_job_enqueued(domain, filename, next_status)
-        finally:
-            service.close()
+                self.on_job_enqueued(domain, filename, next_status)
+            finally:
+                service.close()
 
     @staticmethod
     def _run_model_extraction_step(
@@ -399,6 +431,7 @@ class PatientMDTFormQueueJobExecutor:
         job_id: str,
         run_id: str | None,
         lease_id: str,
+        wave_name: str = "wave_2",
     ) -> None:
         """Execute a single section extraction step and report progress before and after."""
         thinking_cb = QueueThinkingCallbackHandler(
@@ -418,14 +451,42 @@ class PatientMDTFormQueueJobExecutor:
             lease_id=lease_id,
         )
         extra_kwargs = {"clear_manual_flag": True} if not preserve_manual else {}
-        service.extract_section(
-            model_cls=model_cls,
-            upsert=True,
-            callbacks=[thinking_cb],
-            form=service.form,
-            reader=reader,
-            **extra_kwargs,
+        domain = (
+            service.config.domain
+            if service.config is not None and service.config.domain
+            else "oncology"
         )
+        t0 = time.perf_counter_ns()
+        status_label = "ok"
+        with start_span(
+            "medsyntis.extraction.section",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.wave": wave_name,
+                "medsyntis.section": model_name,
+                "medsyntis.doc_id": service.filename,
+            },
+        ):
+            try:
+                service.extract_section(
+                    model_cls=model_cls,
+                    upsert=True,
+                    callbacks=[thinking_cb],
+                    form=service.form,
+                    reader=reader,
+                    **extra_kwargs,
+                )
+            except Exception:
+                status_label = "error"
+                raise
+            finally:
+                get_metrics().record_extraction_section(
+                    domain=domain,
+                    wave=wave_name,
+                    section=model_name,
+                    status=status_label,
+                    duration_ms=(time.perf_counter_ns() - t0) / 1_000_000.0,
+                )
         if model_name not in completed_models:
             completed_models.append(model_name)
         queue_manager.update_job_progress(
@@ -448,72 +509,79 @@ class PatientMDTFormQueueJobExecutor:
 
         self.on_job_enqueued(domain, filename, RCPProcessingStatus.PROCESSING_EXPERTS)
 
-        reader = DocumentReader(domain_conf, filename)
-        reader.read_document()
-        service = PatientMDTFormExtractionService(
-            config=domain_conf, filename=filename, reader=reader
-        )
-        try:
-            expert_models = service.form_cls.get_expert_models()
-            total = max(1, len(expert_models))
-            completed_models: list[str] = list(job.get("completed_models") or [])
-            run_id = job.get("run_id")
-            is_Explicit_rerun = bool(job.get("force_replace", False))
-            preserve_manual = bool(job.get("preserve_manual_edits", True))
+        with start_span(
+            "medsyntis.extraction.wave_3_specialist_debate",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.wave": "wave_3",
+                "medsyntis.doc_id": filename,
+            },
+        ):
+            reader = DocumentReader(domain_conf, filename)
+            reader.read_document()
+            service = PatientMDTFormExtractionService(
+                config=domain_conf, filename=filename, reader=reader
+            )
+            try:
+                expert_models = service.form_cls.get_expert_models()
+                total = max(1, len(expert_models))
+                completed_models: list[str] = list(job.get("completed_models") or [])
+                run_id = job.get("run_id")
+                is_Explicit_rerun = bool(job.get("force_replace", False))
+                preserve_manual = bool(job.get("preserve_manual_edits", True))
 
-            for idx, model_cls in enumerate(expert_models, start=1):
-                if queue_manager._is_job_aborted(
-                    job_id, run_id=run_id, lease_id=lease_id
-                ):
-                    return
-                model_name = model_cls.__name__
+                for idx, model_cls in enumerate(expert_models, start=1):
+                    if queue_manager._is_job_aborted(
+                        job_id, run_id=run_id, lease_id=lease_id
+                    ):
+                        return
+                    model_name = model_cls.__name__
 
-                is_manually_edited = (
-                    preserve_manual
-                    and service.form_cls.is_section_manually_edited(
-                        service.form, model_name
+                    is_manually_edited = (
+                        preserve_manual
+                        and service.form_cls.is_section_manually_edited(
+                            service.form, model_name
+                        )
+                        and model_name in service.form.sections
                     )
-                    and model_name in service.form.sections
-                )
 
-                # Skip sections already persisted on the form when resuming an unfinished job
-                # or when protecting manually edited sections during a global rerun
-                if is_manually_edited or (
-                    not is_Explicit_rerun
-                    and model_name in service.form.sections
-                    and service.form.sections.get(model_name)
-                ):
-                    if model_name not in completed_models:
-                        completed_models.append(model_name)
-                    queue_manager.update_job_progress(
-                        job_id=job_id,
-                        current_step=f"Concertation d'experts ({idx}/{total}) — {model_name} (déjà extraite)",
+                    if is_manually_edited or (
+                        not is_Explicit_rerun
+                        and model_name in service.form.sections
+                        and service.form.sections.get(model_name)
+                    ):
+                        if model_name not in completed_models:
+                            completed_models.append(model_name)
+                        queue_manager.update_job_progress(
+                            job_id=job_id,
+                            current_step=f"Concertation d'experts ({idx}/{total}) — {model_name} (déjà extraite)",
+                            completed_models=completed_models,
+                            progress_pct=round((idx / total) * 100.0, 1),
+                            run_id=run_id,
+                            lease_id=lease_id,
+                        )
+                        continue
+
+                    self._run_model_extraction_step(
+                        service=service,
+                        reader=reader,
+                        model_cls=model_cls,
+                        model_name=model_name,
+                        wave_name="wave_3",
+                        step_label=f"Concertation d'experts ({idx}/{total}) — {model_name}",
+                        idx=idx,
+                        total=total,
                         completed_models=completed_models,
-                        progress_pct=round((idx / total) * 100.0, 1),
+                        preserve_manual=preserve_manual,
+                        queue_manager=queue_manager,
+                        job_id=job_id,
                         run_id=run_id,
                         lease_id=lease_id,
                     )
-                    continue
 
-                self._run_model_extraction_step(
-                    service=service,
-                    reader=reader,
-                    model_cls=model_cls,
-                    model_name=model_name,
-                    step_label=f"Concertation d'experts ({idx}/{total}) — {model_name}",
-                    idx=idx,
-                    total=total,
-                    completed_models=completed_models,
-                    preserve_manual=preserve_manual,
-                    queue_manager=queue_manager,
-                    job_id=job_id,
-                    run_id=run_id,
-                    lease_id=lease_id,
-                )
-
-            self.on_job_enqueued(domain, filename, RCPProcessingStatus.COMPLETED)
-        finally:
-            service.close()
+                self.on_job_enqueued(domain, filename, RCPProcessingStatus.COMPLETED)
+            finally:
+                service.close()
 
     def execute_single_model(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
@@ -619,25 +687,32 @@ class PatientMDTFormQueueJobExecutor:
         )
         domain_conf = self._resolve_domain_config(domain)
         db_client = Mongodb(domain_conf)
-        try:
-            record_service = PatientRecordService.from_config(
-                domain_conf, db_client=db_client, queue_broker=queue_manager
-            )
-            record_service.generate_and_save_patient_record_summary(
-                str(patient_id),
-                callbacks=[thinking_cb],
-                use_llm=True,
-            )
-            queue_manager.update_job_progress(
-                job_id=job_id,
-                current_step="Résumé global du dossier généré",
-                completed_models=["PatientRecordSummary"],
-                progress_pct=100.0,
-                run_id=run_id,
-                lease_id=lease_id,
-            )
-        finally:
-            db_client.close()
+        with start_span(
+            "medsyntis.patient.longitudinal_summary",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.patient_id": str(patient_id),
+            },
+        ):
+            try:
+                record_service = PatientRecordService.from_config(
+                    domain_conf, db_client=db_client, queue_broker=queue_manager
+                )
+                record_service.generate_and_save_patient_record_summary(
+                    str(patient_id),
+                    callbacks=[thinking_cb],
+                    use_llm=True,
+                )
+                queue_manager.update_job_progress(
+                    job_id=job_id,
+                    current_step="Résumé global du dossier généré",
+                    completed_models=["PatientRecordSummary"],
+                    progress_pct=100.0,
+                    run_id=run_id,
+                    lease_id=lease_id,
+                )
+            finally:
+                db_client.close()
 
     def clear_manual_edit_before_rerun(
         self,

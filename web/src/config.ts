@@ -1,4 +1,5 @@
 import type { ClinicalDomain, Language, ThemeMode } from "./domain/types.js";
+import { isLocalTelemetryHost, type WebOtelConfig } from "./infrastructure/observability/otel.js";
 import {
   EnvConfigSchema,
   resolveClinicalDomain,
@@ -22,6 +23,7 @@ export interface WebAppConfig {
   defaultLanguage: Language;
   defaultTheme: ThemeMode;
   useFakeApiFallback: boolean;
+  otel?: WebOtelConfig;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): WebAppConfig {
@@ -50,6 +52,50 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WebAppConfig {
   const rawPort = Number(parsed.PORT_WEB ?? parsed.PORT ?? 3000);
   const port = Number.isNaN(rawPort) ? 3000 : rawPort;
 
+  const rawMetricInterval = Number(parsed.OTEL_METRIC_EXPORT_INTERVAL ?? 60_000);
+  const rawSamplerArg = Number(parsed.OTEL_TRACES_SAMPLER_ARG ?? 1.0);
+  const otel: WebOtelConfig = {
+    sdkDisabled: parsed.OTEL_SDK_DISABLED?.toLowerCase() !== "false",
+    serviceName: parsed.OTEL_SERVICE_NAME || "medsyntis-web",
+    resourceAttributes: parsed.OTEL_RESOURCE_ATTRIBUTES || "",
+    tracesExporter: (parsed.OTEL_TRACES_EXPORTER || "none").toLowerCase(),
+    metricsExporter: (parsed.OTEL_METRICS_EXPORTER || "none").toLowerCase(),
+    logsExporter: (parsed.OTEL_LOGS_EXPORTER || "none").toLowerCase(),
+    exporterOtlpEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT || "",
+    exporterOtlpTracesEndpoint: parsed.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || "",
+    exporterOtlpMetricsEndpoint: parsed.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || "",
+    exporterOtlpLogsEndpoint: parsed.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || "",
+    exporterOtlpProtocol: (parsed.OTEL_EXPORTER_OTLP_PROTOCOL || "http/protobuf").toLowerCase(),
+    exporterOtlpHeaders: parsed.OTEL_EXPORTER_OTLP_HEADERS || "",
+    metricExportInterval: Number.isNaN(rawMetricInterval) ? 60_000 : rawMetricInterval,
+    tracesSampler: (parsed.OTEL_TRACES_SAMPLER || "parentbased_traceidratio").toLowerCase(),
+    tracesSamplerArg: Number.isNaN(rawSamplerArg)
+      ? 1.0
+      : Math.min(1.0, Math.max(0.0, rawSamplerArg)),
+    propagators: (parsed.OTEL_PROPAGATORS || "tracecontext,baggage").toLowerCase(),
+  };
+
+  const allowRemote = parsed.APP_ALLOW_REMOTE_LLM?.toLowerCase() === "true";
+  const usesOtlp =
+    otel.tracesExporter.split(",").some((e) => e.trim() === "otlp") ||
+    otel.metricsExporter.split(",").some((e) => e.trim() === "otlp") ||
+    otel.logsExporter.split(",").some((e) => e.trim() === "otlp");
+  if (!allowRemote && !otel.sdkDisabled && usesOtlp) {
+    const candidateEndpoints = [
+      ["OTEL_EXPORTER_OTLP_ENDPOINT", otel.exporterOtlpEndpoint],
+      ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", otel.exporterOtlpTracesEndpoint],
+      ["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", otel.exporterOtlpMetricsEndpoint],
+      ["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", otel.exporterOtlpLogsEndpoint ?? ""],
+    ] as const;
+    for (const [envKey, endpoint] of candidateEndpoints) {
+      if (endpoint && !isLocalTelemetryHost(endpoint)) {
+        throw new Error(
+          `Remote OTLP endpoint forbidden while APP_ALLOW_REMOTE_LLM=false: ${envKey}=${endpoint}`,
+        );
+      }
+    }
+  }
+
   return {
     port,
     host: parsed.HOST_WEB || "127.0.0.1",
@@ -67,5 +113,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WebAppConfig {
     defaultLanguage: resolveLanguage(parsed.APP_LANGUAGE, "fr"),
     defaultTheme: resolveThemeMode(parsed.APP_THEME, "auto"),
     useFakeApiFallback,
+    otel,
   };
 }

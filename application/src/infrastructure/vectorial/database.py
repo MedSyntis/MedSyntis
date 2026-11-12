@@ -1,13 +1,16 @@
 import hashlib
 import re
+import time
 import uuid
 from typing import Any
 
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore, VectorStoreRetriever
+from opentelemetry.trace import SpanKind
 
 from src.application.config import AppConfig
 from src.infrastructure.llm.factory import get_llm_client
+from src.infrastructure.observability import get_metrics, start_span
 
 
 def sanitize_collection_name(raw_name: str) -> str:
@@ -187,7 +190,28 @@ class VectorialDataBase:
         ]
         if not docs:
             return
-        batch_size = 32
-        for idx in range(0, len(docs), batch_size):
-            batch = docs[idx : idx + batch_size]
-            self._add_documents_batch(batch)
+        backend = (self.config.dbvec.type or "milvus").lower()
+        domain = self.config.domain or "oncology"
+        t0 = time.perf_counter_ns()
+        with start_span(
+            "medsyntis.vectordb.index",
+            kind=SpanKind.CLIENT,
+            attributes={
+                "db.system": backend,
+                "db.operation.name": "index",
+                "medsyntis.domain": domain,
+                "medsyntis.chunk_count": len(docs),
+            },
+        ):
+            try:
+                batch_size = 32
+                for idx in range(0, len(docs), batch_size):
+                    batch = docs[idx : idx + batch_size]
+                    self._add_documents_batch(batch)
+            finally:
+                get_metrics().record_vectordb_op(
+                    backend=backend,
+                    operation="index",
+                    domain=domain,
+                    duration_ms=(time.perf_counter_ns() - t0) / 1_000_000.0,
+                )

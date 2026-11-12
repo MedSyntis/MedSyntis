@@ -27,6 +27,13 @@ import type {
 } from "../domain/types.js";
 import { bffRequestContext } from "../infrastructure/api/http-medsyntis-api.adapter.js";
 import {
+  emitWebOtelLog,
+  getActiveWebLogTraceMixin,
+  getActiveWebTraceId,
+  getFastifyOtelPlugin,
+  recordWebHttpServerMetric,
+} from "../infrastructure/observability/otel.js";
+import {
   AgendaEnrollBodySchema,
   AgendaMoveBodySchema,
   AgendaOptionsBodySchema,
@@ -205,6 +212,7 @@ export async function buildServer({
         ? false
         : {
             level: "info",
+            mixin: getActiveWebLogTraceMixin,
             serializers: {
               req(req) {
                 return {
@@ -216,6 +224,11 @@ export async function buildServer({
             },
           },
   });
+
+  const otelPlugin = getFastifyOtelPlugin();
+  if (otelPlugin) {
+    await app.register(otelPlugin);
+  }
 
   function hasVerifiedProxySecret(req: FastifyRequest): boolean {
     const providedSecret =
@@ -404,6 +417,10 @@ export async function buildServer({
 
   // Strict Hospital-Grade HTTP Security Headers (100% self-hosted)
   app.addHook("onSend", async (req, reply, payload) => {
+    const activeTraceId = getActiveWebTraceId();
+    if (activeTraceId && !reply.getHeader("x-trace-id")) {
+      reply.header("X-Trace-Id", activeTraceId);
+    }
     const isPdfFile = req.url.startsWith("/files/");
     if (!reply.getHeader("content-security-policy")) {
       reply.header(
@@ -440,6 +457,39 @@ export async function buildServer({
       }
     }
     return payload;
+  });
+
+  app.addHook("onResponse", async (req, reply) => {
+    const cleanUrl = req.url.split("?")[0] ?? "/";
+    if (cleanUrl === "/health" || cleanUrl.startsWith("/public/")) {
+      return;
+    }
+    const route = req.routeOptions?.url || cleanUrl;
+    const hostDomain = detectHostDomain(req, isProxyTrusted(req));
+    const cookieDomain = req.cookies?.ds_domain;
+    const domain =
+      hostDomain ||
+      (cookieDomain === "sma" && config.allowedDomains.includes("sma")
+        ? "sma"
+        : config.defaultDomain);
+    const durationMs = reply.elapsedTime ?? 0;
+    recordWebHttpServerMetric({
+      method: req.method,
+      route,
+      statusCode: reply.statusCode,
+      domain,
+      durationMs,
+    });
+    emitWebOtelLog({
+      severity: reply.statusCode >= 500 ? "ERROR" : reply.statusCode >= 400 ? "WARN" : "INFO",
+      message: `${req.method} ${route} -> ${reply.statusCode}`,
+      attributes: {
+        "http.request.method": req.method,
+        "http.route": route,
+        "http.response.status_code": reply.statusCode,
+        "medsyntis.domain": domain,
+      },
+    });
   });
 
   const worklistUseCase = new WorklistUseCase(api);
