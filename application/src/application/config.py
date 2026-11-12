@@ -587,7 +587,12 @@ class OTelSettings(BaseSettings):
     `OTEL_LOGS_EXPORTER=none` (zero overhead, logs strictly written to `stdout`).
     """
 
-    model_config = SettingsConfigDict(env_prefix="OTEL_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="OTEL_",
+        env_file=(".env", "../.env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     sdk_disabled: bool = Field(
         default=True,
@@ -624,6 +629,10 @@ class OTelSettings(BaseSettings):
     exporter_otlp_metrics_endpoint: str = Field(
         default="",
         description="Signal-specific OTLP metrics endpoint, e.g. http://grafana:4318/v1/metrics (OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).",
+    )
+    exporter_otlp_logs_endpoint: str = Field(
+        default="",
+        description="Signal-specific OTLP logs endpoint, e.g. http://grafana:4318/v1/logs (OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).",
     )
     exporter_otlp_protocol: str = Field(
         default="http/protobuf",
@@ -1017,6 +1026,7 @@ class AppConfig(BaseSettings):
                     self.otel.exporter_otlp_endpoint,
                     self.otel.exporter_otlp_traces_endpoint,
                     self.otel.exporter_otlp_metrics_endpoint,
+                    self.otel.exporter_otlp_logs_endpoint,
                 ):
                     if ep and ep.strip() and not is_local_host(ep):
                         raise ValueError(

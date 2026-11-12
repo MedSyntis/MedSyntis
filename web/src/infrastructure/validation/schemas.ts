@@ -54,6 +54,7 @@ export const EnvConfigSchema = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalTrimmedString,
   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: optionalTrimmedString,
   OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: optionalTrimmedString,
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: optionalTrimmedString,
   OTEL_EXPORTER_OTLP_PROTOCOL: optionalTrimmedString,
   OTEL_EXPORTER_OTLP_HEADERS: optionalTrimmedString,
   OTEL_METRIC_EXPORT_INTERVAL: optionalTrimmedString,

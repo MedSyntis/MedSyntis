@@ -5,9 +5,15 @@ import { InMemoryMedsyntisApiFake } from "../../src/infrastructure/api/in-memory
 import {
   collectWebMetricsForTests,
   configureWebObservability,
+  emitWebOtelLog,
+  getActiveWebLogTraceMixin,
   getRecordedWebSpansForTests,
+  isLocalTelemetryHost,
+  isWebObservabilityEnabled,
+  recordWebUpstreamMetric,
   resetWebObservabilityForTests,
   sanitizeWebOtelAttributes,
+  withWebSpan,
 } from "../../src/infrastructure/observability/otel.js";
 import { buildServer } from "../../src/ui/server.js";
 
@@ -150,5 +156,83 @@ describe("OpenTelemetry Web BFF Observability (MedSyntis#14)", () => {
     } finally {
       await server.close();
     }
+  });
+
+  it("validates local/private OTLP hosts, scrubs URL queries, and records error spans, metrics, and logs", async () => {
+    expect(isLocalTelemetryHost("")).toBe(false);
+    expect(isLocalTelemetryHost("http://localhost:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://grafana:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://collector.internal:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://127.0.0.1:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://10.1.2.3:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://172.20.0.5:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://192.168.1.10:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://[::1]:4318")).toBe(true);
+    expect(isLocalTelemetryHost("http://[fd00::1]:4318")).toBe(true);
+    expect(isLocalTelemetryHost("https://8.8.8.8:4318")).toBe(false);
+    expect(isLocalTelemetryHost("https://[2606:4700:4700::1111]:4318")).toBe(false);
+    expect(isLocalTelemetryHost("https://cloud.langfuse.com")).toBe(false);
+
+    expect(() =>
+      loadConfig({
+        APP_ALLOW_REMOTE_LLM: "false",
+        OTEL_SDK_DISABLED: "false",
+        OTEL_LOGS_EXPORTER: "otlp",
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https://logs.example.com/v1/logs",
+      }),
+    ).toThrow(/OTLP/i);
+
+    const urlCleaned = sanitizeWebOtelAttributes({
+      "url.full": "http://localhost:3000/worklist?q=DUPONT",
+      "url.query": "q=DUPONT",
+      active: true,
+      nested: { secret: 1 },
+    });
+    expect(urlCleaned["url.full"]).toBe("http://localhost:3000/worklist");
+    expect(urlCleaned["url.query"]).toBeUndefined();
+    expect(urlCleaned.active).toBe(true);
+
+    const config = loadConfig({
+      APP_DEV_MODE: "true",
+      OTEL_SDK_DISABLED: "false",
+      OTEL_SERVICE_NAME: "medsyntis-web",
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=test",
+      OTEL_TRACES_EXPORTER: "none",
+      OTEL_METRICS_EXPORTER: "none",
+      OTEL_LOGS_EXPORTER: "none",
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:4318/v1/traces",
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://127.0.0.1:4318/v1/metrics",
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "http://127.0.0.1:4318/v1/logs",
+      OTEL_EXPORTER_OTLP_HEADERS: "X-Scope-OrgID=medsyntis",
+    });
+    configureWebObservability(config.otel, { captureInMemory: true });
+    expect(isWebObservabilityEnabled()).toBe(true);
+
+    let activeMixin: Record<string, string> = {};
+    await expect(
+      withWebSpan("test.failing_span", { attributes: { first_name: "Jean" } }, async () => {
+        activeMixin = getActiveWebLogTraceMixin();
+        emitWebOtelLog({
+          severity: "ERROR",
+          message: "Upstream timeout simulated",
+          attributes: { first_name: "Jean", "medsyntis.domain": "oncology" },
+        });
+        recordWebUpstreamMetric({
+          operation: "listPatients",
+          domain: "oncology",
+          status: "error",
+          durationMs: 55,
+          errorType: "TimeoutError",
+        });
+        throw new Error("simulated failure");
+      }),
+    ).rejects.toThrow("simulated failure");
+
+    expect(activeMixin.trace_id).toHaveLength(32);
+    expect(activeMixin.span_id).toHaveLength(16);
+
+    const metrics = await collectWebMetricsForTests();
+    expect(metrics.counters["medsyntis.web.upstream.errors"]).toBe(1);
   });
 });

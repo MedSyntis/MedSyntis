@@ -260,12 +260,15 @@ Used in production Docker stacks (`dist/docker/compose/docker-compose.prod.yml`)
 MedSyntis uses the official **OpenTelemetry** SDKs (`opentelemetry-sdk` + upstream FastAPI/HTTPX/PyMongo/Logging instrumentors in Python, and `@opentelemetry/sdk-node` + `@fastify/otel` in Node.js) as its end-to-end instrumentation backbone.
 
 * **Safe Default (`OTEL_SDK_DISABLED=true`)**: By default, tracing and metrics export are completely disabled (`NoOpTracerProvider` / `NoOpMeterProvider`) and structured logs are emitted strictly to `stdout`.
-* **Zero-PHI Sanitization (`SanitizingSpanProcessor`)**: All spans in both `medsyntis-web` and `medsyntis-api` scrub clinical/identity keys (`first_name`, `last_name`, `date_birth`, `prompt`, `thinking`, `query`, `db.statement`, `url.query`), enforce `capture_statement=False` on PyMongo, redact non-pseudonymized `patient_id` values, and hash cleartext filenames (`sha256:<12hex>`).
+* **Zero-PHI Sanitization (`SanitizingSpanProcessor` & `SanitizingLogRecordProcessor`)**: All spans and exported OTLP logs in both `medsyntis-web` and `medsyntis-api` scrub clinical/identity keys (`first_name`, `last_name`, `date_birth`, `prompt`, `thinking`, `query`, `db.statement`, `url.query`), enforce `capture_statement=False` on PyMongo, redact non-pseudonymized `patient_id` values, and hash cleartext filenames (`sha256:<12hex>`).
 * **Local Sovereignty Guardrail**: When `APP_ALLOW_REMOTE_LLM=false`, any non-local `OTEL_EXPORTER_OTLP_*ENDPOINT` is rejected at startup.
-* **End-to-End W3C Correlation**: `medsyntis-web` injects W3C `traceparent` headers into FastAPI requests (`HttpMedsyntisApiAdapter`), `InMemoryQueueManager` propagates trace context into background worker jobs, and `stdout` logs automatically include `trace_id` and `span_id` whenever a recording span is active.
-* **Optional Production Grafana OTel LGTM Profile (`grafana/otel-lgtm:0.40.0`)**: Start the hardened all-in-one local OpenTelemetry Collector + Tempo (Traces) + Prometheus (Metrics) + Loki (Logs) + Grafana UI (`127.0.0.1:3001`, isolated on `backend_internal`) and automatically enable OTLP Traces & Metrics export (`http://grafana:4318`) via:
+* **End-to-End W3C Correlation**: `medsyntis-web` injects W3C `traceparent` headers into FastAPI requests (`HttpMedsyntisApiAdapter`), `InMemoryQueueManager` propagates trace context into background worker jobs, and `stdout` / Loki logs automatically include `trace_id` and `span_id` whenever a recording span is active.
+* **Optional Local & Production Grafana OTel LGTM Profile (`grafana/otel-lgtm:0.40.0`)**: Start the hardened all-in-one local OpenTelemetry Collector + Tempo (Traces) + Prometheus (Metrics) + Loki (Logs) + Grafana UI (`127.0.0.1:3001`, isolated on `backend_internal` in production) and automatically enable OTLP Traces, Metrics & Logs export via:
   ```bash
-  # Note: run 'make build-prod' first if deploying local branch changes before GHCR publish
+  # Local development (starts Grafana LGTM on 127.0.0.1:3001 + FastAPI + M3 Web UI):
+  make start-web-grafana
+
+  # Production (note: run 'make build-prod' first if testing local branch changes before GHCR publish):
   make start-prod-grafana
   # Or toggle Grafana OTel observability on an already running stack without unloading GPU VRAM:
   make restart-prod-grafana

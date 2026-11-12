@@ -160,6 +160,29 @@ services:
     command: ["--config", "/app/config.yaml", "--host", "127.0.0.1", "--port", "4000"]
     restart: unless-stopped
 
+  # Optional local Grafana OTel LGTM stack (Tempo + Prometheus + Loki + Grafana UI on 127.0.0.1:3001)
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/otel-lgtm:0.40.0}
+    container_name: medsyntis-grafana
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    environment:
+      DO_NOT_TRACK: "1"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      ENABLE_LOGS_ALL: "false"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/medsyntis/common}/grafana:/data
+    profiles:
+      - "grafana"
+
 networks:
   search-community:
     name: search-community

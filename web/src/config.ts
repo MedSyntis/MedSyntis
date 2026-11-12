@@ -64,6 +64,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WebAppConfig {
     exporterOtlpEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT || "",
     exporterOtlpTracesEndpoint: parsed.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || "",
     exporterOtlpMetricsEndpoint: parsed.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || "",
+    exporterOtlpLogsEndpoint: parsed.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || "",
     exporterOtlpProtocol: (parsed.OTEL_EXPORTER_OTLP_PROTOCOL || "http/protobuf").toLowerCase(),
     exporterOtlpHeaders: parsed.OTEL_EXPORTER_OTLP_HEADERS || "",
     metricExportInterval: Number.isNaN(rawMetricInterval) ? 60_000 : rawMetricInterval,
@@ -84,6 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WebAppConfig {
       ["OTEL_EXPORTER_OTLP_ENDPOINT", otel.exporterOtlpEndpoint],
       ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", otel.exporterOtlpTracesEndpoint],
       ["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", otel.exporterOtlpMetricsEndpoint],
+      ["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", otel.exporterOtlpLogsEndpoint ?? ""],
     ] as const;
     for (const [envKey, endpoint] of candidateEndpoints) {
       if (endpoint && !isLocalTelemetryHost(endpoint)) {

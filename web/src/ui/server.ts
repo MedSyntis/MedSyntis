@@ -27,6 +27,7 @@ import type {
 } from "../domain/types.js";
 import { bffRequestContext } from "../infrastructure/api/http-medsyntis-api.adapter.js";
 import {
+  emitWebOtelLog,
   getActiveWebLogTraceMixin,
   getActiveWebTraceId,
   getFastifyOtelPlugin,
@@ -471,12 +472,23 @@ export async function buildServer({
       (cookieDomain === "sma" && config.allowedDomains.includes("sma")
         ? "sma"
         : config.defaultDomain);
+    const durationMs = reply.elapsedTime ?? 0;
     recordWebHttpServerMetric({
       method: req.method,
       route,
       statusCode: reply.statusCode,
       domain,
-      durationMs: reply.elapsedTime ?? 0,
+      durationMs,
+    });
+    emitWebOtelLog({
+      severity: reply.statusCode >= 500 ? "ERROR" : reply.statusCode >= 400 ? "WARN" : "INFO",
+      message: `${req.method} ${route} -> ${reply.statusCode}`,
+      attributes: {
+        "http.request.method": req.method,
+        "http.route": route,
+        "http.response.status_code": reply.statusCode,
+        "medsyntis.domain": domain,
+      },
     });
   });
 

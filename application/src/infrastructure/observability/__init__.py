@@ -2,7 +2,9 @@
 
 from src.infrastructure.observability.otel import (
     MedSyntisMetrics,
+    SanitizingLogRecordProcessor,
     SanitizingSpanProcessor,
+    attach_otel_handler_to_uvicorn_loggers,
     configure_observability,
     extract_trace_context,
     get_active_trace_ids,
@@ -21,7 +23,9 @@ from src.infrastructure.observability.otel import (
 
 __all__ = [
     "MedSyntisMetrics",
+    "SanitizingLogRecordProcessor",
     "SanitizingSpanProcessor",
+    "attach_otel_handler_to_uvicorn_loggers",
     "configure_observability",
     "extract_trace_context",
     "get_active_trace_ids",

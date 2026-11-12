@@ -26,8 +26,8 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 import pytest
@@ -36,8 +36,14 @@ import yaml
 from src.application.config import AppConfig, OTelSettings
 from src.infrastructure.llm.base import CachedEmbeddingsProxy
 from src.infrastructure.observability.otel import (
+    _build_official_log_exporter,
+    _build_official_metric_reader,
+    _build_official_span_exporter,
+    _build_sampler,
+    attach_otel_handler_to_uvicorn_loggers,
     configure_observability,
     extract_trace_context,
+    get_meter,
     get_metrics,
     get_tracer,
     inject_trace_context,
@@ -68,6 +74,7 @@ def _clean_otel_state(monkeypatch: pytest.MonkeyPatch):
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
         "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
         "OTEL_EXPORTER_OTLP_PROTOCOL",
         "OTEL_EXPORTER_OTLP_HEADERS",
         "OTEL_TRACES_SAMPLER",
@@ -365,7 +372,7 @@ def test_distributed_trace_propagation_fastapi_to_priority_queue_worker_and_metr
 
 
 def test_otlp_http_protobuf_exporter_posts_valid_payload_to_grafana_otlp():
-    """Verify official OTLPSpanExporter & OTLPMetricExporter send x-protobuf to /v1/traces and /v1/metrics."""
+    """Verify official OTLP HTTP/Protobuf exporters send traces, metrics, and Zero-PHI logs to /v1/traces, /v1/metrics, /v1/logs."""
     from http.server import BaseHTTPRequestHandler, HTTPServer
     import threading
 
@@ -394,49 +401,47 @@ def test_otlp_http_protobuf_exporter_posts_valid_payload_to_grafana_otlp():
     thread.start()
 
     try:
-        headers = parse_otlp_headers("X-Scope-OrgID=medsyntis")
-        span_exporter = OTLPSpanExporter(
-            endpoint=f"http://127.0.0.1:{port}/v1/traces",
-            headers=headers,
-            timeout=5.0,
-        )
-        metric_exporter = OTLPMetricExporter(
-            endpoint=f"http://127.0.0.1:{port}/v1/metrics",
-            headers=headers,
-            timeout=5.0,
-        )
-        metric_reader = PeriodicReaderOrManualHelper.build_manual_reader(
-            metric_exporter
-        )
-
         conf = AppConfig(
             otel=OTelSettings(
                 sdk_disabled=False,
                 service_name="medsyntis-api",
-                traces_exporter="none",
-                metrics_exporter="none",
+                traces_exporter="otlp",
+                metrics_exporter="otlp",
+                logs_exporter="otlp",
+                exporter_otlp_endpoint=f"http://127.0.0.1:{port}",
+                exporter_otlp_headers="X-Scope-OrgID=medsyntis",
+                exporter_otlp_timeout=5_000,
+                metric_export_interval=60_000,
             )
         )
-        configure_observability(
-            conf,
-            span_exporter=span_exporter,
-            metric_reader=metric_reader,
-            force=True,
-        )
+        configure_observability(conf, force=True)
+        api_logger = conf.set_logger("medsyntis.api.otlp_smoke")
 
         with start_span(
             "medsyntis.grafana.smoke", attributes={"medsyntis.domain": "oncology"}
         ):
+            api_logger.info(
+                "Grafana Loki OTLP smoke log",
+                extra={"first_name": "Jean", "medsyntis.domain": "oncology"},
+            )
             get_metrics().record_document_parse(
                 domain="oncology", parser="docling", cache_hit=True, duration_ms=12.0
             )
+            get_metrics().record_extraction_section(
+                domain="oncology",
+                wave="wave_2",
+                section="CancerDescription",
+                status="ok",
+                duration_ms=25.0,
+            )
+            get_metrics().record_vectordb_op(
+                backend="milvus",
+                operation="similarity_search",
+                domain="oncology",
+                duration_ms=8.5,
+            )
 
-        from opentelemetry import trace as otel_trace
-
-        provider = otel_trace.get_tracer_provider()
-        if hasattr(provider, "force_flush"):
-            provider.force_flush()
-        metric_reader.force_flush()
+        # Shutdown flushes TracerProvider, MeterProvider, and LoggerProvider batches cleanly
         reset_observability_for_tests()
     finally:
         server.shutdown()
@@ -444,6 +449,7 @@ def test_otlp_http_protobuf_exporter_posts_valid_payload_to_grafana_otlp():
 
     trace_calls = [c for c in captured_posts if c["path"] == "/v1/traces"]
     metric_calls = [c for c in captured_posts if c["path"] == "/v1/metrics"]
+    log_calls = [c for c in captured_posts if c["path"] == "/v1/logs"]
 
     assert len(trace_calls) >= 1
     assert trace_calls[-1]["headers"].get("content-type") == "application/x-protobuf"
@@ -454,15 +460,154 @@ def test_otlp_http_protobuf_exporter_posts_valid_payload_to_grafana_otlp():
     assert metric_calls[-1]["headers"].get("content-type") == "application/x-protobuf"
     assert len(metric_calls[-1]["data"]) > 0
 
+    assert len(log_calls) >= 1
+    assert log_calls[-1]["headers"].get("content-type") == "application/x-protobuf"
+    assert log_calls[-1]["headers"].get("x-scope-orgid") == "medsyntis"
+    assert b"Grafana Loki OTLP smoke log" in log_calls[-1]["data"]
+    assert b"Jean" not in log_calls[-1]["data"]
 
-class PeriodicReaderOrManualHelper:
-    """Helper building an immediate PeriodicExportingMetricReader for deterministic unit tests."""
 
-    @staticmethod
-    def build_manual_reader(exporter: Any) -> Any:
-        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+def test_otlp_logs_sanitizer_uvicorn_bridge_and_dotenv_loading(tmp_path: Path):
+    """Verify SanitizingLogRecordProcessor, Uvicorn handler attachment (/health filtered), and .env loading."""
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text(
+        "OTEL_SDK_DISABLED=false\n"
+        "OTEL_SERVICE_NAME=medsyntis-api-dotenv\n"
+        "OTEL_TRACES_EXPORTER=otlp\n"
+        "OTEL_LOGS_EXPORTER=otlp\n"
+        "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318\n",
+        encoding="utf-8",
+    )
+    loaded_otel = OTelSettings(_env_file=dotenv_file)
+    assert loaded_otel.sdk_disabled is False
+    assert loaded_otel.service_name == "medsyntis-api-dotenv"
+    assert loaded_otel.logs_exporter == "otlp"
 
-        return PeriodicExportingMetricReader(exporter, export_interval_millis=600_000)
+    log_exporter = InMemoryLogRecordExporter()
+    span_exporter = InMemorySpanExporter()
+    conf = AppConfig(
+        otel=OTelSettings(
+            sdk_disabled=False,
+            traces_exporter="none",
+            metrics_exporter="none",
+            logs_exporter="none",
+            resource_attributes="service.name=medsyntis-custom",
+        )
+    )
+    configure_observability(
+        conf,
+        span_exporter=span_exporter,
+        log_exporter=log_exporter,
+        force=True,
+    )
+
+    uv_access = logging.getLogger("uvicorn.access")
+    prev_propagate = uv_access.propagate
+    prev_level = uv_access.level
+    uv_access.propagate = False
+    uv_access.setLevel(logging.INFO)
+    try:
+        attach_otel_handler_to_uvicorn_loggers()
+        uv_access.info('127.0.0.1:50000 - "GET /health HTTP/1.1" 200')
+        uv_access.info('127.0.0.1:50000 - "GET /api/v1/patients HTTP/1.1" 200')
+
+        app_logger = conf.set_logger("medsyntis.test.logs")
+        app_logger.warning(
+            "Queue retry scheduled",
+            extra={
+                "first_name": "Claire",
+                "prompt": "Secret clinical prompt",
+                "patient_id": "DUPONT_1950",
+                "document": "DUPONT_Claire.pdf",
+                "medsyntis.domain": "sma",
+            },
+        )
+    finally:
+        uv_access.propagate = prev_propagate
+        uv_access.setLevel(prev_level)
+
+    finished_logs = log_exporter.get_finished_logs()
+    bodies = [str(lr.log_record.body) for lr in finished_logs]
+    assert not any("/health" in b for b in bodies)
+    assert any("/api/v1/patients" in b for b in bodies)
+    assert any("Queue retry scheduled" in b for b in bodies)
+
+    retry_rec = next(
+        lr for lr in finished_logs if "Queue retry scheduled" in str(lr.log_record.body)
+    )
+    attrs = dict(retry_rec.log_record.attributes or {})
+    assert attrs.get("medsyntis.domain") == "sma"
+    assert attrs.get("patient_id") == "[REDACTED]"
+    assert str(attrs.get("document", "")).startswith("sha256:")
+    assert "first_name" not in attrs
+    assert "prompt" not in attrs
+
+
+def test_exporters_samplers_and_error_span_recording():
+    """Cover sampler strategies, console/grpc/unsupported exporter builders, and span exception status."""
+    for sampler_name in (
+        "always_on",
+        "always_off",
+        "traceidratio",
+        "parentbased_always_on",
+        "parentbased_always_off",
+        "parentbased_traceidratio",
+    ):
+        assert _build_sampler(sampler_name, 0.25) is not None
+
+    console_cfg = OTelSettings(
+        sdk_disabled=False,
+        traces_exporter="console",
+        metrics_exporter="console",
+        logs_exporter="console",
+        metric_export_interval=5_000,
+    )
+    assert _build_official_span_exporter(console_cfg) is not None
+    reader = _build_official_metric_reader(console_cfg)
+    assert reader is not None
+    reader.shutdown()
+    assert _build_official_log_exporter(console_cfg) is not None
+
+    grpc_cfg = OTelSettings(
+        sdk_disabled=False,
+        traces_exporter="otlp",
+        metrics_exporter="otlp",
+        logs_exporter="otlp",
+        exporter_otlp_protocol="grpc",
+        exporter_otlp_endpoint="http://127.0.0.1:4317",
+        exporter_otlp_headers="x-org=medsyntis",
+    )
+    assert _build_official_span_exporter(grpc_cfg) is not None
+    grpc_reader = _build_official_metric_reader(grpc_cfg)
+    assert grpc_reader is not None
+    grpc_reader.shutdown()
+    assert _build_official_log_exporter(grpc_cfg) is not None
+
+    invalid_cfg = OTelSettings(
+        sdk_disabled=False,
+        traces_exporter="unknown_exp",
+        metrics_exporter="unknown_exp",
+        logs_exporter="unknown_exp",
+    )
+    assert _build_official_span_exporter(invalid_cfg) is None
+    assert _build_official_metric_reader(invalid_cfg) is None
+    assert _build_official_log_exporter(invalid_cfg) is None
+    assert isinstance(
+        OTLPLogExporter(endpoint="http://127.0.0.1:4318/v1/logs"), OTLPLogExporter
+    )
+
+    span_exporter = InMemorySpanExporter()
+    conf = AppConfig(otel=OTelSettings(sdk_disabled=False, traces_exporter="none"))
+    configure_observability(conf, span_exporter=span_exporter, force=True)
+    assert get_meter("medsyntis.test") is not None
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with start_span("failing-op", attributes={"tags": ["a", 1]}):
+            raise RuntimeError("boom")
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes.get("error.type") == "RuntimeError"
 
 
 def test_w3c_carrier_inject_and_extract_roundtrip():
@@ -506,17 +651,29 @@ def test_prod_docker_compose_and_makefile_define_optional_grafana_profile():
     assert any(str(p).startswith("127.0.0.1:") for p in ports)
     assert "backend_internal" in grafana_svc.get("networks", [])
 
-    # Verify OTEL_SDK_DISABLED defaults to true in medsyntis-api and medsyntis-web
+    # Verify OTEL_* keys are declared explicitly in both medsyntis-api and medsyntis-web (no podman-compose YAML anchor drop)
     api_env = services["medsyntis-api"]["environment"]
     web_env = services["medsyntis-web"]["environment"]
-    assert "OTEL_SDK_DISABLED" in api_env
+    for required_otel_key in (
+        "OTEL_SDK_DISABLED",
+        "OTEL_SERVICE_NAME",
+        "OTEL_TRACES_EXPORTER",
+        "OTEL_METRICS_EXPORTER",
+        "OTEL_LOGS_EXPORTER",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+    ):
+        assert required_otel_key in api_env
+        assert required_otel_key in web_env
     assert "true" in str(api_env["OTEL_SDK_DISABLED"])
-    assert "OTEL_SDK_DISABLED" in web_env
     assert "true" in str(web_env["OTEL_SDK_DISABLED"])
 
     makefile_raw = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "start-prod-mlflow" not in makefile_raw
     assert "start-prod-grafana:" in makefile_raw
     assert "restart-prod-grafana:" in makefile_raw
+    assert "start-web-grafana:" in makefile_raw
+    assert "OTEL_LOGS_EXPORTER" in makefile_raw
+    assert "--force-recreate" in makefile_raw
     assert "--profile grafana" in makefile_raw
     assert "http://grafana:4318" in makefile_raw

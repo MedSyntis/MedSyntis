@@ -19,8 +19,10 @@ import {
   type Attributes,
   type Context,
   context,
+  logs,
   metrics,
   propagation,
+  SeverityNumber,
   type Span,
   SpanKind,
   SpanStatusCode,
@@ -53,6 +55,7 @@ export interface WebOtelConfig {
   exporterOtlpEndpoint: string;
   exporterOtlpTracesEndpoint: string;
   exporterOtlpMetricsEndpoint: string;
+  exporterOtlpLogsEndpoint?: string;
   exporterOtlpProtocol: string;
   exporterOtlpHeaders: string;
   metricExportInterval: number;
@@ -268,6 +271,9 @@ export function configureWebObservability(
   if (otelConfig.exporterOtlpMetricsEndpoint) {
     envOverrides.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = otelConfig.exporterOtlpMetricsEndpoint;
   }
+  if (otelConfig.exporterOtlpLogsEndpoint) {
+    envOverrides.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = otelConfig.exporterOtlpLogsEndpoint;
+  }
   if (otelConfig.exporterOtlpProtocol) {
     envOverrides.OTEL_EXPORTER_OTLP_PROTOCOL = otelConfig.exporterOtlpProtocol;
   }
@@ -353,6 +359,7 @@ export async function shutdownWebObservability(): Promise<void> {
   testMetricReader = null;
   trace.disable();
   metrics.disable();
+  logs.disable();
   propagation.disable();
   context.disable();
 }
@@ -393,6 +400,27 @@ export function getActiveWebLogTraceMixin(): Record<string, string> {
 export function injectWebTraceHeaders(headers: Record<string, string>): void {
   if (!enabledFlag) return;
   propagation.inject(context.active(), headers);
+}
+
+export function emitWebOtelLog(params: {
+  severity: "INFO" | "WARN" | "ERROR";
+  message: string;
+  attributes?: Record<string, unknown>;
+}): void {
+  if (!enabledFlag) return;
+  const severityMap: Record<"INFO" | "WARN" | "ERROR", SeverityNumber> = {
+    INFO: SeverityNumber.INFO,
+    WARN: SeverityNumber.WARN,
+    ERROR: SeverityNumber.ERROR,
+  };
+  const logger = logs.getLogger("medsyntis-web", "1.0.0");
+  logger.emit({
+    severityNumber: severityMap[params.severity],
+    severityText: params.severity,
+    body: String(params.message || "").slice(0, 1024),
+    attributes: sanitizeWebOtelAttributes(params.attributes),
+    context: context.active(),
+  });
 }
 
 export async function withWebSpan<T>(

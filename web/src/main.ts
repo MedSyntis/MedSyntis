@@ -5,6 +5,8 @@ import { HttpMedsyntisApiAdapter } from "./infrastructure/api/http-medsyntis-api
 import { InMemoryMedsyntisApiFake } from "./infrastructure/api/in-memory-medsyntis-api.fake.js";
 import {
   configureWebObservability,
+  emitWebOtelLog,
+  isWebObservabilityEnabled,
   shutdownWebObservability,
 } from "./infrastructure/observability/otel.js";
 import { buildServer } from "./ui/server.js";
@@ -53,9 +55,20 @@ async function main() {
   process.once("SIGINT", () => void gracefulShutdown());
 
   await app.listen({ port: config.port, host: config.host });
+  const otelState = isWebObservabilityEnabled()
+    ? `enabled (service=${config.otel?.serviceName}, endpoint=${config.otel?.exporterOtlpEndpoint || "signal-specific/console"})`
+    : "disabled";
   process.stdout.write(
-    `[MedSyntis Web] Server listening on http://${config.host}:${config.port} (API: ${config.apiUrl})\n`,
+    `[MedSyntis Web] Server listening on http://${config.host}:${config.port} (API: ${config.apiUrl}, OTel: ${otelState})\n`,
   );
+  emitWebOtelLog({
+    severity: "INFO",
+    message: `MedSyntis Web BFF started on ${config.host}:${config.port}`,
+    attributes: {
+      "service.name": config.otel?.serviceName ?? "medsyntis-web",
+      "medsyntis.domain": config.defaultDomain,
+    },
+  });
 }
 
 const entryArg = process.argv[1];

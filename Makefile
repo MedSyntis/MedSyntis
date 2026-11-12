@@ -48,7 +48,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st start-prod-grafana stop-prod restart-prod restart-prod-grafana prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-web-grafana start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st start-prod-grafana stop-prod restart-prod restart-prod-grafana prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
 
 ## Show available Makefile targets
 help:
@@ -63,6 +63,7 @@ help:
 	@echo -e "  $(YELLOW)make upgrade-web$(RESET)         Upgrade Node.js dependencies in $(WEB_DIR)/"
 	@echo -e "  $(YELLOW)make start-api$(RESET)           Start Cross-Domain FastAPI server (port $(PORT_API))"
 	@echo -e "  $(YELLOW)make start-web$(RESET)           Start Cross-Domain FastAPI + Primary M3 Web UI Fastify server (port $(PORT_WEB))"
+	@echo -e "  $(YELLOW)make start-web-grafana$(RESET)   Start local Grafana OTel LGTM (port 3001) + FastAPI + M3 Web UI with OTel Traces/Metrics/Logs"
 	@echo -e "  $(YELLOW)make start-ui$(RESET)            Start Cross-Domain FastAPI + Legacy Streamlit UI (port $(PORT_UI))"
 	@echo -e "  $(YELLOW)make start-web-dev$(RESET)       Start Docker proxy stack + Cloud Run benchmark proxy (requires APP_ALLOW_REMOTE_LLM=true) + Web UI"
 	@echo -e "  $(YELLOW)make start-ui-dev$(RESET)        Start Docker proxy stack + Cloud Run benchmark proxy (requires APP_ALLOW_REMOTE_LLM=true) + Legacy Streamlit"
@@ -187,6 +188,21 @@ start-web:
 	API_PID=$$!; \
 	trap "kill $$API_PID 2>/dev/null || true" INT TERM EXIT; \
 	WEB_FAKE_API_FALLBACK=false APP_API_URL=http://127.0.0.1:$(PORT_API) PORT_WEB=$(PORT_WEB) HOST_WEB=$(HOST_WEB) npm --prefix $(WEB_DIR) run dev
+
+## Start local Grafana OTel LGTM (127.0.0.1:3001) + FastAPI + M3 Web UI with OpenTelemetry Traces, Metrics & Logs enabled
+start-web-grafana:
+	@mkdir -p $(DEV_VOLUME_DIR)/grafana
+	@chmod 750 $(DEV_VOLUME_DIR)/grafana 2>/dev/null || true
+	@echo -e "$(CYAN)--> Starting local Grafana OTel LGTM on http://127.0.0.1:3001 (OTLP HTTP: http://127.0.0.1:4318)...$(RESET)"
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) --profile grafana up -d grafana
+	@OTEL_SDK_DISABLED=false \
+	OTEL_TRACES_EXPORTER=otlp \
+	OTEL_METRICS_EXPORTER=otlp \
+	OTEL_LOGS_EXPORTER=otlp \
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+	OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
+	OTEL_METRIC_EXPORT_INTERVAL=15000 \
+	$(MAKE) start-web
 
 ## Alias start-worker to start-api (the PriorityQueue worker runs in-process inside app-api.py)
 start-worker: start-api
@@ -498,7 +514,7 @@ docker-update:
 docker-down:
 	@echo -e "$(YELLOW)--> Stopping local Docker containers...$(RESET)"
 	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) down --remove-orphans
-	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) down --remove-orphans
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) --profile grafana down --remove-orphans
 
 ## Check status of running Docker containers
 docker-status:
@@ -696,12 +712,13 @@ docker-up-prod:
 	if [ "$(WITH_GRAFANA)" = "1" ]; then \
 		COMPOSE_PROFILES="$$COMPOSE_PROFILES --profile grafana"; \
 		TMP_ENV=$$(mktemp) && chmod 0600 "$$TMP_ENV" && trap 'rm -f "$$TMP_ENV"' EXIT && \
-		grep -vE '^(OTEL_SDK_DISABLED|OTEL_TRACES_EXPORTER|OTEL_METRICS_EXPORTER|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_PROTOCOL|OTEL_METRIC_EXPORT_INTERVAL)=' "$(ENV_PROD)" > "$$TMP_ENV"; \
+		grep -vE '^(OTEL_SDK_DISABLED|OTEL_TRACES_EXPORTER|OTEL_METRICS_EXPORTER|OTEL_LOGS_EXPORTER|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_PROTOCOL|OTEL_METRIC_EXPORT_INTERVAL)=' "$(ENV_PROD)" > "$$TMP_ENV"; \
 		CUSTOM_OTLP=$$(grep -E '^OTEL_EXPORTER_OTLP_ENDPOINT=.+' "$(ENV_PROD)" 2>/dev/null | tail -n1 | cut -d= -f2- || true); \
 		{ \
 			echo "OTEL_SDK_DISABLED=$${OTEL_SDK_DISABLED:-false}"; \
 			echo "OTEL_TRACES_EXPORTER=$${OTEL_TRACES_EXPORTER:-otlp}"; \
 			echo "OTEL_METRICS_EXPORTER=$${OTEL_METRICS_EXPORTER:-otlp}"; \
+			echo "OTEL_LOGS_EXPORTER=$${OTEL_LOGS_EXPORTER:-otlp}"; \
 			echo "OTEL_EXPORTER_OTLP_ENDPOINT=$${OTEL_EXPORTER_OTLP_ENDPOINT:-$${CUSTOM_OTLP:-http://grafana:4318}}"; \
 			echo "OTEL_EXPORTER_OTLP_PROTOCOL=$${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}"; \
 			echo "OTEL_METRIC_EXPORT_INTERVAL=$${OTEL_METRIC_EXPORT_INTERVAL:-15000}"; \
@@ -783,21 +800,22 @@ restart-prod:
 
 ## Restart application services with local Grafana OTel LGTM observability enabled (preserving GPU VRAM)
 restart-prod-grafana:
-	@echo -e "$(CYAN)--> Recreating Grafana OTel LGTM + application services with OpenTelemetry Traces & Metrics enabled (preserving GPU VRAM)...$(RESET)"
+	@echo -e "$(CYAN)--> Recreating Grafana OTel LGTM + application services with OpenTelemetry Traces, Metrics & Logs enabled (preserving GPU VRAM)...$(RESET)"
 	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)/grafana" 2>/dev/null || true
 	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)/grafana" 2>/dev/null || true
 	@TMP_ENV=$$(mktemp) && chmod 0600 "$$TMP_ENV" && trap 'rm -f "$$TMP_ENV"' EXIT && \
-	grep -vE '^(OTEL_SDK_DISABLED|OTEL_TRACES_EXPORTER|OTEL_METRICS_EXPORTER|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_PROTOCOL|OTEL_METRIC_EXPORT_INTERVAL)=' "$(ENV_PROD)" > "$$TMP_ENV" && \
+	grep -vE '^(OTEL_SDK_DISABLED|OTEL_TRACES_EXPORTER|OTEL_METRICS_EXPORTER|OTEL_LOGS_EXPORTER|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_PROTOCOL|OTEL_METRIC_EXPORT_INTERVAL)=' "$(ENV_PROD)" > "$$TMP_ENV" && \
 	CUSTOM_OTLP=$$(grep -E '^OTEL_EXPORTER_OTLP_ENDPOINT=.+' "$(ENV_PROD)" 2>/dev/null | tail -n1 | cut -d= -f2- || true) && \
 	{ \
 		echo "OTEL_SDK_DISABLED=$${OTEL_SDK_DISABLED:-false}"; \
 		echo "OTEL_TRACES_EXPORTER=$${OTEL_TRACES_EXPORTER:-otlp}"; \
 		echo "OTEL_METRICS_EXPORTER=$${OTEL_METRICS_EXPORTER:-otlp}"; \
+		echo "OTEL_LOGS_EXPORTER=$${OTEL_LOGS_EXPORTER:-otlp}"; \
 		echo "OTEL_EXPORTER_OTLP_ENDPOINT=$${OTEL_EXPORTER_OTLP_ENDPOINT:-$${CUSTOM_OTLP:-http://grafana:4318}}"; \
 		echo "OTEL_EXPORTER_OTLP_PROTOCOL=$${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}"; \
 		echo "OTEL_METRIC_EXPORT_INTERVAL=$${OTEL_METRIC_EXPORT_INTERVAL:-15000}"; \
 	} >> "$$TMP_ENV" && \
-	docker compose --env-file "$$TMP_ENV" -f $(COMPOSE_PROD) --profile grafana up -d --no-deps --no-build grafana medsyntis-api medsyntis-web
+	docker compose --env-file "$$TMP_ENV" -f $(COMPOSE_PROD) --profile grafana up -d --force-recreate --no-deps --no-build grafana medsyntis-api medsyntis-web
 	@GF_PORT=$$(grep -E '^GRAFANA_PORT=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2 || echo "3001"); \
 	echo -e "$(GREEN)--> Grafana OTel LGTM active on http://127.0.0.1:$${GF_PORT:-3001} (Traces + Metrics + Logs).$(RESET)"
 

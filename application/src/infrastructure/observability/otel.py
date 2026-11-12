@@ -24,15 +24,28 @@ import threading
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote
 
-from opentelemetry import context as otel_context, metrics, propagate, trace
+from opentelemetry import (
+    _logs as otel_logs,
+    context as otel_context,
+    metrics,
+    propagate,
+    trace,
+)
+from opentelemetry._logs import NoOpLoggerProvider
 from opentelemetry.attributes import BoundedAttributes
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.context import Context
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
+    OTLPLogExporter as GrpcOTLPLogExporter,
+)
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
     OTLPMetricExporter as GrpcOTLPMetricExporter,
 )
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter as GrpcOTLPSpanExporter,
+)
+from opentelemetry.exporter.otlp.proto.http._log_exporter import (
+    OTLPLogExporter as HttpOTLPLogExporter,
 )
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
     OTLPMetricExporter as HttpOTLPMetricExporter,
@@ -46,6 +59,17 @@ from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
 from opentelemetry.metrics import CallbackOptions, Meter, NoOpMeterProvider, Observation
 from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.sdk._logs import (
+    LoggerProvider,
+    LogRecordProcessor,
+    ReadWriteLogRecord,
+)
+from opentelemetry.sdk._logs.export import (
+    BatchLogRecordProcessor,
+    ConsoleLogRecordExporter,
+    LogRecordExporter,
+    SimpleLogRecordProcessor,
+)
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import (
     ConsoleMetricExporter,
@@ -227,6 +251,44 @@ class SanitizingSpanProcessor(SpanProcessor):
         return None
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+
+class SanitizingLogRecordProcessor(LogRecordProcessor):
+    """Official `LogRecordProcessor` enforcing Zero-PHI attributes on every exported OTLP log record."""
+
+    def on_emit(self, log_record: ReadWriteLogRecord) -> None:
+        inner = getattr(log_record, "log_record", None)
+        if inner is None:
+            return
+        raw_attrs = getattr(inner, "attributes", None)
+        if raw_attrs:
+            sanitized = sanitize_otel_attributes(dict(raw_attrs))
+            inner.attributes = BoundedAttributes(
+                attributes=sanitized,
+                immutable=False,
+            )
+        body = getattr(inner, "body", None)
+        if isinstance(body, str) and len(body) > 2048:
+            inner.body = body[:2048]
+        elif isinstance(body, Mapping):
+            inner.body = sanitize_otel_attributes(body)
+
+    def shutdown(self) -> None:
+        return None
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+
+class _SkipHealthAccessFilter(logging.Filter):
+    """Drop repetitive `/health` HTTP access probes from OTLP log export while keeping errors."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name == "uvicorn.access" and record.levelno < logging.WARNING:
+            msg = record.getMessage()
+            if '"GET /health ' in msg or " /health " in msg:
+                return False
         return True
 
 
@@ -526,6 +588,7 @@ _ENABLED = False
 _AUTO_INSTRUMENTORS_ACTIVE = False
 _TRACER_PROVIDER: TracerProvider | NoOpTracerProvider = NoOpTracerProvider()
 _METER_PROVIDER: MeterProvider | NoOpMeterProvider = NoOpMeterProvider()
+_LOGGER_PROVIDER: LoggerProvider | NoOpLoggerProvider = NoOpLoggerProvider()
 _METRICS = MedSyntisMetrics(_METER_PROVIDER.get_meter("medsyntis"), enabled=False)
 
 
@@ -642,7 +705,48 @@ def _build_official_metric_reader(otel_cfg: Any) -> Any | None:
     return None
 
 
-def _install_global_providers(tracer_provider: Any, meter_provider: Any) -> None:
+def _build_official_log_exporter(otel_cfg: Any) -> LogRecordExporter | None:
+    exporter_kind = (otel_cfg.logs_exporter or "none").strip().lower()
+    if exporter_kind in ("", "none"):
+        return None
+    if exporter_kind == "console":
+        return ConsoleLogRecordExporter()
+    if exporter_kind == "otlp":
+        headers = _parse_key_value_pairs(otel_cfg.exporter_otlp_headers) or None
+        timeout_sec = max(1, int(otel_cfg.exporter_otlp_timeout // 1000))
+        protocol = (otel_cfg.exporter_otlp_protocol or "http/protobuf").strip().lower()
+        logs_ep = getattr(otel_cfg, "exporter_otlp_logs_endpoint", "") or ""
+        if protocol == "grpc":
+            endpoint = (
+                logs_ep.strip() or otel_cfg.exporter_otlp_endpoint.strip() or None
+            )
+            return GrpcOTLPLogExporter(
+                endpoint=endpoint,
+                headers=tuple(headers.items()) if headers else None,
+                timeout=timeout_sec,
+            )
+        endpoint = _resolve_http_signal_endpoint(
+            logs_ep,
+            otel_cfg.exporter_otlp_endpoint,
+            "/v1/logs",
+        )
+        return HttpOTLPLogExporter(
+            endpoint=endpoint,
+            headers=headers,
+            timeout=timeout_sec,
+        )
+    _INTERNAL_LOGGER.warning(
+        "Unsupported OTEL_LOGS_EXPORTER=%r; falling back to 'none'",
+        exporter_kind,
+    )
+    return None
+
+
+def _install_global_providers(
+    tracer_provider: Any,
+    meter_provider: Any,
+    logger_provider: Any,
+) -> None:
     trace._TRACER_PROVIDER = tracer_provider  # noqa: SLF001
     t_once = getattr(trace, "_TRACER_PROVIDER_SET_ONCE", None)
     if t_once is not None and hasattr(t_once, "_done"):
@@ -653,14 +757,34 @@ def _install_global_providers(tracer_provider: Any, meter_provider: Any) -> None
     if m_once is not None and hasattr(m_once, "_done"):
         m_once._done = True  # noqa: SLF001
 
+    otel_logs._internal._LOGGER_PROVIDER = logger_provider  # noqa: SLF001
+    l_once = getattr(otel_logs._internal, "_LOGGER_PROVIDER_SET_ONCE", None)
+    if l_once is not None and hasattr(l_once, "_done"):
+        l_once._done = True  # noqa: SLF001
+
+
+def attach_otel_handler_to_uvicorn_loggers() -> None:
+    """Attach the active OpenTelemetry `LoggingHandler` to non-propagating Uvicorn loggers."""
+    handler = getattr(LoggingInstrumentor, "_logging_handler", None)
+    if handler is None:
+        return
+    if not any(isinstance(f, _SkipHealthAccessFilter) for f in handler.filters):
+        handler.addFilter(_SkipHealthAccessFilter())
+    for logger_name in ("uvicorn", "uvicorn.access"):
+        uv_logger = logging.getLogger(logger_name)
+        if not uv_logger.propagate and handler not in uv_logger.handlers:
+            uv_logger.addHandler(handler)
+
 
 def _enable_library_instrumentors() -> None:
     global _AUTO_INSTRUMENTORS_ACTIVE
     if _AUTO_INSTRUMENTORS_ACTIVE:
         return
+    logging.getLogger("opentelemetry").setLevel(logging.ERROR)
     HTTPXClientInstrumentor().instrument()
     PymongoInstrumentor().instrument(capture_statement=False)
     LoggingInstrumentor().instrument(set_logging_format=False)
+    attach_otel_handler_to_uvicorn_loggers()
     _AUTO_INSTRUMENTORS_ACTIVE = True
 
 
@@ -668,6 +792,12 @@ def _disable_library_instrumentors() -> None:
     global _AUTO_INSTRUMENTORS_ACTIVE
     if not _AUTO_INSTRUMENTORS_ACTIVE:
         return
+    handler = getattr(LoggingInstrumentor, "_logging_handler", None)
+    if handler is not None:
+        for logger_name in ("uvicorn", "uvicorn.access"):
+            uv_logger = logging.getLogger(logger_name)
+            if handler in uv_logger.handlers:
+                uv_logger.removeHandler(handler)
     for inst_cls in (
         HTTPXClientInstrumentor,
         PymongoInstrumentor,
@@ -686,14 +816,21 @@ def configure_observability(
     service_name_override: str | None = None,
     span_exporter: SpanExporter | None = None,
     metric_reader: Any | None = None,
+    log_exporter: LogRecordExporter | None = None,
     enable_auto_instrumentation: bool = True,
     force: bool = False,
 ) -> None:
     """
-    Configure official OpenTelemetry `TracerProvider`, `MeterProvider`, OTLP exporters,
-    and library auto-instrumentors (`httpx`, `pymongo`, `logging`) from `config.otel`.
+    Configure official OpenTelemetry `TracerProvider`, `MeterProvider`, `LoggerProvider`,
+    OTLP exporters, and library auto-instrumentors (`httpx`, `pymongo`, `logging`) from `config.otel`.
     """
-    global _CONFIGURED, _ENABLED, _TRACER_PROVIDER, _METER_PROVIDER, _METRICS
+    global \
+        _CONFIGURED, \
+        _ENABLED, \
+        _TRACER_PROVIDER, \
+        _METER_PROVIDER, \
+        _LOGGER_PROVIDER, \
+        _METRICS
 
     with _STATE_LOCK:
         if _CONFIGURED and not force:
@@ -754,10 +891,27 @@ def configure_observability(
 
         meter_provider = MeterProvider(resource=resource, metric_readers=readers)
 
+        logger_provider = LoggerProvider(resource=resource)
+        logger_provider._disabled = False  # noqa: SLF001
+        logger_provider.add_log_record_processor(SanitizingLogRecordProcessor())
+        effective_log_exporter = log_exporter or _build_official_log_exporter(otel_cfg)
+        if effective_log_exporter is not None:
+            if log_exporter is not None or isinstance(
+                effective_log_exporter, ConsoleLogRecordExporter
+            ):
+                logger_provider.add_log_record_processor(
+                    SimpleLogRecordProcessor(effective_log_exporter)
+                )
+            else:
+                logger_provider.add_log_record_processor(
+                    BatchLogRecordProcessor(effective_log_exporter)
+                )
+
         _ENABLED = True
         _TRACER_PROVIDER = tracer_provider
         _METER_PROVIDER = meter_provider
-        _install_global_providers(tracer_provider, meter_provider)
+        _LOGGER_PROVIDER = logger_provider
+        _install_global_providers(tracer_provider, meter_provider, logger_provider)
         _METRICS = MedSyntisMetrics(
             meter_provider.get_meter("medsyntis", "1.1.0"), enabled=True
         )
@@ -823,7 +977,13 @@ def instrument_fastapi_app(target_app: FastAPI) -> None:
 
 
 def _shutdown_locked() -> None:
-    global _CONFIGURED, _ENABLED, _TRACER_PROVIDER, _METER_PROVIDER, _METRICS
+    global \
+        _CONFIGURED, \
+        _ENABLED, \
+        _TRACER_PROVIDER, \
+        _METER_PROVIDER, \
+        _LOGGER_PROVIDER, \
+        _METRICS
     _disable_library_instrumentors()
     if isinstance(_TRACER_PROVIDER, TracerProvider):
         try:
@@ -835,11 +995,17 @@ def _shutdown_locked() -> None:
             _METER_PROVIDER.shutdown()
         except Exception:
             pass
+    if isinstance(_LOGGER_PROVIDER, LoggerProvider):
+        try:
+            _LOGGER_PROVIDER.shutdown()
+        except Exception:
+            pass
     _ENABLED = False
     _CONFIGURED = False
     _TRACER_PROVIDER = NoOpTracerProvider()
     _METER_PROVIDER = NoOpMeterProvider()
-    _install_global_providers(_TRACER_PROVIDER, _METER_PROVIDER)
+    _LOGGER_PROVIDER = NoOpLoggerProvider()
+    _install_global_providers(_TRACER_PROVIDER, _METER_PROVIDER, _LOGGER_PROVIDER)
     _METRICS = MedSyntisMetrics(_METER_PROVIDER.get_meter("medsyntis"), enabled=False)
 
 

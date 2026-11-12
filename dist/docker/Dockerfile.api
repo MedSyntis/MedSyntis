@@ -74,4 +74,4 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
   CMD ["curl", "-sf", "http://127.0.0.1:8000/health"]
 
 # Launch the Cross-Domain FastAPI server with its integrated PriorityQueue worker
-CMD ["uv", "run", "--no-sync", "--no-build", "python", "app-api.py"]
+CMD ["/app/.venv/bin/python", "-u", "app-api.py"]
