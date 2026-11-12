@@ -8,6 +8,7 @@ from src.infrastructure.observability.otel import (
     configure_observability,
     extract_trace_context,
     get_active_trace_ids,
+    get_ai_tracer,
     get_meter,
     get_metrics,
     get_tracer,
@@ -18,6 +19,7 @@ from src.infrastructure.observability.otel import (
     reset_observability_for_tests,
     sanitize_otel_attributes,
     shutdown_observability,
+    start_ai_span,
     start_span,
 )
 
@@ -29,6 +31,7 @@ __all__ = [
     "configure_observability",
     "extract_trace_context",
     "get_active_trace_ids",
+    "get_ai_tracer",
     "get_meter",
     "get_metrics",
     "get_tracer",
@@ -39,5 +42,6 @@ __all__ = [
     "reset_observability_for_tests",
     "sanitize_otel_attributes",
     "shutdown_observability",
+    "start_ai_span",
     "start_span",
 ]

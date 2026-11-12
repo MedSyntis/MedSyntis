@@ -6,8 +6,9 @@ Relies directly on official OpenTelemetry Python bricks:
   `PeriodicExportingMetricReader`, standard `OTEL_*` environment variables, and W3C `opentelemetry.propagate`).
 - `opentelemetry-exporter-otlp-proto-http` & `opentelemetry-exporter-otlp-proto-grpc` (`OTLPSpanExporter`, `OTLPMetricExporter`).
 - `opentelemetry-instrumentation-fastapi` (`FastAPIInstrumentor`), `opentelemetry-instrumentation-httpx` (`HTTPXClientInstrumentor`),
-  `opentelemetry-instrumentation-pymongo` (`PymongoInstrumentor(capture_statement=False)`), and
-  `opentelemetry-instrumentation-logging` (`LoggingInstrumentor`).
+  `opentelemetry-instrumentation-pymongo` (`PymongoInstrumentor(capture_statement=False)`),
+  `opentelemetry-instrumentation-logging` (`LoggingInstrumentor`), and
+  `opentelemetry-instrumentation-genai-langchain` (`LangChainInstrumentor` bound to `medsyntis-ai`).
 
 Adds only MedSyntis-specific HDS/GDPR guardrails (`SanitizingSpanProcessor` for Zero-PHI enforcement)
 and strategic clinical/queue metrics (`MedSyntisMetrics`).
@@ -19,6 +20,7 @@ from collections.abc import Generator, Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 import hashlib
 import logging
+import os
 import re
 import threading
 from typing import TYPE_CHECKING, Any
@@ -54,6 +56,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HttpOTLPSpanExporter,
 )
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.genai.langchain import LangChainInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
@@ -137,6 +140,15 @@ _FORBIDDEN_ATTR_KEYS = frozenset(
         "clinical_text",
         "summary_text",
         "db.statement",
+        "gen_ai.prompt",
+        "gen_ai.completion",
+        "gen_ai.input.messages",
+        "gen_ai.output.messages",
+        "gen_ai.system_instructions",
+        "gen_ai.tool.call.arguments",
+        "gen_ai.tool.call.result",
+        "gen_ai.retrieval.query.text",
+        "gen_ai.retrieval.documents",
     }
 )
 
@@ -167,7 +179,11 @@ def _hash_opaque_identifier(raw_value: str) -> str:
 def _sanitize_single_value(key: str, value: Any) -> Any:
     lower_key = key.strip().lower()
     leaf_key = lower_key.rsplit(".", 1)[-1]
-    if lower_key in _FORBIDDEN_ATTR_KEYS or leaf_key in _FORBIDDEN_ATTR_KEYS:
+    if (
+        lower_key in _FORBIDDEN_ATTR_KEYS
+        or leaf_key in _FORBIDDEN_ATTR_KEYS
+        or lower_key.startswith("gen_ai.prompt.variable.")
+    ):
         return None
     if value is None:
         return None
@@ -587,6 +603,7 @@ _CONFIGURED = False
 _ENABLED = False
 _AUTO_INSTRUMENTORS_ACTIVE = False
 _TRACER_PROVIDER: TracerProvider | NoOpTracerProvider = NoOpTracerProvider()
+_AI_TRACER_PROVIDER: TracerProvider | NoOpTracerProvider = NoOpTracerProvider()
 _METER_PROVIDER: MeterProvider | NoOpMeterProvider = NoOpMeterProvider()
 _LOGGER_PROVIDER: LoggerProvider | NoOpLoggerProvider = NoOpLoggerProvider()
 _METRICS = MedSyntisMetrics(_METER_PROVIDER.get_meter("medsyntis"), enabled=False)
@@ -781,6 +798,14 @@ def _enable_library_instrumentors() -> None:
     if _AUTO_INSTRUMENTORS_ACTIVE:
         return
     logging.getLogger("opentelemetry").setLevel(logging.ERROR)
+    # Enforce Zero-PHI on official OpenTelemetry GenAI LangChain instrumentation
+    os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "NO_CONTENT"
+    os.environ["OTEL_INSTRUMENTATION_GENAI_EMIT_EVENT"] = "false"
+    LangChainInstrumentor().instrument(
+        tracer_provider=_AI_TRACER_PROVIDER,
+        meter_provider=_METER_PROVIDER,
+        logger_provider=_LOGGER_PROVIDER,
+    )
     HTTPXClientInstrumentor().instrument()
     PymongoInstrumentor().instrument(capture_statement=False)
     LoggingInstrumentor().instrument(set_logging_format=False)
@@ -799,6 +824,7 @@ def _disable_library_instrumentors() -> None:
             if handler in uv_logger.handlers:
                 uv_logger.removeHandler(handler)
     for inst_cls in (
+        LangChainInstrumentor,
         HTTPXClientInstrumentor,
         PymongoInstrumentor,
         LoggingInstrumentor,
@@ -828,6 +854,7 @@ def configure_observability(
         _CONFIGURED, \
         _ENABLED, \
         _TRACER_PROVIDER, \
+        _AI_TRACER_PROVIDER, \
         _METER_PROVIDER, \
         _LOGGER_PROVIDER, \
         _METRICS
@@ -851,21 +878,38 @@ def configure_observability(
             or otel_cfg.service_name
             or "medsyntis-api"
         )
+        base_resource_attrs = {
+            "service.version": "1.1.0",
+            "deployment.environment": (
+                "development" if config.dev_mode else "production"
+            ),
+            "medsyntis.domain": config.domain or "oncology",
+            "medsyntis.hardware_profile": config.queue.hardware_profile,
+            **sanitize_otel_attributes(extra_res),
+        }
         resource = Resource.create(
             {
+                **base_resource_attrs,
                 "service.name": service_name,
-                "service.version": "1.1.0",
-                "deployment.environment": (
-                    "development" if config.dev_mode else "production"
-                ),
-                "medsyntis.domain": config.domain or "oncology",
-                "medsyntis.hardware_profile": config.queue.hardware_profile,
-                **sanitize_otel_attributes(extra_res),
+            }
+        )
+        ai_service_name = (
+            f"{service_name[:-4]}-ai"
+            if service_name.endswith("-api")
+            else f"{service_name}-ai"
+        )
+        ai_resource = Resource.create(
+            {
+                **base_resource_attrs,
+                "service.name": ai_service_name,
             }
         )
         sampler = _build_sampler(otel_cfg.traces_sampler, otel_cfg.traces_sampler_arg)
         tracer_provider = TracerProvider(resource=resource, sampler=sampler)
         tracer_provider.add_span_processor(SanitizingSpanProcessor())
+
+        ai_tracer_provider = TracerProvider(resource=ai_resource, sampler=sampler)
+        ai_tracer_provider.add_span_processor(SanitizingSpanProcessor())
 
         effective_span_exporter = span_exporter or _build_official_span_exporter(
             otel_cfg
@@ -877,10 +921,18 @@ def configure_observability(
                 tracer_provider.add_span_processor(
                     SimpleSpanProcessor(effective_span_exporter)
                 )
+                ai_tracer_provider.add_span_processor(
+                    SimpleSpanProcessor(effective_span_exporter)
+                )
             else:
                 tracer_provider.add_span_processor(
                     BatchSpanProcessor(effective_span_exporter)
                 )
+                ai_otlp_exporter = _build_official_span_exporter(otel_cfg)
+                if ai_otlp_exporter is not None:
+                    ai_tracer_provider.add_span_processor(
+                        BatchSpanProcessor(ai_otlp_exporter)
+                    )
 
         readers: list[Any] = []
         effective_metric_reader = metric_reader or _build_official_metric_reader(
@@ -909,6 +961,7 @@ def configure_observability(
 
         _ENABLED = True
         _TRACER_PROVIDER = tracer_provider
+        _AI_TRACER_PROVIDER = ai_tracer_provider
         _METER_PROVIDER = meter_provider
         _LOGGER_PROVIDER = logger_provider
         _install_global_providers(tracer_provider, meter_provider, logger_provider)
@@ -981,10 +1034,16 @@ def _shutdown_locked() -> None:
         _CONFIGURED, \
         _ENABLED, \
         _TRACER_PROVIDER, \
+        _AI_TRACER_PROVIDER, \
         _METER_PROVIDER, \
         _LOGGER_PROVIDER, \
         _METRICS
     _disable_library_instrumentors()
+    if isinstance(_AI_TRACER_PROVIDER, TracerProvider):
+        try:
+            _AI_TRACER_PROVIDER.shutdown()
+        except Exception:
+            pass
     if isinstance(_TRACER_PROVIDER, TracerProvider):
         try:
             _TRACER_PROVIDER.shutdown()
@@ -1003,6 +1062,7 @@ def _shutdown_locked() -> None:
     _ENABLED = False
     _CONFIGURED = False
     _TRACER_PROVIDER = NoOpTracerProvider()
+    _AI_TRACER_PROVIDER = NoOpTracerProvider()
     _METER_PROVIDER = NoOpMeterProvider()
     _LOGGER_PROVIDER = NoOpLoggerProvider()
     _install_global_providers(_TRACER_PROVIDER, _METER_PROVIDER, _LOGGER_PROVIDER)
@@ -1028,6 +1088,11 @@ def is_observability_enabled() -> bool:
 def get_tracer(name: str = "medsyntis") -> Tracer:
     """Return an OpenTelemetry `Tracer` from the global/active provider."""
     return trace.get_tracer(name, "1.1.0")
+
+
+def get_ai_tracer(name: str = "medsyntis.genai") -> Tracer:
+    """Return an OpenTelemetry `Tracer` bound to the `medsyntis-ai` service resource."""
+    return _AI_TRACER_PROVIDER.get_tracer(name, "1.1.0")
 
 
 def get_meter(name: str = "medsyntis") -> Meter:
@@ -1101,6 +1166,39 @@ def start_span(
         return
 
     tracer = trace.get_tracer("medsyntis", "1.1.0")
+    safe_attrs = sanitize_otel_attributes(attributes)
+    with tracer.start_as_current_span(
+        name,
+        context=context,
+        kind=kind,
+        attributes=safe_attrs,
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except Exception as exc:
+            if span.is_recording():
+                err_type = type(exc).__name__
+                span.set_attribute("error.type", err_type)
+                span.set_status(Status(StatusCode.ERROR, err_type))
+            raise
+
+
+@contextmanager
+def start_ai_span(
+    name: str,
+    *,
+    kind: SpanKind = SpanKind.INTERNAL,
+    attributes: Mapping[str, Any] | None = None,
+    context: Context | None = None,
+) -> Generator[trace.Span, None, None]:
+    """Start a Zero-PHI OpenTelemetry GenAI span under the dedicated `medsyntis-ai` service."""
+    if not _ENABLED:
+        yield trace.INVALID_SPAN
+        return
+
+    tracer = get_ai_tracer()
     safe_attrs = sanitize_otel_attributes(attributes)
     with tracer.start_as_current_span(
         name,

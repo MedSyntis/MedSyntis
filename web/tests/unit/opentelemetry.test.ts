@@ -7,11 +7,16 @@ import {
   configureWebObservability,
   emitWebOtelLog,
   getActiveWebLogTraceMixin,
+  getActiveWebTraceId,
+  getFastifyOtelPlugin,
   getRecordedWebSpansForTests,
+  injectWebTraceHeaders,
   isLocalTelemetryHost,
   isWebObservabilityEnabled,
+  recordWebHttpServerMetric,
   recordWebUpstreamMetric,
   resetWebObservabilityForTests,
+  SanitizingSpanProcessor,
   sanitizeWebOtelAttributes,
   withWebSpan,
 } from "../../src/infrastructure/observability/otel.js";
@@ -234,5 +239,87 @@ describe("OpenTelemetry Web BFF Observability (MedSyntis#14)", () => {
 
     const metrics = await collectWebMetricsForTests();
     expect(metrics.counters["medsyntis.web.upstream.errors"]).toBe(1);
+  });
+
+  it("covers production OTLP SDK wiring (non-in-memory), disabled helpers, and SanitizingSpanProcessor methods", async () => {
+    // 1. Disabled-mode helpers safely return empty/no-op values
+    expect(isWebObservabilityEnabled()).toBe(false);
+    expect(getFastifyOtelPlugin()).toBeNull();
+    expect(getActiveWebTraceId()).toBeUndefined();
+    expect(getActiveWebLogTraceMixin()).toEqual({});
+    const carrier: Record<string, string> = {};
+    injectWebTraceHeaders(carrier);
+    expect(carrier).toEqual({});
+    emitWebOtelLog({ severity: "INFO", message: "noop" });
+    recordWebHttpServerMetric({
+      method: "GET",
+      route: "/worklist",
+      statusCode: 200,
+      domain: "oncology",
+      durationMs: 12,
+    });
+    recordWebUpstreamMetric({
+      operation: "noop",
+      domain: "oncology",
+      status: "ok",
+      durationMs: 5,
+    });
+    expect(await collectWebMetricsForTests()).toEqual({ counters: {}, histograms: {} });
+    const passthrough = await withWebSpan("noop.span", {}, async () => "ok");
+    expect(passthrough).toBe("ok");
+
+    // 2. SanitizingSpanProcessor direct lifecycle & scrubbing
+    const proc = new SanitizingSpanProcessor();
+    const fakeSpan = {
+      attributes: {
+        first_name: "Jean",
+        "medsyntis.domain": "oncology",
+      } as Record<string, unknown>,
+    };
+    proc.onStart(fakeSpan as never, {} as never);
+    expect(fakeSpan.attributes.first_name).toBeUndefined();
+    expect(fakeSpan.attributes["medsyntis.domain"]).toBe("oncology");
+    proc.onEnd({} as never);
+    await proc.forceFlush();
+    await proc.shutdown();
+
+    // 3. Production startNodeSdk path WITHOUT captureInMemory (tracesExporter: "none")
+    const noneCfg = loadConfig({
+      APP_DEV_MODE: "true",
+      OTEL_SDK_DISABLED: "false",
+      OTEL_TRACES_EXPORTER: "none",
+      OTEL_METRICS_EXPORTER: "none",
+      OTEL_LOGS_EXPORTER: "none",
+    });
+    configureWebObservability(noneCfg.otel);
+    // Idempotent second call while activeSdk is running
+    configureWebObservability(noneCfg.otel);
+    expect(isWebObservabilityEnabled()).toBe(true);
+    expect(getFastifyOtelPlugin()).not.toBeNull();
+    await resetWebObservabilityForTests();
+
+    // 4. Production startNodeSdk path WITHOUT captureInMemory (tracesExporter: "otlp")
+    const otlpCfg = loadConfig({
+      APP_DEV_MODE: "true",
+      OTEL_SDK_DISABLED: "false",
+      OTEL_SERVICE_NAME: "medsyntis-web",
+      OTEL_TRACES_EXPORTER: "otlp",
+      OTEL_METRICS_EXPORTER: "none",
+      OTEL_LOGS_EXPORTER: "none",
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
+    });
+    configureWebObservability(otlpCfg.otel);
+    expect(isWebObservabilityEnabled()).toBe(true);
+
+    let capturedTid: string | undefined;
+    await expect(
+      withWebSpan("test.non_error_throw", {}, async () => {
+        capturedTid = getActiveWebTraceId();
+        emitWebOtelLog({ severity: "WARN", message: "warn test" });
+        throw "raw-string-rejection";
+      }),
+    ).rejects.toBe("raw-string-rejection");
+    expect(capturedTid).toHaveLength(32);
   });
 });

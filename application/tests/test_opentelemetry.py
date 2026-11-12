@@ -677,3 +677,326 @@ def test_prod_docker_compose_and_makefile_define_optional_grafana_profile():
     assert "--force-recreate" in makefile_raw
     assert "--profile grafana" in makefile_raw
     assert "http://grafana:4318" in makefile_raw
+
+
+def test_langchain_auto_instrumentor_emits_zero_phi_medsyntis_ai_spans():
+    """
+    Verify official `opentelemetry-instrumentation-genai-langchain` (`LangChainInstrumentor`)
+    automatically traces `create_agent`, `BaseChatModel`, and `@tool` executions under the
+    dedicated `medsyntis-ai` service resource with Zero-PHI enforcement and shared W3C `trace_id`.
+    """
+    from unittest.mock import patch
+
+    from langchain.agents import create_agent
+    from langchain.tools import tool
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+    from langchain_core.outputs import ChatGeneration, ChatResult
+
+    from src.application.agent.agent import ChatResponse as AgentChatResponse
+    from src.application.agent.agent import MedSyntisAgent
+    from src.infrastructure.observability import start_ai_span
+
+    class _MockLocalChatModel(BaseChatModel):
+        model_name: str = "Ornith-1.5-35B-A3B-IQ4_XS"
+        turn: int = 0
+
+        @property
+        def _llm_type(self) -> str:
+            return "litellm"
+
+        @property
+        def _identifying_params(self) -> dict[str, Any]:
+            return {"model_name": self.model_name, "temperature": 0.1}
+
+        def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+            return self
+
+        def _generate(
+            self,
+            messages: list[BaseMessage],
+            stop: list[str] | None = None,
+            run_manager: Any = None,
+            **kwargs: Any,
+        ) -> ChatResult:
+            self.turn += 1
+            if self.turn == 1:
+                msg = AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "lookup_guideline",
+                            "args": {"query": "Jean DUPONT colon stage III"},
+                            "id": "call_1",
+                        }
+                    ],
+                    usage_metadata={
+                        "input_tokens": 310,
+                        "output_tokens": 28,
+                        "total_tokens": 338,
+                    },
+                    response_metadata={
+                        "finish_reason": "tool_calls",
+                        "model_name": self.model_name,
+                    },
+                )
+            else:
+                msg = AIMessage(
+                    content='{"response": "Synthèse validée pour Jean DUPONT"}',
+                    usage_metadata={
+                        "input_tokens": 420,
+                        "output_tokens": 52,
+                        "total_tokens": 472,
+                    },
+                    response_metadata={
+                        "finish_reason": "stop",
+                        "model_name": self.model_name,
+                    },
+                )
+            return ChatResult(generations=[ChatGeneration(message=msg)])
+
+    embed_backend = MagicMock()
+    embed_backend.embed_documents.return_value = [[0.1, 0.2], [0.3, 0.4]]
+    embed_backend.embed_query.return_value = [0.5, 0.6]
+    proxy = CachedEmbeddingsProxy(embed_backend, model_key="bge-m3")
+
+    @tool
+    def lookup_guideline(query: str) -> str:
+        """Search local TNCD guideline chunks."""
+        proxy.embed_documents(["guideline chunk 1", "guideline chunk 2"])
+        proxy.embed_query(query)
+        return "Secret clinical chunk mentioning Jean DUPONT"
+
+    span_exporter = InMemorySpanExporter()
+    metric_reader = InMemoryMetricReader()
+    conf = AppConfig(
+        otel=OTelSettings(
+            sdk_disabled=False,
+            service_name="medsyntis-api",
+            traces_exporter="none",
+        )
+    )
+    configure_observability(
+        conf,
+        span_exporter=span_exporter,
+        metric_reader=metric_reader,
+        force=True,
+    )
+
+    with start_span("POST /api/v1/patientmdtform/chat") as root_span:
+        root_tid = f"{root_span.get_span_context().trace_id:032x}"
+
+        # 1. Real LangChain `create_agent` + `@tool` + `BaseChatModel` auto-instrumented end-to-end
+        real_graph = create_agent(
+            model=_MockLocalChatModel(),
+            tools=[lookup_guideline],
+            name="Gastroenterologist",
+        )
+        graph_out = real_graph.invoke(
+            {
+                "messages": [
+                    HumanMessage(
+                        content="Patient Jean DUPONT né le 12/05/1960 : quel bilan TNCD ?"
+                    )
+                ]
+            }
+        )
+        assert "messages" in graph_out
+
+        # 2. Error recording branch on start_ai_span + MedSyntisAgent retry path
+        with pytest.raises(RuntimeError):
+            with start_ai_span(
+                "embeddings bge-m3",
+                attributes={"gen_ai.prompt.variable.secret": "Jean DUPONT"},
+            ):
+                raise RuntimeError("embedding server unreachable")
+
+        with (
+            patch("src.application.agent.agent.get_llm_client") as mock_get_llm,
+            patch("src.application.agent.agent.create_agent") as mock_create_agent,
+        ):
+            mock_llm_client = MagicMock()
+            mock_llm_client.chat.return_value = MagicMock()
+            mock_get_llm.return_value = mock_llm_client
+
+            mock_graph = MagicMock()
+            final_msg = AIMessage(
+                content='{"response": "Synthèse validée"}',
+                response_metadata={
+                    "token_usage": {"prompt_tokens": 400, "completion_tokens": 60}
+                },
+            )
+            mock_graph.invoke.side_effect = [
+                RuntimeError("transient socket error"),
+                {"messages": [HumanMessage(content="q"), final_msg]},
+            ]
+            mock_create_agent.return_value = mock_graph
+
+            agent = MedSyntisAgent(config=conf, output_format=AgentChatResponse)
+            ans = agent.ask("Question clinique Jean DUPONT", retry=2)
+            assert ans.response == "Synthèse validée"
+
+    spans = span_exporter.get_finished_spans()
+    ai_spans = [
+        s for s in spans if s.resource.attributes.get("service.name") == "medsyntis-ai"
+    ]
+    api_spans = [
+        s for s in spans if s.resource.attributes.get("service.name") == "medsyntis-api"
+    ]
+
+    assert len(api_spans) >= 1
+    assert len(ai_spans) >= 5
+
+    ai_names = {s.name for s in ai_spans}
+    assert any(n.startswith("invoke_agent") for n in ai_names)
+    assert any("Ornith-1.5-35B-A3B-IQ4_XS" in n for n in ai_names)
+    assert "execute_tool lookup_guideline" in ai_names
+    assert "embeddings bge-m3" in ai_names
+
+    # Every AI span must share the parent FastAPI W3C trace_id and scrub 100% of PHI/prompts/args
+    for s in ai_spans:
+        assert f"{s.context.trace_id:032x}" == root_tid
+        serialized_attrs = json.dumps(dict(s.attributes or {}))
+        assert "DUPONT" not in serialized_attrs
+        assert "12/05/1960" not in serialized_attrs
+        assert "gen_ai.input.messages" not in (s.attributes or {})
+        assert "gen_ai.output.messages" not in (s.attributes or {})
+        assert "gen_ai.tool.call.arguments" not in (s.attributes or {})
+        assert "gen_ai.tool.call.result" not in (s.attributes or {})
+
+    chat_spans = [s for s in ai_spans if "Ornith-1.5-35B-A3B-IQ4_XS" in s.name]
+    assert len(chat_spans) == 2
+    assert chat_spans[0].attributes.get("gen_ai.usage.input_tokens") == 310
+    assert chat_spans[0].attributes.get("gen_ai.usage.output_tokens") == 28
+
+    # Verify token extraction helper covers both usage_metadata and response_metadata
+    m1 = AIMessage(
+        content="a",
+        usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+    )
+    m2 = AIMessage(
+        content="b",
+        response_metadata={
+            "token_usage": {"prompt_tokens": 20, "completion_tokens": 7}
+        },
+    )
+    assert MedSyntisAgent._extract_token_usage([m1, m2]) == (30, 12)
+
+
+def test_otel_disabled_noop_metrics_processors_and_queue_gauge_branches(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Cover disabled MedSyntisMetrics no-op paths, processor edge cases, and live queue depth gauge."""
+    from types import SimpleNamespace
+
+    import src.infrastructure.queue.memory_queue as mq_mod
+    from src.infrastructure.observability.otel import (
+        SanitizingLogRecordProcessor,
+        SanitizingSpanProcessor,
+        _fastapi_client_response_hook,
+        _fastapi_server_request_hook,
+        _observe_queue_depth,
+        is_observability_enabled,
+    )
+
+    reset_observability_for_tests()
+    assert is_observability_enabled() is False
+
+    # Disabled metrics facade must safely no-op on every instrument
+    disabled_metrics = get_metrics()
+    assert disabled_metrics.enabled is False
+    disabled_metrics.record_queue_enqueue(domain="oncology", job_type="WAVE1_ADMIN")
+    disabled_metrics.record_queue_job(
+        domain="oncology",
+        job_type="WAVE1_ADMIN",
+        status="completed",
+        wait_ms=1.0,
+        duration_ms=2.0,
+    )
+    disabled_metrics.record_extraction_section(
+        domain="oncology",
+        wave="wave_2",
+        section="CancerDescription",
+        status="ok",
+        duration_ms=5.0,
+    )
+    disabled_metrics.record_manual_edit(
+        domain="oncology", section="CancerDescription", action="update"
+    )
+    disabled_metrics.record_llm_call(
+        provider="litellm",
+        model="openai/agents",
+        operation="chat",
+        status="ok",
+        duration_ms=10.0,
+        input_tokens=5,
+        output_tokens=5,
+    )
+    disabled_metrics.record_embedding_cache(model="bge-m3", hit=True)
+    disabled_metrics.record_document_parse(
+        domain="oncology", parser="docling", cache_hit=False, duration_ms=15.0
+    )
+    disabled_metrics.record_vectordb_op(
+        backend="milvus", operation="search", domain="oncology", duration_ms=3.0
+    )
+
+    assert inject_trace_context({"existing": "1"}) == {"existing": "1"}
+    assert (
+        extract_trace_context(
+            {"traceparent": "00-11111111111111111111111111111111-2222222222222222-01"}
+        )
+        is None
+    )
+
+    # Processor edge branches (lock=None, force_flush, Mapping/long log body)
+    sp = SanitizingSpanProcessor()
+    lockless_span = SimpleNamespace(
+        _attributes={"first_name": "Jean", "medsyntis.domain": "oncology"},
+        _lock=None,
+    )
+    sp.on_end(lockless_span)  # type: ignore[arg-type]
+    assert "first_name" not in dict(lockless_span._attributes)
+    assert sp.force_flush() is True
+    assert sp.shutdown() is None
+
+    lp = SanitizingLogRecordProcessor()
+    lp.on_emit(SimpleNamespace(log_record=None))  # type: ignore[arg-type]
+    long_rec = SimpleNamespace(
+        log_record=SimpleNamespace(attributes=None, body="x" * 3000)
+    )
+    lp.on_emit(long_rec)  # type: ignore[arg-type]
+    assert len(long_rec.log_record.body) == 2048
+    dict_rec = SimpleNamespace(
+        log_record=SimpleNamespace(
+            attributes=None,
+            body={"first_name": "Jean", "medsyntis.domain": "sma"},
+        )
+    )
+    lp.on_emit(dict_rec)  # type: ignore[arg-type]
+    assert dict_rec.log_record.body == {"medsyntis.domain": "sma"}
+    assert lp.force_flush() is True
+    assert lp.shutdown() is None
+
+    # Live queue depth callback with active _GLOBAL_MANAGER
+    fake_mgr = MagicMock()
+    fake_mgr.get_queue_stats.return_value = {
+        "pending": 2,
+        "processing": 1,
+        "active_locks": 1,
+    }
+    monkeypatch.setattr(mq_mod, "_GLOBAL_MANAGER", fake_mgr)
+    obs = list(_observe_queue_depth(MagicMock()))
+    assert [(o.value, o.attributes["state"]) for o in obs] == [
+        (2, "pending"),
+        (1, "processing"),
+        (1, "active_leases"),
+    ]
+
+    # Configure idempotency (force=False) and extract_trace_context without traceparent
+    conf = AppConfig(otel=OTelSettings(sdk_disabled=False, traces_exporter="none"))
+    configure_observability(conf, force=True)
+    configure_observability(conf, force=False)
+    assert extract_trace_context({}) is None
+    assert extract_trace_context({"x-other": "val"}) is None
+    _fastapi_server_request_hook(None, {})
+    _fastapi_client_response_hook(None, {}, {"type": "http.response.body"})

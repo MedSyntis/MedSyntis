@@ -3,7 +3,6 @@ import re
 import time
 
 from typing import ClassVar, Any, cast
-from opentelemetry.trace import SpanKind
 from pydantic import ValidationError, BaseModel, Field
 
 from langchain.agents import create_agent
@@ -11,7 +10,7 @@ from langchain.agents import create_agent
 from src.application.config import AppConfig
 from src.domain.common.common_ressources import MarkdownStr
 from src.infrastructure.llm.factory import get_llm_client
-from src.infrastructure.observability import get_metrics, start_span
+from src.infrastructure.observability import get_metrics
 
 # Legacy import to support existing patch-based unit tests
 from src.application.reader import DocumentReader
@@ -494,6 +493,7 @@ class MedSyntisAgent:
             response_format=None,
             context_schema=active_context_schema,
             system_prompt=system_prompt,
+            name=self.agent_name or self.__class__.__name__,
         )
 
         self.logger.info(
@@ -628,47 +628,26 @@ class MedSyntisAgent:
             )
             llm_t0 = time.perf_counter_ns()
             try:
-                with start_span(
-                    "gen_ai.chat",
-                    kind=SpanKind.CLIENT,
-                    attributes={
-                        "gen_ai.system": provider_name,
-                        "gen_ai.operation.name": "chat",
-                        "gen_ai.request.model": model_id,
-                        "medsyntis.agent": self.agent_name or self.__class__.__name__,
-                        "medsyntis.section": schema_name,
-                        "medsyntis.attempt": r + 1,
-                    },
-                ) as llm_span:
-                    result = self.agent.invoke(
-                        {"messages": [{"role": "user", "content": question}]},
-                        context=runtime_context,
-                        config={
-                            "callbacks": callbacks,
-                            "tags": [self.agent_name] if self.agent_name else [],
-                        }
-                        if callbacks
-                        else None,
-                    )
-                    in_tok, out_tok = self._extract_token_usage(
-                        result.get("messages", [])
-                    )
-                    if llm_span.is_recording():
-                        if in_tok > 0:
-                            llm_span.set_attribute("gen_ai.usage.input_tokens", in_tok)
-                        if out_tok > 0:
-                            llm_span.set_attribute(
-                                "gen_ai.usage.output_tokens", out_tok
-                            )
-                    get_metrics().record_llm_call(
-                        provider=provider_name,
-                        model=model_id,
-                        operation="chat",
-                        status="ok",
-                        duration_ms=(time.perf_counter_ns() - llm_t0) / 1_000_000.0,
-                        input_tokens=in_tok,
-                        output_tokens=out_tok,
-                    )
+                result = self.agent.invoke(
+                    {"messages": [{"role": "user", "content": question}]},
+                    context=runtime_context,
+                    config={
+                        "callbacks": callbacks,
+                        "tags": [self.agent_name] if self.agent_name else [],
+                    }
+                    if callbacks
+                    else None,
+                )
+                in_tok, out_tok = self._extract_token_usage(result.get("messages", []))
+                get_metrics().record_llm_call(
+                    provider=provider_name,
+                    model=model_id,
+                    operation="chat",
+                    status="ok",
+                    duration_ms=(time.perf_counter_ns() - llm_t0) / 1_000_000.0,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                )
             except Exception as invoke_exc:
                 get_metrics().record_llm_call(
                     provider=provider_name,

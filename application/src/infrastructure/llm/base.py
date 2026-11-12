@@ -16,7 +16,7 @@ from tenacity import (
 )
 
 from src.application.config import AppConfig
-from src.infrastructure.observability import get_metrics, start_span
+from src.infrastructure.observability import get_metrics, start_ai_span
 
 
 class LLMConnectionError(ConnectionError):
@@ -188,12 +188,13 @@ class CachedEmbeddingsProxy(Embeddings):
         self, texts: list[str], *args: Any, **kwargs: Any
     ) -> list[list[float]]:
         """Delegate document batch embedding directly to the underlying embeddings model."""
-        with start_span(
-            "gen_ai.embeddings",
+        model_label = self._model_key or "default"
+        with start_ai_span(
+            f"embeddings {model_label}",
             kind=SpanKind.CLIENT,
             attributes={
                 "gen_ai.operation.name": "embeddings",
-                "gen_ai.request.model": self._model_key or "default",
+                "gen_ai.request.model": model_label,
                 "medsyntis.batch_size": len(texts) if isinstance(texts, list) else 0,
             },
         ):
@@ -216,12 +217,13 @@ class CachedEmbeddingsProxy(Embeddings):
                 return list(cached)
 
         get_metrics().record_embedding_cache(model=self._model_key, hit=False)
-        with start_span(
-            "gen_ai.embeddings",
+        model_label = self._model_key or "default"
+        with start_ai_span(
+            f"embeddings {model_label}",
             kind=SpanKind.CLIENT,
             attributes={
                 "gen_ai.operation.name": "embeddings",
-                "gen_ai.request.model": self._model_key or "default",
+                "gen_ai.request.model": model_label,
                 "medsyntis.batch_size": 1,
             },
         ):
