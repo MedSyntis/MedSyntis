@@ -45,7 +45,7 @@ services:
 
   # Local Ollama inference server (bound strictly to loopback 127.0.0.1)
   ollama:
-    image: ollama/ollama:0.40.14
+    image: ollama/ollama:0.40.15
     restart: always
     ports:
       - "127.0.0.1:11434:11434"
@@ -145,7 +145,7 @@ services:
       - "llamacpp"
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.108.4
+    image: ghcr.io/berriai/litellm:v1.109.0
     container_name: litellm-proxy
     network_mode: "host"
     environment:
