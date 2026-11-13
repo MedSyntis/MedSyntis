@@ -2516,20 +2516,49 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-dropzone__title { font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-md); }
 
-.ds-file-list { display: flex; flex-direction: column; gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; }
+.ds-file-list { display: flex; flex-direction: column; gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; min-width: 0; }
 .ds-file-list__item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--ds-space-3);
+  gap: var(--ds-space-2) var(--ds-space-3);
   padding: var(--ds-space-3) var(--ds-space-4);
   border: 1px solid var(--ds-color-border);
   border-radius: var(--ds-radius-md);
   background: var(--ds-color-surface);
   font-size: var(--ds-text-sm);
+  min-width: 0;
+  max-width: 100%;
   transition: background var(--ds-duration-fast) var(--ds-ease);
 }
 .ds-file-list__item:hover { background: var(--ds-surface-container-low); }
+.ds-file-list__title {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex: 1 1 12rem;
+  min-width: 0;
+}
 .ds-file-list__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--ds-weight-medium); }
+.ds-file-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-left: auto;
+  max-width: 100%;
+}
+.ds-subcard .ds-file-list__item {
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--ds-space-2) var(--ds-space-3);
+}
+.ds-subcard .ds-file-list__title {
+  flex: 0 0 auto;
+}
+.ds-subcard .ds-file-list__actions {
+  margin-left: 0;
+}
 
 /* M3 Expansion Panels / Clinical Sections (ZERO border, M3 surface + elevation) */
 .ds-section {

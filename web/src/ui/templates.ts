@@ -3051,13 +3051,17 @@ export function renderAgentsPage(
     const isIndexed = resDoc ? resDoc.indexed : resources.length === 0;
     const isIndexing = indexingFiles.has(g);
     return `<li class="ds-file-list__item">
-      ${iconSvg("ic-book")}
-      <a class="ds-file-list__name" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">${esc(g)}</a>
-      ${renderResourceStatusBadge(isIndexed, isIndexing)}
-      <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">
-        ${iconSvg("ic-eye")} Consulter
-      </a>
-      ${renderReindexButtonForm(g, domainParam, isIndexing)}
+      <div class="ds-file-list__title">
+        ${iconSvg("ic-book")}
+        <a class="ds-file-list__name" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}" title="${esc(g)}">${esc(g)}</a>
+      </div>
+      <div class="ds-file-list__actions">
+        ${renderResourceStatusBadge(isIndexed, isIndexing)}
+        <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">
+          ${iconSvg("ic-eye")} Consulter
+        </a>
+        ${renderReindexButtonForm(g, domainParam, isIndexing)}
+      </div>
     </li>`;
   };
 
