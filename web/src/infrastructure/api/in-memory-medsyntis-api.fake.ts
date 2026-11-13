@@ -171,11 +171,26 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
 
   private seed(): void {
     // 1. Oncology: Mme Jeanne FICTIVE (#A-1042) — 3 longitudinal sessions
-    const jeanne1: MdtFormDetail = {
-      file: "jeanne_fictive_2026_06_03.pdf",
+    const buildJeanneSeedForm = (opts: {
+      file: string;
+      mdtDate: string;
+      performanceStatus: number;
+      ca19_9: string;
+      examName: string;
+      examDate: string;
+      examResult: string;
+      chemoName: string;
+      chemoTolerance: string;
+      priority: "low" | "medium";
+      proposedCare: string;
+      rationale: string;
+      executionTimes: Record<string, number>;
+      markdownText: string;
+    }): MdtFormDetail => ({
+      file: opts.file,
       patientId: "A-1042",
       domain: "oncology",
-      mdtDate: "2026-06-03",
+      mdtDate: opts.mdtDate,
       processingStatus: "COMPLETED",
       processingStep: null,
       processingProgressPct: 100,
@@ -184,106 +199,83 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           first_name: "Jeanne",
           last_name: "FICTIVE",
           date_birth: "1958-03-02",
-          date_rcp: "2026-06-03",
+          date_rcp: opts.mdtDate,
           gender: "Female",
         },
-        PatientPerformanceStatus: { performance_status: 0 },
+        PatientPerformanceStatus: { performance_status: opts.performanceStatus },
         TumorLocation: { tumor_location: "Pancreas" },
-        TumorBiology: { msi_state: "MSS", ca19_9: "180 U/mL" },
+        TumorBiology: { msi_state: "MSS", ca19_9: opts.ca19_9 },
         RadiologicExams: {
           exams_list: [
             {
-              exam_name: "TDM TAP initial",
-              exam_date: "2026-05-25",
+              exam_name: opts.examName,
+              exam_date: opts.examDate,
               exam_type: "CT",
-              exam_result: "Masse céphalique pancréatique 26 mm, cT2 N0 M0.",
+              exam_result: opts.examResult,
             },
           ],
         },
         ChemotherapyTreament: {
           chemotherapy: true,
-          chemotherapy_name: "FOLFIRINOX néo-adjuvant (initiation)",
+          chemotherapy_name: opts.chemoName,
           chemotherapy_start_date: "2026-06-10",
-          chemotherapy_tolerance: "Good",
+          chemotherapy_tolerance: opts.chemoTolerance,
         },
         MTDCompleted: { is_mtd_complete: true, what_missing: [] },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "low",
-          proposed_care_type: "Poursuite FOLFIRINOX",
-          clinical_rationale: "Bilan complet, induction par FOLFIRINOX selon TNCD Pancréas.",
+          suggested_priority: opts.priority,
+          proposed_care_type: opts.proposedCare,
+          clinical_rationale: opts.rationale,
         },
       },
       manualEdits: {},
-      executionTimes: { TumorLocation: 6.2, ChemotherapyTreament: 8.1 },
+      executionTimes: opts.executionTimes,
       metrics: {
-        priority_level: "low",
+        priority_level: opts.priority,
         is_complete: true,
         missing_count: 0,
         missing_items: [],
         care_adaptation_suggested: false,
-        proposed_care_type: "Poursuite FOLFIRINOX",
+        proposed_care_type: opts.proposedCare,
         specialties: ["digestive surgeon expert", "medical oncologist expert"],
       },
-      markdownText: "# Compte rendu RCP du 03/06/2026\nPatient : Mme Jeanne FICTIVE...",
-    };
+      markdownText: opts.markdownText,
+    });
 
-    const jeanne2: MdtFormDetail = {
+    const jeanne1 = buildJeanneSeedForm({
+      file: "jeanne_fictive_2026_06_03.pdf",
+      mdtDate: "2026-06-03",
+      performanceStatus: 0,
+      ca19_9: "180 U/mL",
+      examName: "TDM TAP initial",
+      examDate: "2026-05-25",
+      examResult: "Masse céphalique pancréatique 26 mm, cT2 N0 M0.",
+      chemoName: "FOLFIRINOX néo-adjuvant (initiation)",
+      chemoTolerance: "Good",
+      priority: "low",
+      proposedCare: "Poursuite FOLFIRINOX",
+      rationale: "Bilan complet, induction par FOLFIRINOX selon TNCD Pancréas.",
+      executionTimes: { TumorLocation: 6.2, ChemotherapyTreament: 8.1 },
+      markdownText: "# Compte rendu RCP du 03/06/2026\nPatient : Mme Jeanne FICTIVE...",
+    });
+
+    const jeanne2 = buildJeanneSeedForm({
       file: "jeanne_fictive_2026_10_14.pdf",
-      patientId: "A-1042",
-      domain: "oncology",
       mdtDate: "2026-10-14",
-      processingStatus: "COMPLETED",
-      processingStep: null,
-      processingProgressPct: 100,
-      sections: {
-        PatientAdministrative: {
-          first_name: "Jeanne",
-          last_name: "FICTIVE",
-          date_birth: "1958-03-02",
-          date_rcp: "2026-10-14",
-          gender: "Female",
-        },
-        PatientPerformanceStatus: { performance_status: 1 },
-        TumorLocation: { tumor_location: "Pancreas" },
-        TumorBiology: { msi_state: "MSS", ca19_9: "298 U/mL" },
-        RadiologicExams: {
-          exams_list: [
-            {
-              exam_name: "TDM TAP réévaluation",
-              exam_date: "2026-10-02",
-              exam_type: "CT",
-              exam_result: "Stabilité lésionnelle céphalique, contact VMS < 180°.",
-            },
-          ],
-        },
-        ChemotherapyTreament: {
-          chemotherapy: true,
-          chemotherapy_name: "FOLFIRINOX (4 cures)",
-          chemotherapy_start_date: "2026-06-10",
-          chemotherapy_tolerance: "Medium",
-        },
-        MTDCompleted: { is_mtd_complete: true, what_missing: [] },
-        CareOrientationProposal: {
-          care_adaptation_suggested: false,
-          suggested_priority: "medium",
-          proposed_care_type: "Réévaluation après 6 cures",
-          clinical_rationale: "Élévation modérée du CA 19-9 à 298 U/mL.",
-        },
-      },
-      manualEdits: {},
+      performanceStatus: 1,
+      ca19_9: "298 U/mL",
+      examName: "TDM TAP réévaluation",
+      examDate: "2026-10-02",
+      examResult: "Stabilité lésionnelle céphalique, contact VMS < 180°.",
+      chemoName: "FOLFIRINOX (4 cures)",
+      chemoTolerance: "Medium",
+      priority: "medium",
+      proposedCare: "Réévaluation après 6 cures",
+      rationale: "Élévation modérée du CA 19-9 à 298 U/mL.",
       executionTimes: { TumorLocation: 7.4, ChemotherapyTreament: 9.0 },
-      metrics: {
-        priority_level: "medium",
-        is_complete: true,
-        missing_count: 0,
-        missing_items: [],
-        care_adaptation_suggested: false,
-        proposed_care_type: "Réévaluation après 6 cures",
-        specialties: ["digestive surgeon expert", "medical oncologist expert"],
-      },
       markdownText: "# Compte rendu RCP du 14/10/2026\nPatient : Mme Jeanne FICTIVE...",
-    };
+    });
 
     const jeanne3: MdtFormDetail = {
       file: "jeanne_fictive_2026_11_06.pdf",
@@ -1610,129 +1602,115 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       Pancreas: ["TNCD_Pancreas_2026.pdf"],
     };
 
-    const rawAgents: Array<{
-      name: string;
-      role: string;
-      guidelines: string[] | Record<string, string[]>;
-      models: string[];
-      systemPrompt: string;
-    }> =
+    const buildSpecialist = (
+      name: string,
+      role: string,
+      systemPrompt: string,
+      guidelines: string[] | Record<string, string[]>,
+      models: string[],
+    ) => ({ name, role, guidelines, models, systemPrompt });
+
+    const smaExperts: Array<readonly [string, string, string, string[]]> = [
+      [
+        "neurologist expert",
+        "Évaluation motrice (HFMSE, RULM, CHOP-INTEND) et traitements modificateurs (nusinersen, risdiplam, thérapie génique).",
+        "Tu es neuropédiatre / neurologue référent en centre de référence maladies neuromusculaires (FILNEMUS). Analyse l'évolution des scores moteurs (HFMSE, RULM, CHOP-INTEND) et propose des pistes de discussion conformes au PNDS Amyotrophie Spinale.",
+        ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
+      ],
+      [
+        "geneticist expert",
+        "Confirmation moléculaire SMN1 et corrélation génotype-phénotype (copies SMN2).",
+        "Tu es médecin généticien moléculaire. Vérifie la confirmation de la délétion homozygote de l'exon 7 de SMN1, le nombre de copies de SMN2 et les éventuels variants modificateurs.",
+        ["mistral-nemo (temp=0.1)"],
+      ],
+      [
+        "pulmonologist expert",
+        "Surveillance de la capacité vitale forcée (CVF), VNI nocturne et désencombrement mécanique (Cough Assist).",
+        "Tu es pneumologue référent SMA. Évalue la fonction respiratoire (CVF %, oxymétrie nocturne, besoin de VNI BiPAP et d'aide mécanique à la toux) selon le PNDS.",
+        ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
+      ],
+      [
+        "physiotherapy expert",
+        "Rééducation fonctionnelle neuromusculaire, prévention des rétractions et aides techniques.",
+        "Tu es médecin de médecine physique et de réadaptation (MPR). Analyse le bilan articulaire, la kinésithérapie motrice/respiratoire et l'appareillage selon le PNDS SMA.",
+        ["mistral-nemo (temp=0.1)"],
+      ],
+      [
+        "orthopedist expert",
+        "Suivi rachidien (angle de Cobb, corset, arthrodèse) et rétractions articulaires.",
+        "Tu es chirurgien orthopédiste pédiatrique / MPR. Surveille l'évolution de la scoliose (angle de Cobb), le port de corset et les indications d'arthrodèse vertébrale.",
+        ["mistral-nemo (temp=0.1)"],
+      ],
+    ];
+
+    const oncologyExperts: Array<readonly [string, string, string]> = [
+      [
+        "digestive surgeon expert",
+        "Résécabilité chirurgicale, rapports vasculaires, marges R0/R1 et stratégie péri-opératoire en chirurgie digestive.",
+        "Tu es chirurgien digestif et viscéral. Évalue la résécabilité technique, les contacts vasculaires et les options d'exérèse selon les référentiels TNCD applicables à l'organe primitif.",
+      ],
+      [
+        "medical oncologist expert",
+        "Traitements systémiques (chimiothérapie, thérapies ciblées, immunothérapie), biomarqueurs et tolérance OMS/DPD.",
+        "Tu es oncologue médical digestif. Confronte les lignes systémiques, biomarqueurs (MSI/MMR, RAS/BRAF, HER2) et l'état général aux référentiels TNCD.",
+      ],
+      [
+        "radiation oncologist expert",
+        "Radiochimiothérapie néoadjuvante ou exclusive, radiothérapie stéréotaxique (SBRT) et indications palliatives.",
+        "Tu es oncologue radiothérapeute. Évalue les indications de radiochimiothérapie concomitante, de TNT ou de radiothérapie stéréotaxique selon le TNCD.",
+      ],
+      [
+        "radiologist expert",
+        "Bilan d'extension TDM/IRM/TEP-TDM, critères RECIST 1.1, rapports vasculaires et caractérisation hépatique.",
+        "Tu es radiologue spécialisé en imagerie oncologique digestive. Analyse l'extension locorégionale, la réponse RECIST 1.1 et les examens d'imagerie manquants.",
+      ],
+      [
+        "gastroenterologist expert",
+        "Endoscopie diagnostique et interventionnelle, écho-endoscopie avec biopsie, drainage biliaire et support nutritionnel.",
+        "Tu es hépato-gastro-entérologue et endoscopiste interventionnel. Évalue le drainage biliaire, l'écho-endoscopie, la fonction hépatique Child-Pugh et le support nutritionnel.",
+      ],
+      [
+        "pathologist expert",
+        "Typage et grade histologique, stade pTNM, marges d'exérèse, immunohistochimie MMR/MSI et adéquation biopsique.",
+        "Tu es médecin anatomopathologiste digestif. Vérifie la preuve histologique, le grade, le statut MMR/MSI/HER2 et l'exhaustivité du compte rendu anatomopathologique.",
+      ],
+    ];
+
+    const rawAgents =
       domain === "sma"
         ? [
-            {
-              name: "Administrative",
-              role: "Extraction structurée de l'identité patient, du génotype SMN1/SMN2 et des scores fonctionnels neuromusculaires.",
-              guidelines: [],
-              models: ["mistral-nemo (temp=0.0)"],
-              systemPrompt:
-                "Tu es un assistant médical spécialisé en maladies neuromusculaires rares (Amyotrophie Spinale SMA). Extrais fidèlement chaque champ clinique à partir du dossier sans jamais inventer de valeur absente.",
-            },
-            {
-              name: "neurologist expert",
-              role: "Évaluation motrice (HFMSE, RULM, CHOP-INTEND) et traitements modificateurs (nusinersen, risdiplam, thérapie génique).",
-              guidelines: smaDynamicGuidelines,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
-              systemPrompt:
-                "Tu es neuropédiatre / neurologue référent en centre de référence maladies neuromusculaires (FILNEMUS). Analyse l'évolution des scores moteurs (HFMSE, RULM, CHOP-INTEND) et propose des pistes de discussion conformes au PNDS Amyotrophie Spinale.",
-            },
-            {
-              name: "geneticist expert",
-              role: "Confirmation moléculaire SMN1 et corrélation génotype-phénotype (copies SMN2).",
-              guidelines: smaDynamicGuidelines,
-              models: ["mistral-nemo (temp=0.1)"],
-              systemPrompt:
-                "Tu es médecin généticien moléculaire. Vérifie la confirmation de la délétion homozygote de l'exon 7 de SMN1, le nombre de copies de SMN2 et les éventuels variants modificateurs.",
-            },
-            {
-              name: "pulmonologist expert",
-              role: "Surveillance de la capacité vitale forcée (CVF), VNI nocturne et désencombrement mécanique (Cough Assist).",
-              guidelines: smaDynamicGuidelines,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
-              systemPrompt:
-                "Tu es pneumologue référent SMA. Évalue la fonction respiratoire (CVF %, oxymétrie nocturne, besoin de VNI BiPAP et d'aide mécanique à la toux) selon le PNDS.",
-            },
-            {
-              name: "physiotherapy expert",
-              role: "Rééducation fonctionnelle neuromusculaire, prévention des rétractions et aides techniques.",
-              guidelines: smaDynamicGuidelines,
-              models: ["mistral-nemo (temp=0.1)"],
-              systemPrompt:
-                "Tu es médecin de médecine physique et de réadaptation (MPR). Analyse le bilan articulaire, la kinésithérapie motrice/respiratoire et l'appareillage selon le PNDS SMA.",
-            },
-            {
-              name: "orthopedist expert",
-              role: "Suivi rachidien (angle de Cobb, corset, arthrodèse) et rétractions articulaires.",
-              guidelines: smaDynamicGuidelines,
-              models: ["mistral-nemo (temp=0.1)"],
-              systemPrompt:
-                "Tu es chirurgien orthopédiste pédiatrique / MPR. Surveille l'évolution de la scoliose (angle de Cobb), le port de corset et les indications d'arthrodèse vertébrale.",
-            },
+            buildSpecialist(
+              "Administrative",
+              "Extraction structurée de l'identité patient, du génotype SMN1/SMN2 et des scores fonctionnels neuromusculaires.",
+              "Tu es un assistant médical spécialisé en maladies neuromusculaires rares (Amyotrophie Spinale SMA). Extrais fidèlement chaque champ clinique à partir du dossier sans jamais inventer de valeur absente.",
+              [],
+              ["mistral-nemo (temp=0.0)"],
+            ),
+            ...smaExperts.map(([name, role, prompt, models]) =>
+              buildSpecialist(name, role, prompt, smaDynamicGuidelines, models),
+            ),
           ]
         : [
-            {
-              name: "Administrative",
-              role: "Extraction structurée des données administratives, du statut OMS, de l'anatomopathologie, de l'imagerie et des lignes de chimiothérapie.",
-              guidelines: [],
-              models: ["mistral-nemo (temp=0.0)", "granite3.2-vision (OCR)"],
-              systemPrompt:
-                "Tu es un assistant d'extraction clinique en oncologie digestive. Extrais chaque rubrique du dossier patient avec ancrage strict dans les pièces sources, sans extrapoler.",
-            },
-            {
-              name: "digestive surgeon expert",
-              role: "Résécabilité chirurgicale, rapports vasculaires, marges R0/R1 et stratégie péri-opératoire en chirurgie digestive.",
-              guidelines: oncologyGuidelinesByOrgan,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es chirurgien digestif et viscéral. Évalue la résécabilité technique, les contacts vasculaires et les options d'exérèse selon les référentiels TNCD applicables à l'organe primitif.",
-            },
-            {
-              name: "medical oncologist expert",
-              role: "Traitements systémiques (chimiothérapie, thérapies ciblées, immunothérapie), biomarqueurs et tolérance OMS/DPD.",
-              guidelines: oncologyGuidelinesByOrgan,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es oncologue médical digestif. Confronte les lignes systémiques, biomarqueurs (MSI/MMR, RAS/BRAF, HER2) et l'état général aux référentiels TNCD.",
-            },
-            {
-              name: "radiation oncologist expert",
-              role: "Radiochimiothérapie néoadjuvante ou exclusive, radiothérapie stéréotaxique (SBRT) et indications palliatives.",
-              guidelines: oncologyGuidelinesByOrgan,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es oncologue radiothérapeute. Évalue les indications de radiochimiothérapie concomitante, de TNT ou de radiothérapie stéréotaxique selon le TNCD.",
-            },
-            {
-              name: "radiologist expert",
-              role: "Bilan d'extension TDM/IRM/TEP-TDM, critères RECIST 1.1, rapports vasculaires et caractérisation hépatique.",
-              guidelines: oncologyGuidelinesByOrgan,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es radiologue spécialisé en imagerie oncologique digestive. Analyse l'extension locorégionale, la réponse RECIST 1.1 et les examens d'imagerie manquants.",
-            },
-            {
-              name: "gastroenterologist expert",
-              role: "Endoscopie diagnostique et interventionnelle, écho-endoscopie avec biopsie, drainage biliaire et support nutritionnel.",
-              guidelines: oncologyGuidelinesByOrgan,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es hépato-gastro-entérologue et endoscopiste interventionnel. Évalue le drainage biliaire, l'écho-endoscopie, la fonction hépatique Child-Pugh et le support nutritionnel.",
-            },
-            {
-              name: "pathologist expert",
-              role: "Typage et grade histologique, stade pTNM, marges d'exérèse, immunohistochimie MMR/MSI et adéquation biopsique.",
-              guidelines: oncologyGuidelinesByOrgan,
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es médecin anatomopathologiste digestif. Vérifie la preuve histologique, le grade, le statut MMR/MSI/HER2 et l'exhaustivité du compte rendu anatomopathologique.",
-            },
-            {
-              name: "MDT Coordinator",
-              role: "Synthèse pré-RCP non prescriptive, contrôle de complétude et priorisation collégiale des dossiers.",
-              guidelines: [],
-              models: ["mistral-nemo (temp=0.0)"],
-              systemPrompt:
-                "Tu es le coordinateur médical de la RCP. Vérifie la complétude du dossier, synthétise les avis d'experts et propose un niveau de priorité de passage non prescriptif.",
-            },
+            buildSpecialist(
+              "Administrative",
+              "Extraction structurée des données administratives, du statut OMS, de l'anatomopathologie, de l'imagerie et des lignes de chimiothérapie.",
+              "Tu es un assistant d'extraction clinique en oncologie digestive. Extrais chaque rubrique du dossier patient avec ancrage strict dans les pièces sources, sans extrapoler.",
+              [],
+              ["mistral-nemo (temp=0.0)", "granite3.2-vision (OCR)"],
+            ),
+            ...oncologyExperts.map(([name, role, prompt]) =>
+              buildSpecialist(name, role, prompt, oncologyGuidelinesByOrgan, [
+                "mistral-nemo (temp=0.1)",
+                "bge-m3 (RAG Milvus)",
+              ]),
+            ),
+            buildSpecialist(
+              "MDT Coordinator",
+              "Synthèse pré-RCP non prescriptive, contrôle de complétude et priorisation collégiale des dossiers.",
+              "Tu es le coordinateur médical de la RCP. Vérifie la complétude du dossier, synthétise les avis d'experts et propose un niveau de priorité de passage non prescriptif.",
+              [],
+              ["mistral-nemo (temp=0.0)"],
+            ),
           ];
 
     return rawAgents.map((a) => {
