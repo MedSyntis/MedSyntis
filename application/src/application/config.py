@@ -694,6 +694,14 @@ class RCPSettings(BaseSettings):
         validation_alias=AliasChoices("APP_RCP_DOCLING_DEVICE", "DOCLING_DEVICE"),
         description="Hardware device for Docling model inference ('cpu', 'cuda', 'mps', 'auto').",
     )
+    docling_artifacts_path: Path | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "APP_RCP_DOCLING_ARTIFACTS_PATH",
+            "DOCLING_ARTIFACTS_PATH",
+        ),
+        description="Local directory containing pre-downloaded Docling model artifacts for offline execution.",
+    )
     chunk_size: int = Field(
         default=1000,
         description="Maximum number of characters per document chunk for text splitting.",

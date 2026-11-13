@@ -280,6 +280,38 @@ def test_document_reader_docling_pymupdf_and_splitter_branches(tmp_path: Path):
             conv_out, chunk_out = DocumentReader.get_docling_components("cpu")
             assert conv_out is fake_converter
             assert chunk_out is None
+
+        # Verify BaseSettings docling_artifacts_path passes artifacts_path and local tokenizer dir
+        artifacts_dir = tmp_path / "docling_models"
+        tok_dir = artifacts_dir / "intfloat--multilingual-e5-base"
+        tok_dir.mkdir(parents=True)
+        DocumentReader._docling_converter = None
+        DocumentReader._docling_chunker = None
+        with (
+            patch(
+                "docling.document_converter.DocumentConverter",
+                return_value=fake_converter,
+            ),
+            patch("docling.document_converter.PdfFormatOption"),
+            patch(
+                "docling.datamodel.pipeline_options.PdfPipelineOptions"
+            ) as mock_pdf_opts,
+            patch("docling.datamodel.pipeline_options.RapidOcrOptions"),
+            patch("docling.datamodel.accelerator_options.AcceleratorOptions"),
+            patch("docling.chunking.HybridChunker", return_value=fake_chunker),
+            patch(
+                "docling_core.transforms.chunker.tokenizer.huggingface.HuggingFaceTokenizer.from_pretrained",
+            ) as mock_tok_from_pretrained,
+        ):
+            conv_out, chunk_out = DocumentReader.get_docling_components(
+                "cpu", artifacts_path=artifacts_dir
+            )
+            assert conv_out is fake_converter
+            assert chunk_out is fake_chunker
+            assert mock_pdf_opts.call_args.kwargs["artifacts_path"] == artifacts_dir
+            assert mock_tok_from_pretrained.call_args.kwargs["model_name"] == str(
+                tok_dir
+            )
     finally:
         DocumentReader._docling_converter = orig_conv
         DocumentReader._docling_chunker = orig_chunk

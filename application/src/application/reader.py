@@ -28,6 +28,7 @@ print(answer)
 
 import hashlib
 import os
+from pathlib import Path
 import threading
 import time
 
@@ -80,7 +81,11 @@ class DocumentReader:
     _docling_lock = threading.Lock()
 
     @classmethod
-    def get_docling_components(cls, device: str = "cpu"):
+    def get_docling_components(
+        cls,
+        device: str = "cpu",
+        artifacts_path: Path | str | None = None,
+    ):
         if cls._docling_converter is None:
             with cls._docling_lock:
                 if cls._docling_converter is None:
@@ -99,12 +104,19 @@ class DocumentReader:
                         PdfFormatOption,
                     )
 
+                    resolved_artifacts = (
+                        Path(artifacts_path)
+                        if isinstance(artifacts_path, (str, Path))
+                        and str(artifacts_path).strip()
+                        else None
+                    )
                     print("Preloading RapidOCR models and Docling Converter...")
                     ocr_options = RapidOcrOptions()
                     accelerator_options = AcceleratorOptions(device=device)
                     pipeline_options = PdfPipelineOptions(
                         ocr_options=ocr_options,
                         accelerator_options=accelerator_options,
+                        artifacts_path=resolved_artifacts,
                     )
                     pipeline_options.allow_external_plugins = True
 
@@ -115,11 +127,18 @@ class DocumentReader:
                             ),
                         },
                     )
+                    tokenizer_name = "intfloat/multilingual-e5-base"
+                    if resolved_artifacts is not None:
+                        local_tokenizer = (
+                            resolved_artifacts / "intfloat--multilingual-e5-base"
+                        )
+                        if local_tokenizer.is_dir():
+                            tokenizer_name = str(local_tokenizer)
                     chunker = None
                     try:
                         chunker = HybridChunker(
                             tokenizer=HuggingFaceTokenizer.from_pretrained(
-                                model_name="intfloat/multilingual-e5-base",
+                                model_name=tokenizer_name,
                                 local_files_only=True,
                                 max_tokens=512,
                             )
@@ -128,7 +147,8 @@ class DocumentReader:
                         try:
                             chunker = HybridChunker(
                                 tokenizer=HuggingFaceTokenizer.from_pretrained(
-                                    model_name="intfloat/multilingual-e5-base",
+                                    model_name=tokenizer_name,
+                                    max_tokens=512,
                                 )
                             )
                         except Exception:
@@ -232,8 +252,12 @@ class DocumentReader:
             if loader_type == "openparse":
                 return OpenParseDocumentLoader(document).load()
             elif loader_type == "docling":
+                raw_artifacts = getattr(self.config.rcp, "docling_artifacts_path", None)
                 converter, chunker = self.get_docling_components(
-                    device=self.config.rcp.docling_device
+                    device=self.config.rcp.docling_device,
+                    artifacts_path=raw_artifacts
+                    if isinstance(raw_artifacts, (str, Path))
+                    else None,
                 )
 
                 conv_res = converter.convert(source=document)

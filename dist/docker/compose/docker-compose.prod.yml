@@ -16,6 +16,8 @@ x-telemetry-off: &telemetry-off
 x-ui-env: &ui-env
   <<: *telemetry-off
   STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+  XDG_CACHE_HOME: "/tmp/.cache"
+  APP_RCP_DOCLING_ARTIFACTS_PATH: "/app/.cache/docling/models"
   APP_DEV_MODE: "false"
   APP_AUTH_MODE: "oauth_proxy"
   APP_LANGUAGE: ${APP_LANGUAGE:-french}
