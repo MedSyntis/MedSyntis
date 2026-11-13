@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import threading
 import time
@@ -602,23 +601,14 @@ class PatientMDTFormQueueJobExecutor:
                         if model_name not in completed_models:
                             completed_models.append(model_name)
 
-                # Run ExpertAnswer first so MTDCompleted and CareOrientationProposal can consume it
-                if expert_models:
-                    _process_wave3_model(1, expert_models[0])
-
-                remaining_models = list(enumerate(expert_models[1:], start=2))
-                if remaining_models and not queue_manager._is_job_aborted(
-                    job_id, run_id=run_id, lease_id=lease_id
-                ):
-                    with ThreadPoolExecutor(
-                        max_workers=min(2, len(remaining_models))
-                    ) as pool:
-                        futures = [
-                            pool.submit(_process_wave3_model, idx, model_cls)
-                            for idx, model_cls in remaining_models
-                        ]
-                        for fut in futures:
-                            fut.result()
+                # Execute Wave 3 sections sequentially (ExpertAnswer -> MTDCompleted -> CareOrientationProposal)
+                # so inner specialist parallelism utilizes llama-cpp slots cleanly without SSE thinking interleaving across sections.
+                for idx, model_cls in enumerate(expert_models, start=1):
+                    if queue_manager._is_job_aborted(
+                        job_id, run_id=run_id, lease_id=lease_id
+                    ):
+                        return
+                    _process_wave3_model(idx, model_cls)
 
                 self.on_job_enqueued(domain, filename, RCPProcessingStatus.COMPLETED)
             finally:

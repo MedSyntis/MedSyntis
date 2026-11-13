@@ -116,8 +116,8 @@ def collaborative_debate(
     ressources: list[str] | None = None,
     additionnal_readers: list[Any] | None = None,
     seed_opinions: dict[str, str] | None = None,
-    skip_round2: bool = False,
     coordinator_reasoning: bool = False,
+    out_round2_priorities: list[Any] | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
         domain = config.domain
@@ -138,9 +138,9 @@ def collaborative_debate(
     cached_round1 = checkpoint.get("round1")
     cached_round2 = checkpoint.get("round2")
 
-    if seed_opinions and skip_round2:
+    if seed_opinions and len(seed_opinions) < 2:
         logger.info(
-            "Debate fast-path: reusing %d ExpertAnswer opinions directly for coordinator synthesis.",
+            "Debate single-expert seed (%d opinion): skipping self-cross-review Round 2.",
             len(seed_opinions),
         )
         updated_opinions = dict(seed_opinions)
@@ -252,7 +252,7 @@ def collaborative_debate(
                 f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
                 f"{compiled_opinions}\n\n"
                 f"The overall question is: {question}\n\n"
-                f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help prepare a pre-MDT synthesis for collegial review. "
+                f"Please review the opinions of the other experts. Independently re-evaluate clinical urgency and all red flags defined in the question above (do NOT passively anchor on initial priority labels if peer findings or the patient record warrant higher urgency), set `suggested_priority`, and provide your final refined clinical assessment to help prepare a pre-MDT synthesis for collegial review. "
                 "Use Markdown formatting inside your `response` field (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections)."
             )
             return magent.ask(
@@ -266,7 +266,20 @@ def collaborative_debate(
             for magent, fut in round2_futures:
                 try:
                     res = fut.result()
-                    updated_opinions[magent.agent_name] = res.response
+                    resp_text = res.response
+                    upd_prio = getattr(res, "suggested_priority", None)
+                    if upd_prio is not None:
+                        prio_val = (
+                            upd_prio.value
+                            if hasattr(upd_prio, "value")
+                            else str(upd_prio)
+                        )
+                        if out_round2_priorities is not None:
+                            out_round2_priorities.append(prio_val)
+                        resp_text = (
+                            f"{resp_text}\n*(Updated Round 2 Priority: {prio_val})*"
+                        )
+                    updated_opinions[magent.agent_name] = resp_text
                 except Exception as e:
                     round2_all_ok = False
                     logger.error(

@@ -338,20 +338,6 @@ class PatientMDTOncologicForm(PatientMDTForm):
             )
         return False, None
 
-    @classmethod
-    def should_run_care_orientation_debate(
-        cls,
-        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
-    ) -> bool:
-        """Trigger Debate Path for borderline or locally advanced oncology resectability."""
-        d = cls._as_dict(doc_or_form) if doc_or_form is not None else {}
-        resectability = d.get("Resectability")
-        if isinstance(resectability, dict):
-            res_status = str(resectability.get("resectability") or "").strip().lower()
-            if any(k in res_status for k in ("borderline", "locally", "localement")):
-                return True
-        return False
-
     # class PreviousTreatments(default_model):
 
     #     treaments: Optional[List[PreviousTreatmentData]] = Field(description="List of treaments already done, can be None")

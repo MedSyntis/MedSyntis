@@ -299,15 +299,6 @@ class PatientMDTForm:
         return False, None
 
     @classmethod
-    def should_run_care_orientation_debate(
-        cls,
-        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
-    ) -> bool:
-        """Return True when domain clinical complexity requires a multi-expert Debate Path."""
-        _ = doc_or_form
-        return False
-
-    @classmethod
     def is_section_manually_editable(
         cls, section_or_model: str | type[BaseModel]
     ) -> bool:

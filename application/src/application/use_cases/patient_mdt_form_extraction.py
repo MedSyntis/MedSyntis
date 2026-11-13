@@ -232,7 +232,7 @@ class PatientMDTFormExtractionService:
     @staticmethod
     def _dump_section_dict(val: Any) -> dict[str, Any]:
         if isinstance(val, BaseModel):
-            return val.model_dump()
+            return val.model_dump(mode="json")
         if isinstance(val, dict):
             return val
         return {}
@@ -328,26 +328,37 @@ class PatientMDTFormExtractionService:
 
     @staticmethod
     def _normalize_priority_rank(priority: Any) -> tuple[int, str | None]:
-        """Map PatientPriority labels/aliases to (rank, canonical_enum_value)."""
+        """Map PatientPriority enum instances, labels, or aliases to (rank, canonical_enum_value)."""
+        if isinstance(priority, Enum):
+            priority = priority.value
         raw = str(priority or "").strip().lower()
         if not raw or raw == PatientPriority.not_given.value.lower():
             return 0, None
         if (
             raw == PatientPriority.urgent.value.lower()
+            or raw in ("patientpriority.urgent", "high")
             or "high-priority" in raw
             or ("urgent" in raw and "not urgent" not in raw and "semi" not in raw)
         ):
             return 3, PatientPriority.urgent.value
-        if raw == PatientPriority.medium.value.lower() or "semi-urgent" in raw:
+        if (
+            raw == PatientPriority.medium.value.lower()
+            or raw in ("patientpriority.medium", "medium")
+            or "semi-urgent" in raw
+        ):
             return 2, PatientPriority.medium.value
-        if raw == PatientPriority.low.value.lower() or "not urgent" in raw:
+        if (
+            raw == PatientPriority.low.value.lower()
+            or raw in ("patientpriority.low", "low")
+            or "not urgent" in raw
+        ):
             return 1, PatientPriority.low.value
         return 0, None
 
     def _extract_relevant_expert_opinions(
         self, expert_ans: Any
     ) -> tuple[dict[str, str], set[str], str | None]:
-        """Extract opinions, priority set, and max priority from relevant ExpertAnswer entries."""
+        """Extract clinical opinions, guideline references, and max priority from relevant ExpertAnswer entries."""
         relevant_opinions: dict[str, str] = {}
         priorities: set[str] = set()
         max_rank = 0
@@ -359,7 +370,7 @@ class PatientMDTFormExtractionService:
             d = self._dump_section_dict(ag_val)
             if not d or not d.get("expert_relevant"):
                 continue
-            raw_prio = str(d.get("patient_priority") or "").strip()
+            raw_prio = d.get("patient_priority")
             rank, canonical_prio = self._normalize_priority_rank(raw_prio)
             if canonical_prio:
                 priorities.add(canonical_prio)
@@ -368,21 +379,42 @@ class PatientMDTFormExtractionService:
                     max_priority = canonical_prio
             why = str(d.get("why_relevant") or "").strip()
             suggestions = d.get("suggestions") or []
-            sugg_lines = []
-            for s in suggestions:
-                if isinstance(s, dict):
-                    sugg_lines.append(
-                        f"  - {s.get('suggestion', '')} ({s.get('why', '')})"
-                    )
-            opinion_parts = [
-                f"Priority: {canonical_prio or raw_prio or 'unspecified'}",
-                f"Rationale: {why}",
+            sugg_lines = [
+                f"  - {s.get('suggestion', '')} ({s.get('why', '')})"
+                for s in suggestions
+                if isinstance(s, dict)
             ]
+            sources = d.get("sources_relevant") or []
+            source_lines = [
+                f"  - {src.get('name', '')} (p.{src.get('page', '?')}): {str(src.get('excerpt') or '')[:220]}"
+                for src in sources
+                if isinstance(src, dict) and src.get("name")
+            ]
+            opinion_parts = [f"Clinical assessment: {why}"]
             if sugg_lines:
-                opinion_parts.append("Suggestions:\n" + "\n".join(sugg_lines))
+                opinion_parts.append("Proposed options:\n" + "\n".join(sugg_lines))
+            if source_lines:
+                opinion_parts.append(
+                    "Supporting guideline references:\n" + "\n".join(source_lines)
+                )
+            opinion_parts.append(
+                f"Initial pre-debate priority assessment: {canonical_prio or str(raw_prio or 'unspecified')}"
+            )
             relevant_opinions[str(ag_name).strip()] = "\n".join(opinion_parts)
 
         return relevant_opinions, priorities, max_priority
+
+    @classmethod
+    def _max_priority(cls, *candidates: Any) -> str | None:
+        """Return the highest canonical PatientPriority value across all candidate inputs."""
+        best_rank = 0
+        best_val: str | None = None
+        for cand in candidates:
+            rank, val = cls._normalize_priority_rank(cand)
+            if val and rank > best_rank:
+                best_rank = rank
+                best_val = val
+        return best_val
 
     @classmethod
     def _apply_care_orientation_guardrails(
@@ -487,6 +519,7 @@ class PatientMDTFormExtractionService:
                 relevant_opinions
             )
 
+            round2_priorities: list[Any] = []
             available_files = self._get_available_resource_files()
             debate_ressources = self.form_cls.resolve_agent_ressources(
                 target_form, debate_agents[0], available_files
@@ -503,8 +536,8 @@ class PatientMDTFormExtractionService:
                 ressources=debate_ressources,
                 additionnal_readers=debate_readers if debate_readers else None,
                 seed_opinions=relevant_opinions if use_seed else None,
-                skip_round2=False,
                 coordinator_reasoning=(section_name == "CareOrientationProposal"),
+                out_round2_priorities=round2_priorities,
             )
             serialized_value = _serialize_dates(
                 debate_res.model_dump()
@@ -512,8 +545,11 @@ class PatientMDTFormExtractionService:
                 else debate_res
             )
             if section_name == "CareOrientationProposal":
+                effective_max_priority = self._max_priority(
+                    max_expert_priority, *round2_priorities
+                )
                 serialized_value = self._apply_care_orientation_guardrails(
-                    serialized_value, max_expert_priority=max_expert_priority
+                    serialized_value, max_expert_priority=effective_max_priority
                 )
         elif len(agents_list) > 1:
             available_files = self._get_available_resource_files()

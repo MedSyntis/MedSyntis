@@ -206,14 +206,22 @@ class TestCollaborativeDebate(unittest.TestCase):
         )
 
         form = PatientMDTOncologicForm(file="test_doc.pdf")
+        # Hydrated Pydantic ExpertAnswer instance (simulates rerun from MongoDB)
         form.sections["ExpertAnswer"] = {
-            "medical oncologist expert": {
-                "expert_relevant": True,
-                "patient_priority": "Semi-urgent pre-MDT review suggested",
-                "why_relevant": "Needs timely systemic workup",
-                "suggestions": [],
-                "sources_relevant": [],
-            },
+            "medical oncologist expert": PatientMDTOncologicForm.ExpertAnswer(
+                expert_relevant=True,
+                patient_priority="Semi-urgent pre-MDT review suggested",
+                why_relevant="Needs timely systemic workup",
+                suggestions=[],
+                sources_relevant=[
+                    {
+                        "name": "TNCDPANCREAS.pdf",
+                        "page": 12,
+                        "position": "top",
+                        "excerpt": "Bilan sous 15 jours",
+                    }
+                ],
+            ),
             "radiologist expert": {
                 "expert_relevant": False,
                 "patient_priority": "High-priority pre-MDT review suggested",
@@ -241,7 +249,10 @@ class TestCollaborativeDebate(unittest.TestCase):
 
         call_kwargs = mock_collab_debate.call_args.kwargs
         self.assertIsNotNone(call_kwargs["seed_opinions"])
-        self.assertFalse(call_kwargs["skip_round2"])
+        self.assertIn(
+            "TNCDPANCREAS.pdf",
+            call_kwargs["seed_opinions"]["medical oncologist expert"],
+        )
         self.assertTrue(call_kwargs["coordinator_reasoning"])
         # Semi-urgent relevant expert prevents downgrade to Patient is not urgent,
         # while non-relevant High-priority expert is ignored.
@@ -252,19 +263,27 @@ class TestCollaborativeDebate(unittest.TestCase):
         )
 
     @patch("src.application.use_cases.patient_mdt_form_extraction.collaborative_debate")
-    def test_care_orientation_debate_path_on_priority_divergence(
+    def test_care_orientation_debate_path_and_round2_escalation(
         self, mock_collab_debate
     ):
-        mock_collab_debate.return_value = {
-            "care_adaptation_suggested": False,
-            "suggested_priority": "Patient is not urgent",
-        }
+        def _fake_collab(**kwargs):
+            # Simulate Round 2 specialist escalating urgency during cross-review
+            if kwargs.get("out_round2_priorities") is not None:
+                kwargs["out_round2_priorities"].append(
+                    "High-priority pre-MDT review suggested"
+                )
+            return {
+                "care_adaptation_suggested": False,
+                "suggested_priority": "Patient is not urgent",
+            }
+
+        mock_collab_debate.side_effect = _fake_collab
         form = PatientMDTOncologicForm(file="test_doc.pdf")
         form.sections["ExpertAnswer"] = {
             "medical oncologist expert": {
                 "expert_relevant": True,
-                "patient_priority": "High-priority pre-MDT review suggested",
-                "why_relevant": "Urgent systemic progression",
+                "patient_priority": "Patient is not urgent",
+                "why_relevant": "Initial reading",
                 "suggestions": [],
                 "sources_relevant": [],
             },
@@ -296,7 +315,6 @@ class TestCollaborativeDebate(unittest.TestCase):
         call_kwargs = mock_collab_debate.call_args.kwargs
         self.assertIsNotNone(call_kwargs["seed_opinions"])
         self.assertEqual(len(call_kwargs["seed_opinions"]), 2)
-        self.assertFalse(call_kwargs["skip_round2"])
         self.assertTrue(call_kwargs["coordinator_reasoning"])
         self.assertTrue(result["care_adaptation_suggested"])
         self.assertEqual(
