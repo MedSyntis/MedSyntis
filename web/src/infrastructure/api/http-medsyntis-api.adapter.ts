@@ -1199,6 +1199,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
           body: formData,
         },
       );
+      this.agentsCache.clear();
       return {
         filename: String(res?.filename ?? res?.name ?? filename),
         sizeBytes: Number(res?.size_bytes ?? res?.size ?? content.byteLength),
@@ -1232,6 +1233,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         domain,
         { method: "DELETE" },
       );
+      this.agentsCache.clear();
     } catch (err) {
       if (this.fallback) return this.fallback.deleteResource(filename, domain);
       throw err;
@@ -1313,18 +1315,26 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       const data = rows.map((r) => {
         const name = String(r.name ?? r.id ?? "");
         const pres = getAgentPresentation(name, language);
-        const resourcesList = Array.isArray(r.resources)
-          ? (r.resources as string[])
-          : Array.isArray(r.guidelines)
-            ? (r.guidelines as string[])
-            : [];
+        const rawGuidelines = r.resources ?? r.guidelines;
+        let guidelines: string[] | Record<string, string[]> = [];
+        if (Array.isArray(rawGuidelines)) {
+          guidelines = rawGuidelines.map((item) => String(item));
+        } else if (rawGuidelines && typeof rawGuidelines === "object") {
+          const parsed: Record<string, string[]> = {};
+          for (const [group, list] of Object.entries(rawGuidelines as Record<string, unknown>)) {
+            if (Array.isArray(list)) {
+              parsed[group] = list.map((item) => String(item));
+            }
+          }
+          guidelines = parsed;
+        }
         return {
           name,
           label: pres.label,
           icon: pres.icon,
           role: String(r.role ?? r.description ?? ""),
           description: String(r.description ?? r.role ?? ""),
-          guidelines: resourcesList,
+          guidelines,
           models: Array.isArray(r.models) ? (r.models as string[]) : [],
           systemPrompt: r.system_prompt ? String(r.system_prompt) : undefined,
           userPrompts: getDomainUserPromptsForAgent(name, domain, language),

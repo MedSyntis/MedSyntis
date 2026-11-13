@@ -276,9 +276,17 @@ class PatientMDTForm:
         cls,
         doc_or_form: "dict[str, Any] | PatientMDTForm | None",
         agent_cls: type[MedSyntisAgent],
+        available_files: list[str] | None = None,
     ) -> list[str]:
         """Return the effective RAG resource filenames for `agent_cls` on `doc_or_form`."""
         _ = doc_or_form
+        if hasattr(agent_cls, "get_catalog_resources"):
+            catalog = agent_cls.get_catalog_resources(available_files)  # type: ignore[attr-defined]
+            if isinstance(catalog, dict):
+                return list(
+                    dict.fromkeys(pdf for pdfs in catalog.values() for pdf in pdfs)
+                )
+            return list(catalog)
         return list(getattr(agent_cls, "ressources", None) or [])
 
     @classmethod

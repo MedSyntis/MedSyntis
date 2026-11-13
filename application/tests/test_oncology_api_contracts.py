@@ -44,7 +44,27 @@ class TestOncologySpecialtyApiContracts:
             assert spec in by_name
             r_detail = client.get(f"/api/v1/agents/{spec}?domain=oncology")
             assert r_detail.status_code == 200
-            assert r_detail.json()["name"] == spec
+            detail = r_detail.json()
+            assert detail["name"] == spec
+            assert isinstance(detail["resources"], dict)
+            assert detail["resources"]["Pancreas"] == ["TNCDPANCREAS.pdf"]
+            assert detail["resources"]["Colon"] == [
+                "TNCDCOLON.pdf",
+                "TNCDCOLORECTALMETA.pdf",
+            ]
+            assert detail["resources"]["Liver"] == ["TNCDCHC.pdf"]
+
+        assert by_name["Administrative"]["resources"] == []
+        assert by_name["MDT Coordinator"]["resources"] == []
+
+        r_sma = client.get("/api/v1/agents?domain=sma")
+        assert r_sma.status_code == 200
+        sma_by_name = {it["name"]: it for it in r_sma.json()}
+        assert (
+            "amyotrophie_spinale_infantile_-_pnds.pdf"
+            in sma_by_name["neurologist expert"]["resources"]
+        )
+        assert sma_by_name["Administrative"]["resources"] == []
 
         for removed in (
             "pancreas expert",

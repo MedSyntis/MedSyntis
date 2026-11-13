@@ -371,8 +371,17 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(agentsRes.body).toContain('data-testid="agents-list"');
     expect(agentsRes.body).toContain('data-testid="agents-group-coordination"');
     expect(agentsRes.body).toContain('data-testid="agents-group-experts"');
+    expect(agentsRes.body).toContain(
+      'data-testid="agent-organ-resources-digestive surgeon expert-Pancreas"',
+    );
+    expect(agentsRes.body).toContain("Pancréas");
     expect(agentsRes.body).toContain("Prompts utilisateurs d'extraction");
     expect(agentsRes.body).toContain("Instructions système de l'agent");
+
+    const smaAgentsRes = await app.inject({ method: "GET", url: "/agents?domain=sma" });
+    expect(smaAgentsRes.statusCode).toBe(200);
+    expect(smaAgentsRes.body).toContain('data-testid="agent-resources-neurologist expert"');
+    expect(smaAgentsRes.body).toContain("PNDS_Amyotrophie_Spinale_SMA_2025.pdf");
 
     const chatRes = await app.inject({
       method: "POST",

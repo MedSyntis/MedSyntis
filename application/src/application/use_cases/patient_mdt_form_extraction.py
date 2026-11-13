@@ -13,6 +13,7 @@ from src.application.agent.collaborate import collaborative_debate
 from src.application.app_functions import to_naive
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
+from src.application.ressources import Ressources
 from src.application.use_cases.patient_record import PatientRecordService
 from src.domain.patient import Patient
 from src.domain.patient_mdt_form import (
@@ -232,8 +233,9 @@ class PatientMDTFormExtractionService:
                     if filtered:
                         debate_agents = filtered
 
+            available_files = Ressources.list_from_config(self.config)
             debate_ressources = self.form_cls.resolve_agent_ressources(
-                target_form, debate_agents[0]
+                target_form, debate_agents[0], available_files
             )
             debate_res = collaborative_debate(
                 agents_classes=debate_agents,
@@ -251,6 +253,7 @@ class PatientMDTFormExtractionService:
                 else debate_res
             )
         elif len(agents_list) > 1:
+            available_files = Ressources.list_from_config(self.config)
             multi_res: dict[str, Any] = {}
             for agent_cls in agents_list:
                 agent = agent_cls(
@@ -258,7 +261,7 @@ class PatientMDTFormExtractionService:
                     mtd=target_reader,
                     output_format=model_cls,
                     ressources=self.form_cls.resolve_agent_ressources(
-                        target_form, agent_cls
+                        target_form, agent_cls, available_files
                     ),
                 )
                 ans = agent.ask(question, callbacks=callbacks)
@@ -273,13 +276,14 @@ class PatientMDTFormExtractionService:
                 multi_res[key] = _serialize_dates(ans_dict)
             serialized_value = multi_res
         elif len(agents_list) == 1:
+            available_files = Ressources.list_from_config(self.config)
             agent_cls = agents_list[0]
             agent = agent_cls(
                 config=self.config,
                 mtd=target_reader,
                 output_format=model_cls,
                 ressources=self.form_cls.resolve_agent_ressources(
-                    target_form, agent_cls
+                    target_form, agent_cls, available_files
                 ),
             )
             ans = agent.ask(question, callbacks=callbacks)

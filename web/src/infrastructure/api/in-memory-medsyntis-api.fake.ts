@@ -1601,13 +1601,28 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
   }
 
   async listAgents(domain: ClinicalDomain, language: Language): Promise<AgentModuleInfo[]> {
-    const rawAgents =
+    const smaDynamicGuidelines = Array.from(this.resources.keys()).filter(
+      (name) => !name.toLowerCase().startsWith("tncd"),
+    );
+    const oncologyGuidelinesByOrgan: Record<string, string[]> = {
+      Oesophagus: ["TNCD_Oesophage_Estomac_2026.pdf"],
+      Stomach: ["TNCD_Oesophage_Estomac_2026.pdf"],
+      Pancreas: ["TNCD_Pancreas_2026.pdf"],
+    };
+
+    const rawAgents: Array<{
+      name: string;
+      role: string;
+      guidelines: string[] | Record<string, string[]>;
+      models: string[];
+      systemPrompt: string;
+    }> =
       domain === "sma"
         ? [
             {
               name: "Administrative",
               role: "Extraction structurée de l'identité patient, du génotype SMN1/SMN2 et des scores fonctionnels neuromusculaires.",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
+              guidelines: [],
               models: ["mistral-nemo (temp=0.0)"],
               systemPrompt:
                 "Tu es un assistant médical spécialisé en maladies neuromusculaires rares (Amyotrophie Spinale SMA). Extrais fidèlement chaque champ clinique à partir du dossier sans jamais inventer de valeur absente.",
@@ -1615,7 +1630,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "neurologist expert",
               role: "Évaluation motrice (HFMSE, RULM, CHOP-INTEND) et traitements modificateurs (nusinersen, risdiplam, thérapie génique).",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
+              guidelines: smaDynamicGuidelines,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
               systemPrompt:
                 "Tu es neuropédiatre / neurologue référent en centre de référence maladies neuromusculaires (FILNEMUS). Analyse l'évolution des scores moteurs (HFMSE, RULM, CHOP-INTEND) et propose des pistes de discussion conformes au PNDS Amyotrophie Spinale.",
@@ -1623,7 +1638,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "geneticist expert",
               role: "Confirmation moléculaire SMN1 et corrélation génotype-phénotype (copies SMN2).",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
+              guidelines: smaDynamicGuidelines,
               models: ["mistral-nemo (temp=0.1)"],
               systemPrompt:
                 "Tu es médecin généticien moléculaire. Vérifie la confirmation de la délétion homozygote de l'exon 7 de SMN1, le nombre de copies de SMN2 et les éventuels variants modificateurs.",
@@ -1631,15 +1646,23 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "pulmonologist expert",
               role: "Surveillance de la capacité vitale forcée (CVF), VNI nocturne et désencombrement mécanique (Cough Assist).",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
+              guidelines: smaDynamicGuidelines,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
               systemPrompt:
                 "Tu es pneumologue référent SMA. Évalue la fonction respiratoire (CVF %, oxymétrie nocturne, besoin de VNI BiPAP et d'aide mécanique à la toux) selon le PNDS.",
             },
             {
+              name: "physiotherapy expert",
+              role: "Rééducation fonctionnelle neuromusculaire, prévention des rétractions et aides techniques.",
+              guidelines: smaDynamicGuidelines,
+              models: ["mistral-nemo (temp=0.1)"],
+              systemPrompt:
+                "Tu es médecin de médecine physique et de réadaptation (MPR). Analyse le bilan articulaire, la kinésithérapie motrice/respiratoire et l'appareillage selon le PNDS SMA.",
+            },
+            {
               name: "orthopedist expert",
               role: "Suivi rachidien (angle de Cobb, corset, arthrodèse) et rétractions articulaires.",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
+              guidelines: smaDynamicGuidelines,
               models: ["mistral-nemo (temp=0.1)"],
               systemPrompt:
                 "Tu es chirurgien orthopédiste pédiatrique / MPR. Surveille l'évolution de la scoliose (angle de Cobb), le port de corset et les indications d'arthrodèse vertébrale.",
@@ -1657,7 +1680,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "digestive surgeon expert",
               role: "Résécabilité chirurgicale, rapports vasculaires, marges R0/R1 et stratégie péri-opératoire en chirurgie digestive.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: oncologyGuidelinesByOrgan,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
                 "Tu es chirurgien digestif et viscéral. Évalue la résécabilité technique, les contacts vasculaires et les options d'exérèse selon les référentiels TNCD applicables à l'organe primitif.",
@@ -1665,7 +1688,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "medical oncologist expert",
               role: "Traitements systémiques (chimiothérapie, thérapies ciblées, immunothérapie), biomarqueurs et tolérance OMS/DPD.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: oncologyGuidelinesByOrgan,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
                 "Tu es oncologue médical digestif. Confronte les lignes systémiques, biomarqueurs (MSI/MMR, RAS/BRAF, HER2) et l'état général aux référentiels TNCD.",
@@ -1673,7 +1696,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "radiation oncologist expert",
               role: "Radiochimiothérapie néoadjuvante ou exclusive, radiothérapie stéréotaxique (SBRT) et indications palliatives.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: oncologyGuidelinesByOrgan,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
                 "Tu es oncologue radiothérapeute. Évalue les indications de radiochimiothérapie concomitante, de TNT ou de radiothérapie stéréotaxique selon le TNCD.",
@@ -1681,7 +1704,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "radiologist expert",
               role: "Bilan d'extension TDM/IRM/TEP-TDM, critères RECIST 1.1, rapports vasculaires et caractérisation hépatique.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: oncologyGuidelinesByOrgan,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
                 "Tu es radiologue spécialisé en imagerie oncologique digestive. Analyse l'extension locorégionale, la réponse RECIST 1.1 et les examens d'imagerie manquants.",
@@ -1689,7 +1712,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "gastroenterologist expert",
               role: "Endoscopie diagnostique et interventionnelle, écho-endoscopie avec biopsie, drainage biliaire et support nutritionnel.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: oncologyGuidelinesByOrgan,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
                 "Tu es hépato-gastro-entérologue et endoscopiste interventionnel. Évalue le drainage biliaire, l'écho-endoscopie, la fonction hépatique Child-Pugh et le support nutritionnel.",
@@ -1697,7 +1720,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "pathologist expert",
               role: "Typage et grade histologique, stade pTNM, marges d'exérèse, immunohistochimie MMR/MSI et adéquation biopsique.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: oncologyGuidelinesByOrgan,
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
                 "Tu es médecin anatomopathologiste digestif. Vérifie la preuve histologique, le grade, le statut MMR/MSI/HER2 et l'exhaustivité du compte rendu anatomopathologique.",

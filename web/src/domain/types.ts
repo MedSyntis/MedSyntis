@@ -221,7 +221,7 @@ export interface AgentModuleInfo {
   icon: string;
   role: string;
   description: string;
-  guidelines: string[];
+  guidelines: string[] | Record<string, string[]>;
   models?: string[];
   systemPrompt?: string;
   userPrompts?: AgentUserPromptItem[];

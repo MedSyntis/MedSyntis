@@ -1,4 +1,5 @@
 import inspect
+from collections.abc import Sequence
 from typing import Any, ClassVar, cast
 
 from src.application.agent.agent import MedSyntisAgent
@@ -80,6 +81,16 @@ class Agents:
     class Expert_model(MedSyntisAgent):
         expert_type: ClassVar[str] = ""
         system_prompt: ClassVar[str] = ""
+
+        @classmethod
+        def get_catalog_resources(
+            cls,
+            available_files: Sequence[str] | None = None,
+        ) -> list[str] | dict[str, list[str]]:
+            """Return all PDF guidelines in the domain directory, or fallback to `cls.ressources`."""
+            if available_files:
+                return list(available_files)
+            return list(getattr(cls, "ressources", None) or [])
 
         @classmethod
         def get_system_prompt(cls) -> str:

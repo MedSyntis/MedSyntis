@@ -8,7 +8,7 @@ import type {
 import type { QueueDashboardView } from "../application/use-cases/queue-admin.use-case.js";
 import type { WorklistViewResult } from "../application/use-cases/worklist.use-case.js";
 import { getAgentPresentation, getDomainQuickPrompts } from "../domain/catalog.js";
-import { t, tr } from "../domain/i18n.js";
+import { t, tr, translateValue } from "../domain/i18n.js";
 import {
   deriveCompletenessInfo,
   deriveOrientationInfo,
@@ -3012,6 +3012,27 @@ export function renderAgentsPage(
   const domainParam = encodeURIComponent(session.domain);
   const resourceMap = new Map(resources.map((r) => [r.filename, r]));
 
+  const renderResourceListItem = (g: string) => {
+    const resDoc = resourceMap.get(g);
+    const isIndexed = resDoc ? resDoc.indexed : resources.length === 0;
+    return `<li class="ds-file-list__item">
+      ${iconSvg("ic-book")}
+      <a class="ds-file-list__name" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">${esc(g)}</a>
+      <span class="ds-badge ${isIndexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">
+        ${iconSvg(isIndexed ? "ic-check-circle" : "ic-warning")}
+        ${isIndexed ? "Indexé" : "À indexer"}
+      </span>
+      <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">
+        ${iconSvg("ic-eye")} Consulter
+      </a>
+      <form method="post" action="/guidelines/${encodeURIComponent(g)}/reindex?domain=${domainParam}" style="display:inline-flex">
+        <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm">
+          ${iconSvg("ic-refresh")} Ré-indexer
+        </button>
+      </form>
+    </li>`;
+  };
+
   const renderSingleAgentCard = (a: AgentModuleInfo) => {
     const modelsHtml =
       a.models && a.models.length > 0
@@ -3023,33 +3044,48 @@ export function renderAgentsPage(
             .join("")
         : "";
 
-    const attachedResourcesHtml =
-      a.guidelines.length === 0
+    const isGroupedGuidelines = !Array.isArray(a.guidelines);
+    const groupedEntries = isGroupedGuidelines
+      ? Object.entries(a.guidelines as Record<string, string[]>)
+      : [];
+    const flatGuidelines = Array.isArray(a.guidelines)
+      ? a.guidelines
+      : Array.from(new Set(groupedEntries.flatMap(([, pdfs]) => pdfs)));
+
+    const attachedResourcesLabel = isGroupedGuidelines
+      ? `Référentiels TNCD sélectionnés automatiquement par organe primitif (${flatGuidelines.length} PDF · ${groupedEntries.length} localisations) :`
+      : `Référentiels du domaine rattachés automatiquement (${flatGuidelines.length}) :`;
+
+    const attachedResourcesHtml = isGroupedGuidelines
+      ? `<div class="ds-subcards" aria-label="Référentiels rattachés par organe" data-testid="agent-resources-${esc(a.name)}">
+          ${groupedEntries
+            .map(
+              ([
+                organ,
+                pdfs,
+              ]) => `<div class="ds-subcard" data-testid="agent-organ-resources-${esc(a.name)}-${esc(organ)}">
+                <div class="ds-subcard__header">
+                  <span class="ds-subcard__title">${esc(translateValue(organ, lang))}</span>
+                  <span class="ds-badge ds-badge--neutral ds-badge--sm">${pdfs.length} PDF</span>
+                </div>
+                <ul class="ds-file-list">
+                  ${pdfs.map(renderResourceListItem).join("")}
+                </ul>
+              </div>`,
+            )
+            .join("")}
+        </div>`
+      : flatGuidelines.length === 0
         ? `<p class="ds-small ds-muted">Aucune ressource PDF rattachée (agent transversal d'extraction ou de coordination).</p>`
         : `<ul class="ds-file-list" aria-label="Ressources documentaires rattachées" data-testid="agent-resources-${esc(a.name)}">
-            ${a.guidelines
-              .map((g) => {
-                const resDoc = resourceMap.get(g);
-                const isIndexed = resDoc ? resDoc.indexed : true;
-                return `<li class="ds-file-list__item">
-                  ${iconSvg("ic-book")}
-                  <a class="ds-file-list__name" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">${esc(g)}</a>
-                  <span class="ds-badge ${isIndexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">
-                    ${iconSvg(isIndexed ? "ic-check-circle" : "ic-warning")}
-                    ${isIndexed ? "Indexé" : "À indexer"}
-                  </span>
-                  <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">
-                    ${iconSvg("ic-eye")} Consulter
-                  </a>
-                  <form method="post" action="/guidelines/${encodeURIComponent(g)}/reindex?domain=${domainParam}" style="display:inline-flex">
-                    <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm">
-                      ${iconSvg("ic-refresh")} Ré-indexer
-                    </button>
-                  </form>
-                </li>`;
-              })
-              .join("")}
+            ${flatGuidelines.map(renderResourceListItem).join("")}
           </ul>`;
+
+    const summaryGuidelinesText = isGroupedGuidelines
+      ? `Par organe (${groupedEntries.map(([org]) => translateValue(org, lang)).join(", ")})`
+      : flatGuidelines.length > 0
+        ? flatGuidelines.join(", ")
+        : a.role;
 
     const userPromptsHtml =
       a.userPrompts && a.userPrompts.length > 0
@@ -3084,13 +3120,13 @@ export function renderAgentsPage(
         <span class="ds-section__title">${iconSvg(a.icon)} ${esc(a.label)}</span>
         <code class="ds-small ds-muted ds-mono">${esc(a.name)}</code>
         ${modelsHtml}
-        <span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-book", "ds-icon--xs")} ${a.guidelines.length} référentiel(s)</span>
-        <span class="ds-section__summary">${a.guidelines.length > 0 ? esc(a.guidelines.join(", ")) : esc(a.role)}</span>
+        <span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-book", "ds-icon--xs")} ${isGroupedGuidelines ? `${flatGuidelines.length} référentiel(s) · par organe` : `${flatGuidelines.length} référentiel(s)`}</span>
+        <span class="ds-section__summary">${esc(summaryGuidelinesText)}</span>
       </summary>
       <div class="ds-section__body">
         ${a.role ? `<p class="ds-small ds-muted" style="margin:0">${esc(a.role)}</p>` : ""}
         <div class="ds-stack ds-stack--sm">
-          <span class="ds-label">${iconSvg("ic-book", "ds-icon--xs")} Ressources documentaires rattachées (${a.guidelines.length}) :</span>
+          <span class="ds-label">${iconSvg("ic-book", "ds-icon--xs")} ${esc(attachedResourcesLabel)}</span>
           ${attachedResourcesHtml}
         </div>
         ${userPromptsHtml}

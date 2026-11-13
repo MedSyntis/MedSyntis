@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 
 from src.application.paths import UnsafePathError, safe_path
 from src.application.reader import DocumentReader
+from src.application.ressources import Ressources
 from src.application.use_cases import (
     PatientMDTFormExtractionService,
     PatientRecordService,
@@ -372,7 +373,7 @@ def chat_with_patient_record(
             config=effective_config,
             patient_readers=patient_readers,
             ressources=record_service.form_cls.resolve_agent_ressources(
-                latest_doc, agent_cls
+                latest_doc, agent_cls, Ressources.list_from_config(effective_config)
             ),
         )
         resp = agent.ask(request.message)
@@ -760,7 +761,7 @@ def chat_with_patient_agent(
             config=effective_config,
             mtd=reader,
             ressources=record_service.form_cls.resolve_agent_ressources(
-                form_doc, agent_cls
+                form_doc, agent_cls, Ressources.list_from_config(effective_config)
             ),
         )
         resp = agent.ask(request.message)

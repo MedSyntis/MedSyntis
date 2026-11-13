@@ -445,7 +445,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
             {
               name: "digestive surgeon expert",
               role: "Chirurgie digestive",
-              resources: ["TNCD.pdf"],
+              resources: { Pancreas: ["TNCDPANCREAS.pdf"] },
               models: ["mistral"],
               system_prompt: "Tu es expert",
             },

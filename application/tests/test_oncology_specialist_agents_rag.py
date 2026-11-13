@@ -132,6 +132,19 @@ class TestOncologySpecialistAgentsAndDynamicResources:
             )
             == SmaAgents.Neurologist_expert_agent.ressources
         )
+        assert PatientMDTSmaForm.resolve_agent_ressources(
+            {},
+            SmaAgents.Neurologist_expert_agent,
+            ["pnds_sma_2026.pdf", "argumentaire_sma_2026.pdf"],
+        ) == ["pnds_sma_2026.pdf", "argumentaire_sma_2026.pdf"]
+        assert (
+            PatientMDTSmaForm.resolve_agent_ressources(
+                {},
+                SmaAgents.Administratives_agent,
+                ["pnds_sma_2026.pdf"],
+            )
+            == []
+        )
 
     @patch("src.application.agent.agent.get_llm_client")
     @patch("src.application.agent.agent.create_agent")

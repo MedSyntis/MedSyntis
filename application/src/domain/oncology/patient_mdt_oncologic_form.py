@@ -305,8 +305,10 @@ class PatientMDTOncologicForm(PatientMDTForm):
         cls,
         doc_or_form: "dict[str, Any] | PatientMDTForm | None",
         agent_cls: type[MedSyntisAgent],
+        available_files: list[str] | None = None,
     ) -> list[str]:
         """Resolve organ-scoped TNCD guideline PDFs for specialist agents based on `TumorLocation`."""
+        _ = available_files
         if not (
             isinstance(agent_cls, type) and issubclass(agent_cls, Agents.Expert_model)
         ):
