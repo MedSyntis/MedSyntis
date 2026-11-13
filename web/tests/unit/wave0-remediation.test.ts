@@ -108,7 +108,11 @@ describe("Wave 0 Remediation (#30 & #31)", () => {
     const adminSma = getDomainUserPromptsForAgent("Administratives_agent", "sma", "fr");
     expect(adminSma.map((p) => p.section)).toContain("MotorFunctionStatus");
 
-    const specialistOnco = getDomainUserPromptsForAgent("pancreas expert", "oncology", "fr");
+    const specialistOnco = getDomainUserPromptsForAgent(
+      "digestive surgeon expert",
+      "oncology",
+      "fr",
+    );
     expect(specialistOnco.map((p) => p.section)).toEqual([
       "ExpertAnswer",
       "CareOrientationProposal",

@@ -158,7 +158,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
           missing_count: 2,
           care_adaptation_suggested: true,
           proposed_care_type: "Gemcitabine",
-          specialties: ["pancreas expert"],
+          specialties: ["digestive surgeon expert"],
           processing_status: "COMPLETED",
           processing_step: null,
           processing_progress_pct: 100,
@@ -313,7 +313,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
                   suggested_priority: "medium",
                 },
                 ExpertAnswer: {
-                  "pancreas expert": { expert_relevant: true, patient_priority: "high" },
+                  "digestive surgeon expert": { expert_relevant: true, patient_priority: "high" },
                 },
                 manual_edits: {
                   PatientAdministrative: { is_manual: true, edited_by: "Dr Test" },
@@ -352,7 +352,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
               patient_id: "P-1",
               patient: "Fictive Jeanne",
               missing: ["IRM"],
-              experts: ["pancreas expert"],
+              experts: ["digestive surgeon expert"],
               processing_status: "COMPLETED",
             },
           ],
@@ -443,8 +443,8 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
           status: 200,
           json: async () => [
             {
-              name: "pancreas expert",
-              role: "Expert pancréas",
+              name: "digestive surgeon expert",
+              role: "Chirurgie digestive",
               resources: ["TNCD.pdf"],
               models: ["mistral"],
               system_prompt: "Tu es expert",
@@ -541,8 +541,8 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
             session_date: "2026-11-12",
             sort_strategy: "urgency_first",
             defer_incomplete_files: true,
-            available_experts: ["pancreas expert"],
-            attending_experts: ["pancreas expert"],
+            available_experts: ["digestive surgeon expert"],
+            attending_experts: ["digestive surgeon expert"],
             items: [
               {
                 position: 1,
@@ -552,14 +552,14 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
                 urgency: "high",
                 urgency_score: 90,
                 is_complete: true,
-                required_experts: ["pancreas expert"],
-                present_required_experts: ["pancreas expert"],
+                required_experts: ["digestive surgeon expert"],
+                present_required_experts: ["digestive surgeon expert"],
                 absent_required_experts: [],
               },
             ],
             expert_windows: [
               {
-                expert_name: "pancreas expert",
+                expert_name: "digestive surgeon expert",
                 is_attending: true,
                 case_count: 1,
                 urgent_case_count: 1,
@@ -788,8 +788,8 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
         sessionDate: "2026-11-15",
         sortStrategy: "hybrid",
         deferIncompleteFiles: false,
-        attendingExperts: ["pancreas expert"],
-        toggleExpert: "pancreas expert",
+        attendingExperts: ["digestive surgeon expert"],
+        toggleExpert: "digestive surgeon expert",
         patientIds: ["P-1"],
         resetEnrolledPatients: false,
       },

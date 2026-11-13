@@ -120,7 +120,7 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 #### Trigger Full or Single-Section Reprocessing (`POST /api/v1/patientmdtform/{filename}/process`)
 ```json
 {
-  "model_name": "Chemotherapy",
+  "model_name": "ChemotherapyTreament",
   "preserve_manual_edits": true
 }
 ```
@@ -130,9 +130,14 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 ```json
 {
   "section_data": {
-    "chemotherapy_name": "Modified FOLFIRINOX (8 cycles validated by MDT)"
+    "chemotherapy": true,
+    "chemotherapy_list": [
+      {
+        "chemotherapy_name": "Modified FOLFIRINOX (8 cycles)"
+      }
+    ]
   },
-  "edited_by": "Dr. Martin"
+  "edited_by": "MDT Coordinator"
 }
 ```
 
@@ -162,7 +167,7 @@ Every `/api/v1/*` response echoes the resolved domain in the `X-MedSyntis-Domain
 #### Link Form to Existing Patient (`POST /api/v1/patientmdtform/{filename}/link-patient`)
 ```json
 {
-  "target_patient_id": "roussel_marion_1968_04_12",
+  "target_patient_id": "pat_8f3c2a19d4e7b012",
   "override_date_rcp": "2026-07-20",
   "edited_by": "MDT Secretariat"
 }
@@ -188,7 +193,7 @@ Used to manage, view, index, and query national scientific guidelines (**TNCD** 
 | Method | Path | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/v1/resources` | List all guideline PDFs in the domain's resources directory with `is_indexed`, `size_bytes`, and `updated_at` (`list[ResourceIndexResponse]`). |
-| `GET` | `/api/v1/resources/{filename}/file` | Serve a clinical guideline PDF (or dynamically resolved citation target, with optional `?form_file=...` fallback) inline (`application/pdf`). |
+| `GET` | `/api/v1/resources/{filename}/file` | Serve a clinical guideline PDF inline (`application/pdf`). |
 | `POST` | `/api/v1/resources/upload` | Upload a new scientific reference PDF (`multipart/form-data`, max 50 MB) into the domain's resources directory (`ResourceIndexResponse`). |
 | `POST` | `/api/v1/resources/{filename}/index` | Parse, chunk, and index a clinical reference PDF into the domain's Milvus/Chroma vector store (`ResourceIndexedResponse`). |
 | `POST` | `/api/v1/resources/{filename}/chat` | Query an indexed clinical guideline via the `Ressource Assistant` RAG agent (`ResourceChatRequest` -> `ChatResponse`). |
@@ -217,7 +222,11 @@ Manages pre-MDT session scheduling, specialist quorum calculation, and passage-o
   "session_date": "2026-11-20",
   "sort_strategy": "hybrid",
   "defer_incomplete_files": true,
-  "attending_experts": ["pancreas expert", "colon expert"]
+  "attending_experts": [
+    "digestive surgeon expert",
+    "medical oncologist expert",
+    "radiologist expert"
+  ]
 }
 ```
 Supported `sort_strategy` values:

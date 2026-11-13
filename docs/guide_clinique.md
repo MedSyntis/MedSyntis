@@ -94,7 +94,7 @@ Used by the **MDT Coordinator / Session Chair** and **MDT Medical Secretary** to
 ### 1. Enrolling Cases & Selecting Attending Specialists
 * **One-Click Session Setup (`Schedule New Meeting`)**: Set the upcoming **MDT Session Date**, select the **Attending Specialists** present for the session, and enroll candidate patients from the worklist (individually or in bulk: all candidates, urgent cases, or complete dossiers).
 * **Specialty Quorum Verification**: MedSyntis cross-checks the specialties required by each enrolled patient against the list of attending specialists:
-  * Computes contiguous **Specialist Passage Windows** (e.g., *Pancreas Expert: Cases #1 to #4*) so specialists know exactly when their presence is required.
+  * Computes contiguous **Specialist Passage Windows** (e.g., *Digestive Surgery: Cases #1 to #4*) so specialists know exactly when their presence is required.
   * Raises immediate **Quorum Warnings** (`quorum_warning_count`) on any case where a required specialist is not marked as attending.
 
 ### 2. Choosing Among the 4 Sorting Strategies (`sort_strategy`)
@@ -128,7 +128,7 @@ Inside each patient's **Pre-MDT Orientation & Opinions** tab:
 
 ### 3. Querying the AI Co-Pilot & National Reference Guidelines (`/guidelines`)
 * **Contextual Dossier AI Co-Pilot (Floating Side Sheet)**: Click the **`AI Assistant`** button at the bottom right of any patient dossier to open the non-blocking side sheet:
-  * Select the **target specialist agent** (e.g., `pancreas expert`, `colon expert`, `sma neurologist`).
+  * Select the **target specialist agent** (e.g., `digestive surgeon expert`, `medical oncologist expert`, `neurologist expert`).
   * Choose the **query scope**: **Current MDT Form Only** or **Full Longitudinal Patient Dossier** (which synthesizes all historical MDT forms and AI extractions).
   * Click any **suggested clinical question** or ask a free-text question to verify a detail during the board discussion.
 * **Dedicated Scientific Guidelines Library (`/guidelines`)**: Browse all indexed **TNCD** and **PNDS** PDF reference guidelines in full screen and query the **Resource Assistant** to retrieve verbatim guideline recommendations with page citations at any time.

@@ -205,19 +205,45 @@ class PatientMDTFormExtractionService:
         section_name = model_cls.__name__
         t_start = time.perf_counter()
 
-        agents_list = getattr(model_cls, "agents", None) or []
+        agents_list = list(getattr(model_cls, "agents", None) or [])
         is_collaborative = bool(getattr(model_cls, "collaborative", False))
         question = getattr(model_cls, "question", None)
 
-        if is_collaborative and len(agents_list) > 1:
+        if is_collaborative and len(agents_list) >= 1:
+            debate_agents = list(agents_list)
+            expert_ans = target_form.sections.get("ExpertAnswer")
+            if isinstance(expert_ans, dict) and expert_ans:
+                relevant_names = {
+                    str(ag_name).strip()
+                    for ag_name, ag_val in expert_ans.items()
+                    if (
+                        ag_val.model_dump()
+                        if isinstance(ag_val, BaseModel)
+                        else (ag_val if isinstance(ag_val, dict) else {})
+                    ).get("expert_relevant")
+                }
+                if relevant_names:
+                    filtered = [
+                        cls_ag
+                        for cls_ag in debate_agents
+                        if str(getattr(cls_ag, "agent_name", "")).strip()
+                        in relevant_names
+                    ]
+                    if filtered:
+                        debate_agents = filtered
+
+            debate_ressources = self.form_cls.resolve_agent_ressources(
+                target_form, debate_agents[0]
+            )
             debate_res = collaborative_debate(
-                agents_classes=agents_list,
+                agents_classes=debate_agents,
                 question=question,
                 output_format=model_cls,
                 config=self.config,
                 mtd=target_reader,
                 logger=self.logger,
                 callbacks=callbacks,
+                ressources=debate_ressources,
             )
             serialized_value = _serialize_dates(
                 debate_res.model_dump()
@@ -231,6 +257,9 @@ class PatientMDTFormExtractionService:
                     config=self.config,
                     mtd=target_reader,
                     output_format=model_cls,
+                    ressources=self.form_cls.resolve_agent_ressources(
+                        target_form, agent_cls
+                    ),
                 )
                 ans = agent.ask(question, callbacks=callbacks)
                 ans_dict = (
@@ -249,6 +278,9 @@ class PatientMDTFormExtractionService:
                 config=self.config,
                 mtd=target_reader,
                 output_format=model_cls,
+                ressources=self.form_cls.resolve_agent_ressources(
+                    target_form, agent_cls
+                ),
             )
             ans = agent.ask(question, callbacks=callbacks)
             ans_dict = (

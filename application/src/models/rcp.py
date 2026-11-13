@@ -81,7 +81,7 @@ class LinkPatientRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     agent_name: str = Field(
-        description="Expert agent name to interact with (e.g. 'pancreas expert')"
+        description="Expert agent name to interact with (e.g. 'digestive surgeon expert')"
     )
     message: str = Field(description="Question or instruction for the agent")
     language: Optional[Literal["french", "english"]] = Field(

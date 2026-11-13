@@ -32,6 +32,7 @@ def _build_debate_checkpoint_key(
     output_format: Any,
     question: str | None,
     agents_classes: list[type[MedSyntisAgent]],
+    ressources: list[str] | None = None,
 ) -> tuple[Any, ...] | None:
     doc_name = getattr(mtd, "document", None) if mtd is not None else None
     if not isinstance(doc_name, str) or not doc_name.strip():
@@ -43,7 +44,15 @@ def _build_debate_checkpoint_key(
         str(getattr(cls, "agent_name", None) or getattr(cls, "__name__", str(cls)))
         for cls in agents_classes
     )
-    return (doc_name.strip(), file_hash, format_name, question or "", agent_ids)
+    res_key = tuple(ressources) if ressources is not None else None
+    return (
+        doc_name.strip(),
+        file_hash,
+        format_name,
+        question or "",
+        agent_ids,
+        res_key,
+    )
 
 
 def _get_debate_checkpoint(
@@ -93,6 +102,7 @@ def collaborative_debate(
     logger: Any,
     coordinator_agent_cls: type["MedSyntisAgent"] | None = None,
     callbacks: list | None = None,
+    ressources: list[str] | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
         domain = config.domain
@@ -107,6 +117,7 @@ def collaborative_debate(
         output_format=output_format,
         question=question,
         agents_classes=agents_classes,
+        ressources=ressources,
     )
     checkpoint = _get_debate_checkpoint(checkpoint_key) or {}
     cached_round1 = checkpoint.get("round1")
@@ -122,7 +133,19 @@ def collaborative_debate(
         # Step 0 : init agents, name them and assign resources to them
         agents = []
         for magent in agents_classes:
-            a = magent(config=config, mtd=mtd, output_format=DebateTurn)
+            if ressources is not None:
+                a = magent(
+                    config=config,
+                    mtd=mtd,
+                    output_format=DebateTurn,
+                    ressources=ressources,
+                )
+            else:
+                a = magent(
+                    config=config,
+                    mtd=mtd,
+                    output_format=DebateTurn,
+                )
             agents.append(a)
 
         # Step 1: Initial Turn (Parallel Reasoning with DebateTurn format)
@@ -155,7 +178,7 @@ def collaborative_debate(
                     logger.error(
                         "Error getting Round 1 opinion from %s (skipping failed expert): %s",
                         magent.agent_name,
-                        e,
+                        MedSyntisAgent._summarize_validation_error(e),
                     )
 
             if not opinions:
@@ -194,7 +217,7 @@ def collaborative_debate(
                 logger.error(
                     "Error getting Round 2 opinion from %s: %s",
                     magent.agent_name,
-                    e,
+                    MedSyntisAgent._summarize_validation_error(e),
                 )
                 if magent.agent_name in opinions:
                     updated_opinions[magent.agent_name] = opinions[magent.agent_name]
@@ -246,7 +269,10 @@ def collaborative_debate(
         _evict_debate_checkpoint(checkpoint_key)
         return datas
     except Exception as e:
-        logger.error(f"Error during debate synthesis: {e}")
+        logger.error(
+            "Error during debate synthesis: %s",
+            MedSyntisAgent._summarize_validation_error(e),
+        )
         raise e
     finally:
         del coordinator

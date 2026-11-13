@@ -272,6 +272,16 @@ class PatientMDTForm:
     )
 
     @classmethod
+    def resolve_agent_ressources(
+        cls,
+        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
+        agent_cls: type[MedSyntisAgent],
+    ) -> list[str]:
+        """Return the effective RAG resource filenames for `agent_cls` on `doc_or_form`."""
+        _ = doc_or_form
+        return list(getattr(agent_cls, "ressources", None) or [])
+
+    @classmethod
     def is_section_manually_editable(
         cls, section_or_model: str | type[BaseModel]
     ) -> bool:
@@ -991,16 +1001,17 @@ class PatientMDTForm:
         ] or sorted(expert_priority_entries, key=lambda x: x[1], reverse=True)
 
         expert_labels = {
-            "pancreas expert": "Pancréas",
-            "oesophagus expert": "Œsophage",
-            "hepatocellular expert": "Foie & CHC",
+            "digestive surgeon expert": "Chirurgie digestive",
+            "medical oncologist expert": "Oncologie médicale",
+            "radiation oncologist expert": "Radiothérapie",
+            "radiologist expert": "Radiologie",
+            "gastroenterologist expert": "Gastro-entérologie",
+            "pathologist expert": "Anatomopathologie",
             "neurologist expert": "Neurologie",
             "geneticist expert": "Génétique",
             "pulmonologist expert": "Pneumologie",
             "physiotherapy expert": "MPR / Kinésithérapie",
             "orthopedist expert": "Orthopédie & Rachis",
-            "radiotherapy": "Radiothérapie",
-            "anatomopathologie": "Anatomopathologie",
         }
         urgency_reasons: list[str] = []
         seen_reasons: set[str] = set()

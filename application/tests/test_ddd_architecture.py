@@ -136,8 +136,8 @@ class TestDDDArchitecturalBoundaries:
         from src.domain.oncology.agents import Agents as OncoAgents
 
         assert OncoAgents.Expert_model.system_prompt == ""
-        prompt = OncoAgents.Pancreas_expert_agent.get_system_prompt()
-        assert "pancreas diseases" in prompt
+        spec_prompt = OncoAgents.Digestive_surgeon_expert_agent.get_system_prompt()
+        assert "digestive oncology surgery" in spec_prompt
         assert OncoAgents.Expert_model.system_prompt == ""
 
     def test_repositories_and_executor_satisfy_domain_protocols(self):
@@ -146,6 +146,49 @@ class TestDDDArchitecturalBoundaries:
         assert isinstance(InMemoryDocumentCacheRepository(), DocumentCacheRepository)
         assert isinstance(InMemoryBugReportRepository(), BugReportRepository)
         assert isinstance(PatientMDTFormQueueJobExecutor(), QueueJobExecutor)
+
+    def test_cross_domain_orchestration_has_zero_domain_specific_leakage(self):
+        """
+        Ensure cross-domain orchestration modules (`collaborate.py`, `agent.py`, `tools.py`,
+        `patient_mdt_form_extraction.py`, `patient_record.py`, `mdt_agenda.py`) never import
+        `src.domain.oncology.*` or `src.domain.sma.*` and never leak domain-specific symbols
+        like `tumor_location` into generic signatures or projections.
+        """
+        src_root = Path(__file__).resolve().parent.parent / "src"
+        cross_domain_files = [
+            src_root / "application" / "agent" / "collaborate.py",
+            src_root / "application" / "agent" / "agent.py",
+            src_root / "application" / "agent" / "tools.py",
+            src_root / "application" / "use_cases" / "patient_mdt_form_extraction.py",
+            src_root / "application" / "use_cases" / "patient_record.py",
+            src_root / "application" / "use_cases" / "mdt_agenda.py",
+            src_root / "domain" / "mdt_agenda.py",
+        ]
+        forbidden_import_prefixes = ("src.domain.oncology", "src.domain.sma")
+        forbidden_tokens = ("tumor_location", "TumorLocation", "Quorum INCa")
+        violations: list[str] = []
+
+        for py_file in cross_domain_files:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            rel = py_file.relative_to(src_root)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith(forbidden_import_prefixes):
+                            violations.append(f"{rel}: forbidden import {alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and node.module.startswith(
+                        forbidden_import_prefixes
+                    ):
+                        violations.append(f"{rel}: forbidden from {node.module}")
+            for tok in forbidden_tokens:
+                if tok in source:
+                    violations.append(
+                        f"{rel}: contains domain-specific token '{tok}' instead of polymorphic PatientMDTForm hook"
+                    )
+
+        assert violations == [], f"Cross-domain DDD neutrality violations: {violations}"
 
 
 class TestPureDomainEntitiesAndValueObjects:
@@ -226,7 +269,7 @@ class TestPureDomainEntitiesAndValueObjects:
             },
             "TumorLocation": {"tumor_location": "Pancreas"},
             "ExpertAnswer": {
-                "pancreas expert": {
+                "digestive surgeon expert": {
                     "expert_relevant": True,
                     "patient_priority": "Patient must be treated urgently",
                     "why_relevant": "Urgence pancréatique",
@@ -244,8 +287,11 @@ class TestPureDomainEntitiesAndValueObjects:
         metrics = PatientMDTOncologicForm.extract_card_metrics(form)
         assert metrics["urgency"] == "Urgent"
         assert metrics["urgency_score"] == 2
-        assert metrics["experts"] == ["pancreas expert"]
-        assert "**Pancréas** : Urgence pancréatique" in metrics["urgency_reasons"]
+        assert metrics["experts"] == ["digestive surgeon expert"]
+        assert (
+            "**Chirurgie digestive** : Urgence pancréatique"
+            in metrics["urgency_reasons"]
+        )
         assert "Urgence pancréatique" in metrics["urgency_reason"]
         assert metrics["patient"] == "Jean Dupont"
 
@@ -253,17 +299,17 @@ class TestPureDomainEntitiesAndValueObjects:
         doc_non_rel = {
             **raw_doc,
             "ExpertAnswer": {
-                "pancreas expert": {
+                "digestive surgeon expert": {
                     "expert_relevant": True,
                     "patient_priority": "Patient is not urgent",
                     "why_relevant": "Surveillance standard post-opératoire",
                     "sources_relevant": [],
                     "suggestions": [],
                 },
-                "oesophagus expert": {
+                "radiation oncologist expert": {
                     "expert_relevant": False,
                     "patient_priority": "Patient must be treated urgently",
-                    "why_relevant": "Hors périmètre œsophagien",
+                    "why_relevant": "Hors périmètre radiothérapie",
                     "sources_relevant": [],
                     "suggestions": [],
                 },
@@ -272,9 +318,9 @@ class TestPureDomainEntitiesAndValueObjects:
         metrics_non_rel = PatientMDTOncologicForm.extract_card_metrics(doc_non_rel)
         assert metrics_non_rel["urgency"] == "Standard"
         assert metrics_non_rel["urgency_score"] == 0
-        assert metrics_non_rel["experts"] == ["pancreas expert"]
+        assert metrics_non_rel["experts"] == ["digestive surgeon expert"]
         assert metrics_non_rel["urgency_reasons"] == [
-            "**Pancréas** : Surveillance standard post-opératoire"
+            "**Chirurgie digestive** : Surveillance standard post-opératoire"
         ]
         assert "Hors périmètre" not in metrics_non_rel["urgency_reason"]
         # Without MTDCompleted section evaluated by AI, is_complete must be False and status is "pending"
@@ -379,9 +425,9 @@ class TestPureDomainEntitiesAndValueObjects:
         assert issubclass(sma_proposal_cls, BasePatientMDTForm.CareOrientationProposal)
         assert getattr(onco_proposal_cls, "collaborative", False) is True
         assert getattr(sma_proposal_cls, "collaborative", False) is True
-        assert len(onco_proposal_cls.agents) == 3
+        assert len(onco_proposal_cls.agents) == 6
         assert len(sma_proposal_cls.agents) == 5
-        assert len(PatientMDTOncologicForm.MTDCompleted.agents) == 3
+        assert len(PatientMDTOncologicForm.MTDCompleted.agents) == 6
         assert len(PatientMDTSmaForm.MTDCompleted.agents) == 5
         for ag in PatientMDTSmaForm.MTDCompleted.agents:
             for res_file in getattr(ag, "ressources", []):
@@ -524,7 +570,7 @@ class TestRepositoriesAndApplicationUseCases:
             file_new,
             {
                 "ExpertAnswer": {
-                    "pancreas expert": {
+                    "medical oncologist expert": {
                         "expert_relevant": True,
                         "patient_priority": "Patient must be treated urgently",
                     }

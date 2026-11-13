@@ -157,7 +157,7 @@ class TestManualSectionEditing:
             service.update_patient_mdt_form_section(
                 filename=filename,
                 section_name="ExpertAnswer",
-                section_data={"pancreas expert": {"expert_relevant": True}},
+                section_data={"medical oncologist expert": {"expert_relevant": True}},
             )
 
         # 5. Update MTDCompleted and verify card metrics reflect manual completeness override

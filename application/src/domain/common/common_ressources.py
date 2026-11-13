@@ -138,6 +138,15 @@ class PrimaryOrganEnum(str, Enum):
     extra_hepatic_bile_duct = "Extra-hepatic bile duct"
     unknown = "unknown"
 
+    @classmethod
+    def _missing_(cls, value: object) -> Optional["PrimaryOrganEnum"]:
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            for member in cls:
+                if cleaned in (member.value.lower(), member.name.lower()):
+                    return member
+        return None
+
 
 class TNCDCancerTypesEnum(str, Enum):
     ampulloma = "tumor of the ampulla of Vater"

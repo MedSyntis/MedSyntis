@@ -223,7 +223,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         missing_items: [],
         care_adaptation_suggested: false,
         proposed_care_type: "Poursuite FOLFIRINOX",
-        specialties: ["pancreas expert"],
+        specialties: ["digestive surgeon expert", "medical oncologist expert"],
       },
       markdownText: "# Compte rendu RCP du 03/06/2026\nPatient : Mme Jeanne FICTIVE...",
     };
@@ -280,7 +280,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         missing_items: [],
         care_adaptation_suggested: false,
         proposed_care_type: "Réévaluation après 6 cures",
-        specialties: ["pancreas expert"],
+        specialties: ["digestive surgeon expert", "medical oncologist expert"],
       },
       markdownText: "# Compte rendu RCP du 14/10/2026\nPatient : Mme Jeanne FICTIVE...",
     };
@@ -370,13 +370,13 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             "Confrontation des pièces présentes aux prérequis du référentiel TNCD Pancréas : 2 pièces complémentaires sont recommandées avant discussion d'exérèse.",
         },
         ExpertAnswer: {
-          "pancreas expert": {
+          "digestive surgeon expert": {
             expert_relevant: true,
             patient_priority: "Patient must be treated urgently",
             why_relevant:
               "Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
             reasoning_thinking:
-              "Analyse par l'agent expert Pancréas : l'ascension rapide du CA 19-9 (+38 % en 3 semaines) malgré 6 cures de FOLFIRINOX justifie une discussion prioritaire de changement de ligne (gemcitabine + nab-paclitaxel selon TNCD §4.2) et un TEP-TDM pour exclure des micrométastases.",
+              "Analyse par l'agent Chirurgie digestive : l'ascension rapide du CA 19-9 (+38 % en 3 semaines) malgré 6 cures de FOLFIRINOX justifie une discussion prioritaire de changement de ligne (gemcitabine + nab-paclitaxel selon TNCD §4.2) et un TEP-TDM pour exclure des micrométastases.",
             suggestions: [
               {
                 suggestion:
@@ -412,7 +412,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
               },
             ],
           },
-          Radiotherapy: {
+          "radiation oncologist expert": {
             expert_relevant: true,
             patient_priority: "Patient is not urgent",
             why_relevant: "Évaluation d'une chimioradiothérapie de clôture éventuelle.",
@@ -445,9 +445,9 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       metrics: {
         priority_level: "high",
         urgency_reason:
-          "**Pancréas** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.\n\nProgression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
+          "**Chirurgie digestive** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.\n\nProgression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
         urgency_reasons: [
-          "**Pancréas** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
+          "**Chirurgie digestive** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
           "Progression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
         ],
         is_complete: false,
@@ -458,7 +458,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ],
         care_adaptation_suggested: true,
         proposed_care_type: "Chimiothérapie 2e ligne (gemcitabine + nab-paclitaxel)",
-        specialties: ["pancreas expert", "Radiotherapy"],
+        specialties: ["digestive surgeon expert", "radiation oncologist expert"],
       },
       markdownText:
         "# Synthèse RCP du 06/11/2026 — Mme Jeanne FICTIVE (#A-1042)\n\n- **Diagnostic** : Adénocarcinome canalaire céphalique pancréatique cT3 N1 M0\n- **Biologie** : CA 19-9 à 412 U/mL (+38 %)\n- **Traitement reçu** : FOLFIRINOX 6 cures\n",
@@ -526,7 +526,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         missing_items: [],
         care_adaptation_suggested: false,
         proposed_care_type: "Protocole FLOT péri-opératoire",
-        specialties: ["oesophagus expert"],
+        specialties: ["gastroenterologist expert"],
       },
       markdownText:
         "# Synthèse RCP — M. Paul MODÈLE (#A-1037)\nAdénocarcinome bas œsophage cT2N0M0.",
@@ -816,7 +816,14 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       sessionDate: "2026-11-13",
       sortStrategy: "hybrid",
       deferIncompleteFiles: false,
-      attendingExperts: ["pancreas expert", "oesophagus expert", "hepatocellular expert"],
+      attendingExperts: [
+        "digestive surgeon expert",
+        "medical oncologist expert",
+        "radiation oncologist expert",
+        "radiologist expert",
+        "gastroenterologist expert",
+        "pathologist expert",
+      ],
       enrolledPatientIds: ["A-1042", "A-1037"],
       pinnedMap: new Map(),
       updatedAt: "2026-11-01T18:00:00Z",
@@ -1485,7 +1492,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           missing_items: [],
           care_adaptation_suggested: false,
           proposed_care_type: "Analyse initiale terminée",
-          specialties: domain === "sma" ? ["neurologist expert"] : ["pancreas expert"],
+          specialties: domain === "sma" ? ["neurologist expert"] : ["digestive surgeon expert"],
         },
       };
       this.forms.set(f.filename, newForm);
@@ -1642,39 +1649,63 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             {
               name: "Administrative",
               role: "Extraction structurée des données administratives, du statut OMS, de l'anatomopathologie, de l'imagerie et des lignes de chimiothérapie.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: [],
               models: ["mistral-nemo (temp=0.0)", "granite3.2-vision (OCR)"],
               systemPrompt:
                 "Tu es un assistant d'extraction clinique en oncologie digestive. Extrais chaque rubrique du dossier patient avec ancrage strict dans les pièces sources, sans extrapoler.",
             },
             {
-              name: "pancreas expert",
-              role: "Stratégie médico-chirurgicale des adénocarcinomes pancréatiques résécables, borderline et localement avancés.",
-              guidelines: ["TNCD_Pancreas_2026.pdf"],
+              name: "digestive surgeon expert",
+              role: "Résécabilité chirurgicale, rapports vasculaires, marges R0/R1 et stratégie péri-opératoire en chirurgie digestive.",
+              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
-                "Tu es oncologue digestif et chirurgien hépato-bilio-pancréatique. Confronte le dossier aux recommandations du TNCD Pancréas en citant systématiquement les chapitres et les pièces du dossier.",
+                "Tu es chirurgien digestif et viscéral. Évalue la résécabilité technique, les contacts vasculaires et les options d'exérèse selon les référentiels TNCD applicables à l'organe primitif.",
             },
             {
-              name: "oesophagus expert",
-              role: "Prise en charge des cancers œso-gastriques (FLOT péri-opératoire, radiochimiothérapie, immunothérapie).",
-              guidelines: ["TNCD_Oesophage_Estomac_2026.pdf"],
+              name: "medical oncologist expert",
+              role: "Traitements systémiques (chimiothérapie, thérapies ciblées, immunothérapie), biomarqueurs et tolérance OMS/DPD.",
+              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
-                "Tu es spécialiste des cancers œso-gastriques. Formule des propositions pré-RCP argumentées selon le référentiel TNCD Œsophage / Estomac.",
+                "Tu es oncologue médical digestif. Confronte les lignes systémiques, biomarqueurs (MSI/MMR, RAS/BRAF, HER2) et l'état général aux référentiels TNCD.",
             },
             {
-              name: "hepatocellular expert",
-              role: "Carcinome hépatocellulaire (classification BCLC, transplantation, TACE, traitements systémiques).",
-              guidelines: ["TNCD_Pancreas_2026.pdf"],
+              name: "radiation oncologist expert",
+              role: "Radiochimiothérapie néoadjuvante ou exclusive, radiothérapie stéréotaxique (SBRT) et indications palliatives.",
+              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
               models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
               systemPrompt:
-                "Tu es hépatologue et oncologue digestif spécialisé dans le carcinome hépatocellulaire (CHC). Évalue le score Child-Pugh, le stade BCLC et les options médico-chirurgicales selon le TNCD.",
+                "Tu es oncologue radiothérapeute. Évalue les indications de radiochimiothérapie concomitante, de TNT ou de radiothérapie stéréotaxique selon le TNCD.",
+            },
+            {
+              name: "radiologist expert",
+              role: "Bilan d'extension TDM/IRM/TEP-TDM, critères RECIST 1.1, rapports vasculaires et caractérisation hépatique.",
+              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
+              systemPrompt:
+                "Tu es radiologue spécialisé en imagerie oncologique digestive. Analyse l'extension locorégionale, la réponse RECIST 1.1 et les examens d'imagerie manquants.",
+            },
+            {
+              name: "gastroenterologist expert",
+              role: "Endoscopie diagnostique et interventionnelle, écho-endoscopie avec biopsie, drainage biliaire et support nutritionnel.",
+              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
+              systemPrompt:
+                "Tu es hépato-gastro-entérologue et endoscopiste interventionnel. Évalue le drainage biliaire, l'écho-endoscopie, la fonction hépatique Child-Pugh et le support nutritionnel.",
+            },
+            {
+              name: "pathologist expert",
+              role: "Typage et grade histologique, stade pTNM, marges d'exérèse, immunohistochimie MMR/MSI et adéquation biopsique.",
+              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
+              systemPrompt:
+                "Tu es médecin anatomopathologiste digestif. Vérifie la preuve histologique, le grade, le statut MMR/MSI/HER2 et l'exhaustivité du compte rendu anatomopathologique.",
             },
             {
               name: "MDT Coordinator",
               role: "Synthèse pré-RCP non prescriptive, contrôle de complétude et priorisation collégiale des dossiers.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
+              guidelines: [],
               models: ["mistral-nemo (temp=0.0)"],
               systemPrompt:
                 "Tu es le coordinateur médical de la RCP. Vérifie la complétude du dossier, synthétise les avis d'experts et propose un niveau de priorité de passage non prescriptif.",
@@ -1847,7 +1878,14 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           "physiotherapy expert",
           "orthopedist expert",
         ]
-      : ["pancreas expert", "oesophagus expert", "hepatocellular expert"];
+      : [
+          "digestive surgeon expert",
+          "medical oncologist expert",
+          "radiation oncologist expert",
+          "radiologist expert",
+          "gastroenterologist expert",
+          "pathologist expert",
+        ];
   }
 
   private ensureAgendaState(domain: ClinicalDomain) {

@@ -64,7 +64,7 @@ class Agents:
 
     class Coordinator_agent(MedSyntisAgent):
         agent_name: str = "MDT Coordinator"
-        ressources: ClassVar[list[str]] = []
+        ressources: list[str] = []
         system_prompt: ClassVar[str] = """
         You are the coordinator of a multidisciplinary team (MDT). Your role is to synthesize the clinical opinions and arguments provided by the specialists in the prompt into a pre-MDT synthesis for collegial review.
 
@@ -89,7 +89,7 @@ class Agents:
 
                 Instructions:
                 1. Use the `get_mtd_markdown` tool (or `get_patient_mtds_markdown` and `get_patient_ai_history` when consulting across multiple MDT sessions) to retrieve relevant information from the patient record.
-                2. Use the `search_on_ressources` tool to retrieve scientific informations to support your clinical reasoning.
+                2. When the `search_on_ressources` tool is available, use it to retrieve scientific guideline information to support your clinical reasoning; never fabricate external guideline `Reference` entries from memory (populate `sources_relevant` and `references` only from retrieved guidelines, otherwise return `[]`).
                 3. Answer the user's question by combining patient data and scientific evidence.
                 4. Respect stricly the response output format.
                 5. You can use tools multiple time for each element. Use multiple keywords or synonyms in your search query.
@@ -112,6 +112,7 @@ class Agents:
             reader: Any = None,
             additionnal_readers: list[Any] | None = None,
             patient_readers: list[Any] | None = None,
+            ressources: list[str] | None = None,
         ) -> None:
             # Set on the instance (`self`), never mutating `self.__class__.system_prompt`
             self.system_prompt = self.get_system_prompt()  # pyrefly: ignore [read-only]
@@ -124,4 +125,5 @@ class Agents:
                 reader=reader,
                 additionnal_readers=additionnal_readers,
                 patient_readers=patient_readers,
+                ressources=ressources,
             )

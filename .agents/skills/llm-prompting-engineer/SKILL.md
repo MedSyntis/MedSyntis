@@ -14,11 +14,15 @@ By default, the MedSyntis web interface and patient records are in French. The a
 - **Rule**: Standard instruction headers must start with:
   > `Answer in French language, not mention it in the answer.`
 
-### 2. Multi-specialty Clinical Personas
-MedSyntis supports three specific cancer specialty experts. System prompts must be structured to match:
-- **Pancreatic Cancer (pancreas expert)**: System prompt must focus strictly on pancreas diseases and rely on scientific evidence from `TNCDPANCREAS.pdf`.
-- **Esophageal Cancer (oesophagus expert)**: Focus strictly on esophagus diseases and scientific evidence from `TNCDOESOPHAGE.pdf`.
-- **Hepatocellular Cancer (hepatocellular expert)**: Focus strictly on liver/hepatocellular diseases and scientific evidence from `TNCDCHC.pdf`.
+### 2. Anonymous Practice-Specialty Personas & KV-Cache Invariance
+Digestive Oncology uses **6 anonymous hospital practice-specialty personas** (`Agents` in `src/domain/oncology/agents.py`, never named individuals):
+- `digestive surgeon expert` — surgical resectability, vascular contact, R0/R1 margins, perioperative morbidity.
+- `medical oncologist expert` — systemic chemotherapy, targeted therapy, immunotherapy, biomarkers, DPD/WHO fitness.
+- `radiation oncologist expert` — neoadjuvant/definitive chemoradiotherapy, TNT, SBRT, palliative radiotherapy.
+- `radiologist expert` — CT/MRI/PET staging, RECIST 1.1, vascular involvement, and hepatic lesion characterization.
+- `gastroenterologist expert` — diagnostic/interventional endoscopy, EUS-FNA/FNB, biliary/enteral stenting, portal hypertension.
+- `pathologist expert` — histological typing/grading, pTNM, margins, IHC/MMR/MSI, molecular tissue adequacy.
+- **KV-Cache Prefix Rule**: Never mutate `cls.system_prompt`. Keep specialist system prompts static and resolve organ-scoped TNCD resources dynamically via `form_cls.resolve_agent_ressources(...)` (`MedSyntisAgent(..., ressources=...)`) so `llama.cpp` KV-cache sharing across waves remains intact (`test_token_cache_phase2.py`).
 
 ### 3. Handling Output Formats & Parsing Failures
 Ensure Pydantic schemas are strictly respected. If LLMs fail to match the structure, utilize `ToolRetryMiddleware` and `ModelRetryMiddleware` configured with standard backoffs:

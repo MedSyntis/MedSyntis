@@ -66,39 +66,43 @@ class TestMDTAgendaDomainAndScheduler:
     def test_hybrid_strategy_prioritizes_urgent_then_expert_clusters_and_defers_incomplete(
         self,
     ):
-        experts = ["pancreas expert", "oesophagus expert", "hepatocellular expert"]
+        experts = [
+            "digestive surgeon expert",
+            "gastroenterologist expert",
+            "medical oncologist expert",
+        ]
         snapshots = {
             "p_std_panc_1": _make_snapshot(
                 "p_std_panc_1",
                 "Alice StandardPanc1",
                 urgency_score=0,
-                required_experts=["pancreas expert"],
+                required_experts=["digestive surgeon expert"],
             ),
             "p_semi_oeso": _make_snapshot(
                 "p_semi_oeso",
                 "Bruno SemiOeso",
                 urgency_score=1,
-                required_experts=["oesophagus expert"],
+                required_experts=["gastroenterologist expert"],
                 care_adaptation_suggested=True,
             ),
             "p_urg_panc": _make_snapshot(
                 "p_urg_panc",
                 "Claire UrgentPanc",
                 urgency_score=2,
-                required_experts=["pancreas expert"],
+                required_experts=["digestive surgeon expert"],
                 care_adaptation_suggested=True,
             ),
             "p_std_panc_2": _make_snapshot(
                 "p_std_panc_2",
                 "David StandardPanc2",
                 urgency_score=1,
-                required_experts=["pancreas expert"],
+                required_experts=["digestive surgeon expert"],
             ),
             "p_incomp_urg": _make_snapshot(
                 "p_incomp_urg",
                 "Eva IncompleteUrgent",
                 urgency_score=2,
-                required_experts=["pancreas expert"],
+                required_experts=["digestive surgeon expert"],
                 is_complete=False,
                 missing_items=["Biopsie", "Scanner"],
             ),
@@ -126,17 +130,17 @@ class TestMDTAgendaDomainAndScheduler:
         ordered_ids = [item.patient_id for item in res.items]
         # 1. Complete Urgent first: p_urg_panc
         assert ordered_ids[0] == "p_urg_panc"
-        # 2. Chained pancreas cluster (p_std_panc_2, p_std_panc_1) stays contiguous right after p_urg_panc!
+        # 2. Chained digestive surgeon cluster (p_std_panc_2, p_std_panc_1) stays contiguous right after p_urg_panc!
         assert ordered_ids[1:3] == ["p_std_panc_2", "p_std_panc_1"]
-        # 3. Oesophagus cluster next
+        # 3. Gastroenterologist cluster next
         assert ordered_ids[3] == "p_semi_oeso"
         # 4. Incomplete file deferred to the end despite urgency_score=2
         assert ordered_ids[4] == "p_incomp_urg"
         assert "Relégué en fin de séance" in res.items[4].rank_reason
 
-        # Check pancreas expert window (#1..#3 for complete cases, plus #5 incomplete)
+        # Check digestive surgeon expert window (#1..#3 for complete cases, plus #5 incomplete)
         panc_win = next(
-            w for w in res.expert_windows if w.expert_name == "pancreas expert"
+            w for w in res.expert_windows if w.expert_name == "digestive surgeon expert"
         )
         assert panc_win.case_count == 4
         assert panc_win.urgent_case_count == 2
@@ -145,31 +149,31 @@ class TestMDTAgendaDomainAndScheduler:
     def test_expert_grouping_strategy_groups_all_specialist_cases_across_urgency_tiers(
         self,
     ):
-        experts = ["pancreas expert", "oesophagus expert"]
+        experts = ["digestive surgeon expert", "gastroenterologist expert"]
         snapshots = {
             "p_urg_oeso": _make_snapshot(
                 "p_urg_oeso",
                 "Patient UrgOeso",
                 urgency_score=2,
-                required_experts=["oesophagus expert"],
+                required_experts=["gastroenterologist expert"],
             ),
             "p_urg_panc": _make_snapshot(
                 "p_urg_panc",
                 "Patient UrgPanc",
                 urgency_score=2,
-                required_experts=["pancreas expert"],
+                required_experts=["digestive surgeon expert"],
             ),
             "p_std_oeso": _make_snapshot(
                 "p_std_oeso",
                 "Patient StdOeso",
                 urgency_score=0,
-                required_experts=["oesophagus expert"],
+                required_experts=["gastroenterologist expert"],
             ),
             "p_std_panc": _make_snapshot(
                 "p_std_panc",
                 "Patient StdPanc",
                 urgency_score=0,
-                required_experts=["pancreas expert"],
+                required_experts=["digestive surgeon expert"],
             ),
         }
         agenda = MDTAgenda(
@@ -189,33 +193,36 @@ class TestMDTAgendaDomainAndScheduler:
             snapshots_by_patient=snapshots,
             available_experts=experts,
         )
-        # Both oesophagus cases are contiguous, and both pancreas cases are contiguous
+        # Both gastroenterologist cases are contiguous, and both digestive surgeon cases are contiguous
         for win in res.expert_windows:
             assert win.is_contiguous is True
             assert (win.last_position - win.first_position + 1) == win.case_count  # type: ignore[operator]
 
     def test_attending_experts_quorum_detection(self):
-        experts = ["pancreas expert", "hepatocellular expert"]
+        experts = ["digestive surgeon expert", "medical oncologist expert"]
         snapshots = {
             "p_needs_both": _make_snapshot(
                 "p_needs_both",
                 "Jean QuorumMissing",
                 urgency_score=2,
-                required_experts=["pancreas expert", "hepatocellular expert"],
+                required_experts=[
+                    "digestive surgeon expert",
+                    "medical oncologist expert",
+                ],
             ),
             "p_needs_panc": _make_snapshot(
                 "p_needs_panc",
                 "Marie QuorumFull",
                 urgency_score=2,
-                required_experts=["pancreas expert"],
+                required_experts=["digestive surgeon expert"],
             ),
         }
         agenda = MDTAgenda(
             agenda_id="next_mdt_oncology",
             domain="oncology",
             sort_strategy=MDTAgendaSortStrategy.URGENCY_FIRST,
-            # hepatocellular expert is absent
-            attending_experts=["pancreas expert"],
+            # medical oncologist expert is absent
+            attending_experts=["digestive surgeon expert"],
             entries=[
                 MDTAgendaEntry(
                     patient_id="p_needs_both", filename="a.pdf", manual_order=0
@@ -237,7 +244,7 @@ class TestMDTAgendaDomainAndScheduler:
         assert res.items[0].quorum_met is True
         assert res.items[1].patient_id == "p_needs_both"
         assert res.items[1].quorum_met is False
-        assert res.items[1].absent_required_experts == ["hepatocellular expert"]
+        assert res.items[1].absent_required_experts == ["medical oncologist expert"]
         assert res.items[1].expert_coverage_ratio == 0.5
         assert "Quorum incomplet" in res.items[1].rank_reason
 
@@ -269,7 +276,7 @@ class TestMDTAgendaServiceAndRouter:
                 "Dupont",
                 datetime(1960, 4, 10),
                 "Patient is not urgent",
-                ["pancreas expert"],
+                ["digestive surgeon expert"],
                 True,
                 [],
             ),
@@ -279,7 +286,7 @@ class TestMDTAgendaServiceAndRouter:
                 "Laurent",
                 datetime(1972, 8, 22),
                 "Patient must be treated urgently",
-                ["pancreas expert"],
+                ["digestive surgeon expert"],
                 True,
                 [],
             ),
@@ -289,7 +296,7 @@ class TestMDTAgendaServiceAndRouter:
                 "Bernard",
                 datetime(1955, 1, 5),
                 "Patient must be treated as soon as possible",
-                ["oesophagus expert"],
+                ["gastroenterologist expert"],
                 False,
                 ["Scanner thoracique"],
             ),
@@ -428,14 +435,14 @@ class TestMDTAgendaServiceAndRouter:
             assert unpinned["items"][1]["patient_id"] == martin_id
             assert unpinned["items"][1]["pinned"] is False
 
-            # 5. PATCH options: toggle pancreas expert off -> quorum warnings increase
+            # 5. PATCH options: toggle digestive surgeon expert off -> quorum warnings increase
             r_patch = client.patch(
                 "/api/v1/mdt-agenda?domain=oncology",
                 json={
                     "session_date": "2026-12-01",
                     "sort_strategy": "urgency_first",
                     "defer_incomplete_files": False,
-                    "toggle_expert": "pancreas expert",
+                    "toggle_expert": "digestive surgeon expert",
                 },
             )
             assert r_patch.status_code == 200
@@ -443,7 +450,7 @@ class TestMDTAgendaServiceAndRouter:
             assert patched["session_date"] == "2026-12-01"
             assert patched["sort_strategy"] == "urgency_first"
             assert patched["defer_incomplete_files"] is False
-            assert "pancreas expert" not in patched["attending_experts"]
+            assert "digestive surgeon expert" not in patched["attending_experts"]
             assert patched["quorum_warning_count"] == 2
 
             # 6. PUT /reorder -> manual order

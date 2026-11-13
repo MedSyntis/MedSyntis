@@ -115,22 +115,22 @@ class TestTokenCachePhase2PromptPrefix(unittest.TestCase):
         )
         admin_prompt = mock_create_agent.call_args_list[0].kwargs["system_prompt"]
 
-        OncologyAgents.Pancreas_expert_agent(
+        OncologyAgents.Digestive_surgeon_expert_agent(
             config=self.mock_config,
             mtd=self.reader_with_markdown,
             output_format=SectionSchemaBeta,
         )
-        pancreas_prompt = mock_create_agent.call_args_list[1].kwargs["system_prompt"]
+        surgeon_prompt = mock_create_agent.call_args_list[1].kwargs["system_prompt"]
 
-        OncologyAgents.Oesophagus_expert_agent(
+        OncologyAgents.Medical_oncologist_expert_agent(
             config=self.mock_config,
             mtd=self.reader_with_markdown,
             output_format=SectionSchemaBeta,
         )
-        oeso_prompt = mock_create_agent.call_args_list[2].kwargs["system_prompt"]
+        onco_prompt = mock_create_agent.call_args_list[2].kwargs["system_prompt"]
 
         common_prefix = os.path.commonprefix(
-            [admin_prompt, pancreas_prompt, oeso_prompt]
+            [admin_prompt, surgeon_prompt, onco_prompt]
         )
         self.assertIn(self.sample_patient_markdown.strip(), common_prefix)
         self.assertGreater(len(common_prefix), len(self.sample_patient_markdown))

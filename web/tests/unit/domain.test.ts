@@ -255,7 +255,7 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
         missingItems: ["TEP-TDM", "CR anatomopathologique"],
         careAdaptationSuggested: true,
         proposedCareType: "Chimiothérapie 2e ligne",
-        specialties: ["pancreas expert", "Radiotherapy"],
+        specialties: ["digestive surgeon expert", "radiation oncologist expert"],
         processingStatus: "COMPLETED",
         processingStep: null,
         processingProgressPct: 100,
@@ -367,9 +367,30 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(gen.icon).toBe("ic-dna");
     expect(gen.title).toContain("Diagnostic génétique");
 
-    const agent = getAgentPresentation("pancreas expert", "fr");
-    expect(agent.icon).toBe("ic-stethoscope");
-    expect(agent.label).toBe("Oncologie digestive — Pancréas");
+    const oncologySpecialties = [
+      "digestive surgeon expert",
+      "medical oncologist expert",
+      "radiation oncologist expert",
+      "radiologist expert",
+      "gastroenterologist expert",
+      "pathologist expert",
+    ];
+    const seenIcons = new Set<string>();
+    for (const spec of oncologySpecialties) {
+      const frPres = getAgentPresentation(spec, "fr");
+      const enPres = getAgentPresentation(spec, "en");
+      expect(frPres.shortLabel.length).toBeLessThanOrEqual(24);
+      expect(enPres.shortLabel.length).toBeLessThanOrEqual(24);
+      expect(frPres.shortLabel.toLowerCase()).not.toContain("expert");
+      expect(enPres.shortLabel.toLowerCase()).not.toContain("expert");
+      seenIcons.add(frPres.icon);
+    }
+    expect(seenIcons.size).toBe(6);
+
+    const agent = getAgentPresentation("digestive surgeon expert", "fr");
+    expect(agent.icon).toBe("ic-scalpel");
+    expect(agent.label).toBe("Chirurgie digestive");
+    expect(agent.shortLabel).toBe("Chirurgie digestive");
 
     const adminAgent = getAgentPresentation("Administrative", "fr");
     expect(adminAgent.icon).toBe("ic-folder");

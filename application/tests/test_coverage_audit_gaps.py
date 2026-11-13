@@ -445,7 +445,7 @@ def test_memory_queue_eviction_and_poll_thinking_step():
         "filename": "case.pdf",
         "status": JobStatus.PROCESSING.value,
         "current_step": "TumorBiology",
-        "active_agent": "pancreas expert",
+        "active_agent": "medical oncologist expert",
         "current_thinking": "Analyzing biomarkers...",
         "thinking_seq": 1,
     }
@@ -674,7 +674,7 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
         metrics = PatientMDTOncologicForm.extract_card_metrics(
             {
                 "ExpertAnswer": {
-                    "pancreas expert": {
+                    "medical oncologist expert": {
                         "expert_relevant": True,
                         "patient_priority": PatientPriority.urgent.value,
                     }
@@ -697,7 +697,7 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
     metrics_no_adapt = PatientMDTOncologicForm.extract_card_metrics(
         {
             "ExpertAnswer": {
-                "pancreas expert": {
+                "medical oncologist expert": {
                     "expert_relevant": True,
                     "patient_priority": PatientPriority.urgent.value,
                 }

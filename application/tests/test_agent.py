@@ -282,13 +282,14 @@ class TestMedSyntisAgent(unittest.TestCase):
         reader1 = MagicMock(spec=DocumentReader)
         reader2 = MagicMock(spec=DocumentReader)
 
-        agent = Agents.Pancreas_expert_agent(
+        agent = Agents.Digestive_surgeon_expert_agent(
             config=self.mock_config,
             patient_readers=[reader1, reader2],
+            ressources=["TNCDPANCREAS.pdf"],
         )
 
         self.assertEqual(agent.patient_readers, [reader1, reader2])
-        self.assertIn("pancreas diseases", agent.system_prompt)
+        self.assertIn("digestive oncology surgery", agent.system_prompt)
         passed_tools = mock_create_agent.call_args.kwargs.get("tools", [])
         tool_names = [getattr(t, "name", str(t)) for t in passed_tools]
         self.assertIn("get_patient_mtds_markdown", tool_names)
