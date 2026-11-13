@@ -117,6 +117,7 @@ def collaborative_debate(
     additionnal_readers: list[Any] | None = None,
     seed_opinions: dict[str, str] | None = None,
     skip_round2: bool = False,
+    coordinator_reasoning: bool = False,
 ) -> dict:
     if coordinator_agent_cls is None:
         domain = config.domain
@@ -296,7 +297,7 @@ def collaborative_debate(
         config=config,
         mtd=None,
         output_format=output_format,
-        reasoning=False,
+        reasoning=coordinator_reasoning,
         prefetched_markdown=prefetched_md,
     )
     logger.info(

@@ -192,12 +192,11 @@ class TestCollaborativeDebate(unittest.TestCase):
         self.assertFalse(result["mtd_complete"]["is_mtd_complete"])
         self.assertTrue(len(result["mtd_complete"]["what_missing"]) >= 1)
 
-    @patch("src.application.agent.collaborate.Agents.Coordinator_agent")
-    def test_care_orientation_fast_path_and_urgent_guardrail(
-        self, mock_coordinator_cls
+    @patch("src.application.use_cases.patient_mdt_form_extraction.collaborative_debate")
+    def test_care_orientation_priority_floor_semi_urgent_and_urgent(
+        self, mock_collab_debate
     ):
-        mock_coordinator_cls.return_value = coordinator_instance = MagicMock()
-        coordinator_instance.ask.return_value = (
+        mock_collab_debate.return_value = (
             PatientMDTOncologicForm.CareOrientationProposal(
                 care_adaptation_suggested=False,
                 suggested_priority="Patient is not urgent",
@@ -210,14 +209,14 @@ class TestCollaborativeDebate(unittest.TestCase):
         form.sections["ExpertAnswer"] = {
             "medical oncologist expert": {
                 "expert_relevant": True,
-                "patient_priority": "High-priority pre-MDT review suggested",
-                "why_relevant": "Rapidly progressive lesion",
+                "patient_priority": "Semi-urgent pre-MDT review suggested",
+                "why_relevant": "Needs timely systemic workup",
                 "suggestions": [],
                 "sources_relevant": [],
             },
             "radiologist expert": {
                 "expert_relevant": False,
-                "patient_priority": "Patient is not urgent",
+                "patient_priority": "High-priority pre-MDT review suggested",
                 "why_relevant": "Not needed",
                 "suggestions": [],
                 "sources_relevant": [],
@@ -240,18 +239,26 @@ class TestCollaborativeDebate(unittest.TestCase):
             upsert=False,
         )
 
-        coordinator_instance.ask.assert_called_once()
+        call_kwargs = mock_collab_debate.call_args.kwargs
+        self.assertIsNotNone(call_kwargs["seed_opinions"])
+        self.assertFalse(call_kwargs["skip_round2"])
+        self.assertTrue(call_kwargs["coordinator_reasoning"])
+        # Semi-urgent relevant expert prevents downgrade to Patient is not urgent,
+        # while non-relevant High-priority expert is ignored.
         self.assertTrue(result["care_adaptation_suggested"])
         self.assertEqual(
             result["suggested_priority"],
-            "High-priority pre-MDT review suggested",
+            "Semi-urgent pre-MDT review suggested",
         )
 
     @patch("src.application.use_cases.patient_mdt_form_extraction.collaborative_debate")
     def test_care_orientation_debate_path_on_priority_divergence(
         self, mock_collab_debate
     ):
-        mock_collab_debate.return_value = {"care_adaptation_suggested": True}
+        mock_collab_debate.return_value = {
+            "care_adaptation_suggested": False,
+            "suggested_priority": "Patient is not urgent",
+        }
         form = PatientMDTOncologicForm(file="test_doc.pdf")
         form.sections["ExpertAnswer"] = {
             "medical oncologist expert": {
@@ -279,7 +286,7 @@ class TestCollaborativeDebate(unittest.TestCase):
             cache_repo=InMemoryDocumentCacheRepository(),
         )
 
-        extraction_service.extract_section(
+        result = extraction_service.extract_section(
             form=form,
             reader=mock_reader,
             model_cls=PatientMDTOncologicForm.CareOrientationProposal,
@@ -290,3 +297,9 @@ class TestCollaborativeDebate(unittest.TestCase):
         self.assertIsNotNone(call_kwargs["seed_opinions"])
         self.assertEqual(len(call_kwargs["seed_opinions"]), 2)
         self.assertFalse(call_kwargs["skip_round2"])
+        self.assertTrue(call_kwargs["coordinator_reasoning"])
+        self.assertTrue(result["care_adaptation_suggested"])
+        self.assertEqual(
+            result["suggested_priority"],
+            "High-priority pre-MDT review suggested",
+        )
