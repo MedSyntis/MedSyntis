@@ -1543,9 +1543,11 @@ export async function buildServer({
       return reply.code(400).send("Nom de fichier invalide");
     }
     await guidelinesUseCase.reindexResource(filename, session.domain);
-    return reply.redirect(
-      `/guidelines?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}`,
-    );
+    const referer = typeof req.headers.referer === "string" ? req.headers.referer : "";
+    const target = referer.includes("/agents")
+      ? `/agents?domain=${encodeURIComponent(session.domain)}`
+      : `/guidelines?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}`;
+    return reply.redirect(target);
   });
 
   app.post("/guidelines/:filename/delete", async (req, reply) => {

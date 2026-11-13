@@ -1154,6 +1154,15 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/guidelines/TNCD_Pancreas_2026.pdf/reindex?domain=oncology",
     });
     expect(reindexOk.statusCode).toBe(302);
+    expect(reindexOk.headers.location).toContain("/guidelines?file=TNCD_Pancreas_2026.pdf");
+
+    const reindexFromAgents = await app.inject({
+      method: "POST",
+      url: "/guidelines/TNCD_Pancreas_2026.pdf/reindex?domain=oncology",
+      headers: { referer: "http://localhost:3000/agents?domain=oncology" },
+    });
+    expect(reindexFromAgents.statusCode).toBe(302);
+    expect(reindexFromAgents.headers.location).toBe("/agents?domain=oncology");
 
     const deleteGuidelineBad = await app.inject({
       method: "POST",

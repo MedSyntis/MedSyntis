@@ -654,6 +654,44 @@ class PatientMDTFormQueueJobExecutor:
         finally:
             service.close()
 
+    def execute_resource_index(
+        self, job: dict[str, Any], lease_id: str, queue_manager: Any
+    ) -> None:
+        """Execute a `JobType.RESOURCE_INDEX` job to index a clinical reference PDF."""
+        from src.application.ressources import Ressources
+
+        job_id = job["job_id"]
+        run_id = job.get("run_id")
+        domain = job.get("domain") or "oncology"
+        filename = job.get("filename")
+        if not filename:
+            raise ValueError("Missing filename for RESOURCE_INDEX job.")
+
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=f"Indexation de {filename} en cours",
+            progress_pct=25.0,
+            run_id=run_id,
+            lease_id=lease_id,
+        )
+        domain_conf = self._resolve_domain_config(domain)
+        with start_span(
+            "medsyntis.resource.index",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.resource_filename": filename,
+                "medsyntis.job_id": job_id,
+            },
+        ):
+            Ressources(domain_conf).index_ressource(filename)
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=f"Indexation de {filename} terminée",
+            progress_pct=100.0,
+            run_id=run_id,
+            lease_id=lease_id,
+        )
+
     def execute_patient_record_summary(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
     ) -> None:

@@ -2816,6 +2816,40 @@ export function renderIngestPage(
   });
 }
 
+function getIndexingResourceSet(queueJobs: QueueJobItem[]): Set<string> {
+  return new Set(
+    queueJobs
+      .filter(
+        (j) =>
+          j.jobType === "RESOURCE_INDEX" &&
+          typeof j.filename === "string" &&
+          (j.status === "PENDING" || j.status === "RUNNING" || j.status === "PROCESSING"),
+      )
+      .map((j) => j.filename as string),
+  );
+}
+
+function renderResourceStatusBadge(isIndexed: boolean, isIndexing: boolean): string {
+  if (isIndexing) {
+    return `<span class="ds-badge ds-badge--info ds-badge--sm">${iconSvg("ic-refresh")} Indexation en cours</span>`;
+  }
+  return `<span class="ds-badge ${isIndexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">${iconSvg(isIndexed ? "ic-check-circle" : "ic-warning")} ${isIndexed ? "Indexé" : "À indexer"}</span>`;
+}
+
+function renderReindexButtonForm(
+  filename: string,
+  domainParam: string,
+  isIndexing: boolean,
+  includeTestId = false,
+): string {
+  const testIdAttr = includeTestId ? ` data-testid="btn_reindex_${esc(filename)}"` : "";
+  return `<form method="post" action="/guidelines/${encodeURIComponent(filename)}/reindex?domain=${domainParam}" style="display:inline-flex">
+    <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm"${testIdAttr}${isIndexing ? " disabled" : ""}>
+      ${iconSvg("ic-refresh")} ${isIndexing ? "Indexation en cours…" : "Ré-indexer"}
+    </button>
+  </form>`;
+}
+
 export function renderGuidelinesPage(
   overview: GuidelinesOverview,
   session: UserSession,
@@ -2928,21 +2962,18 @@ export function renderGuidelinesPage(
       <div class="ds-guidelines-preview">
         ${
           activeRes
-            ? `<div class="ds-card ds-guidelines-preview__card" data-pdf-pane>
+            ? (
+                () => {
+                  const indexingFiles = getIndexingResourceSet(queueJobs);
+                  const isActiveIndexing = indexingFiles.has(activeRes.filename);
+                  return `<div class="ds-card ds-guidelines-preview__card" data-pdf-pane>
                 <div class="ds-guidelines-preview__toolbar">
                   <div class="ds-cluster" style="gap:var(--ds-space-2)">
                     <span class="ds-label">${iconSvg("ic-file-pdf")} Aperçu : <code class="ds-mono">${esc(activeRes.filename)}</code></span>
-                    <span class="ds-badge ${activeRes.indexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">
-                      ${iconSvg(activeRes.indexed ? "ic-check-circle" : "ic-warning")}
-                      ${activeRes.indexed ? "Indexé" : "Non indexé"}
-                    </span>
+                    ${renderResourceStatusBadge(activeRes.indexed, isActiveIndexing)}
                   </div>
                   <div class="ds-cluster" style="gap:var(--ds-space-2)">
-                    <form method="post" action="/guidelines/${encodeURIComponent(activeRes.filename)}/reindex?domain=${domainParam}" style="display:inline-flex">
-                      <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_reindex_${esc(activeRes.filename)}">
-                        ${iconSvg("ic-refresh")} Ré-indexer
-                      </button>
-                    </form>
+                    ${renderReindexButtonForm(activeRes.filename, domainParam, isActiveIndexing, true)}
                     <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}" download="${esc(activeRes.filename)}">
                       ${iconSvg("ic-download")} Télécharger PDF
                     </a>
@@ -2960,7 +2991,9 @@ export function renderGuidelinesPage(
                   <iframe class="ds-pdf-frame" style="height:46rem" src="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Aperçu du référentiel ${esc(activeRes.filename)}"></iframe>
                   <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}" data-pdf-filename="${esc(activeRes.filename)}"></div>
                 </div>
-              </div>`
+              </div>`;
+                }
+              )()
             : `<div class="ds-empty"><span class="ds-empty__title">Aucun référentiel PDF sélectionné</span></div>`
         }
       </div>
@@ -3011,25 +3044,20 @@ export function renderAgentsPage(
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
   const resourceMap = new Map(resources.map((r) => [r.filename, r]));
+  const indexingFiles = getIndexingResourceSet(queueJobs);
 
   const renderResourceListItem = (g: string) => {
     const resDoc = resourceMap.get(g);
     const isIndexed = resDoc ? resDoc.indexed : resources.length === 0;
+    const isIndexing = indexingFiles.has(g);
     return `<li class="ds-file-list__item">
       ${iconSvg("ic-book")}
       <a class="ds-file-list__name" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">${esc(g)}</a>
-      <span class="ds-badge ${isIndexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">
-        ${iconSvg(isIndexed ? "ic-check-circle" : "ic-warning")}
-        ${isIndexed ? "Indexé" : "À indexer"}
-      </span>
+      ${renderResourceStatusBadge(isIndexed, isIndexing)}
       <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">
         ${iconSvg("ic-eye")} Consulter
       </a>
-      <form method="post" action="/guidelines/${encodeURIComponent(g)}/reindex?domain=${domainParam}" style="display:inline-flex">
-        <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm">
-          ${iconSvg("ic-refresh")} Ré-indexer
-        </button>
-      </form>
+      ${renderReindexButtonForm(g, domainParam, isIndexing)}
     </li>`;
   };
 

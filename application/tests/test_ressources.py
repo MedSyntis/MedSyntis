@@ -71,3 +71,69 @@ class TestRessources(unittest.TestCase):
             self.mock_config, document="TNCDPANCREAS.pdf", document_type="ressource"
         )
         mock_reader.read_document.assert_called_once()
+
+    def test_background_resource_index_enqueue_and_execution(self):
+        from src.application.config import AppConfig
+        from src.application.use_cases.queue_executor import (
+            PatientMDTFormQueueJobExecutor,
+        )
+        from src.domain.worker import JobType
+        from src.infrastructure.queue.memory_queue import InMemoryQueueManager
+
+        base_conf = AppConfig()
+        queue_mgr = InMemoryQueueManager(base_config=base_conf)
+
+        first = queue_mgr.enqueue_resource_index("TNCDCHC.pdf", domain="oncology")
+        assert first["already_queued"] is False
+        assert first["job"]["job_type"] == JobType.RESOURCE_INDEX.value
+        assert first["job"]["filename"] == "TNCDCHC.pdf"
+
+        second = queue_mgr.enqueue_resource_index("TNCDCHC.pdf", domain="oncology")
+        assert second["already_queued"] is True
+        assert second["job"]["job_id"] == first["job"]["job_id"]
+
+        executor = PatientMDTFormQueueJobExecutor(base_conf)
+        with patch("src.application.ressources.Ressources.index_ressource") as mock_idx:
+            executor.execute_resource_index(first["job"], "lease-1", queue_mgr)
+            mock_idx.assert_called_once_with("TNCDCHC.pdf")
+
+    def test_index_resource_endpoint_returns_202_and_enqueues(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from src.application.config import AppConfig
+        from src.routers.dependencies import get_domain_config
+        from src.routers.resources import router as resources_router
+
+        app = FastAPI()
+        app.include_router(resources_router, prefix="/api/v1")
+        conf = AppConfig()
+        app.dependency_overrides[get_domain_config] = lambda: conf
+
+        fake_queue = MagicMock()
+        fake_queue.enqueue_resource_index.return_value = {
+            "already_queued": False,
+            "job": {"job_id": "job_idx123", "status": "PENDING"},
+        }
+        with (
+            patch(
+                "src.routers.resources.Ressources.list_ressources",
+                return_value=["TNCDCHC.pdf"],
+            ),
+            patch("src.routers.resources.safe_path", return_value="/tmp/TNCDCHC.pdf"),
+            patch(
+                "src.routers.resources.get_global_queue_manager",
+                return_value=fake_queue,
+            ),
+        ):
+            client = TestClient(app)
+            resp = client.post("/api/v1/resources/TNCDCHC.pdf/index?domain=oncology")
+            assert resp.status_code == 202
+            body = resp.json()
+            assert body["filename"] == "TNCDCHC.pdf"
+            assert body["job_id"] == "job_idx123"
+            assert body["status"] == "PENDING"
+            assert body["already_queued"] is False
+            fake_queue.enqueue_resource_index.assert_called_once_with(
+                "TNCDCHC.pdf", domain="oncology"
+            )

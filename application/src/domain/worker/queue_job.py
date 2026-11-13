@@ -62,6 +62,7 @@ class JobType(str, Enum):
     WAVE3_EXPERTS = "WAVE3_EXPERTS"
     SINGLE_MODEL = "SINGLE_MODEL"
     PATIENT_SUMMARY = "PATIENT_SUMMARY"
+    RESOURCE_INDEX = "RESOURCE_INDEX"
 
     @classmethod
     def labels_fr(cls) -> dict[str, str]:
@@ -71,6 +72,7 @@ class JobType(str, Enum):
             cls.WAVE3_EXPERTS.value: "Concertation d'experts & décision RCP",
             cls.SINGLE_MODEL.value: "Mise à jour d'une rubrique",
             cls.PATIENT_SUMMARY.value: "Résumé global du dossier patient",
+            cls.RESOURCE_INDEX.value: "Indexation d'un référentiel clinique",
         }
 
 
@@ -89,6 +91,7 @@ class JobPriority:
     WAVE2_CLINICAL_IMPORT = 70
     WAVE3_EXPERTS = 40
     WAVE3_EXPERTS_IMPORT = 40
+    RESOURCE_INDEX = 20
 
 
 class QueueJob(BaseModel):

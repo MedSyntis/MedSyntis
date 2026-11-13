@@ -24,6 +24,9 @@ class ResourceIndexedResponse(BaseModel):
     filename: str
     domain: str
     message: str
+    job_id: Optional[str] = None
+    status: str = "PENDING"
+    already_queued: bool = False
 
 
 class ResourceDeleteResponse(BaseModel):
