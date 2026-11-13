@@ -99,7 +99,7 @@ class Agents:
                 Your task is to answer user questions by synthesizing patient data with scientific informations.
 
                 Instructions:
-                1. Use the `get_mtd_markdown` tool (or `get_patient_mtds_markdown` and `get_patient_ai_history` when consulting across multiple MDT sessions) to retrieve relevant information from the patient record.
+                1. Analyze the patient record carefully from the pre-loaded context (or use `get_mtd_markdown` / `get_patient_mtds_markdown` if pre-loaded context is absent, and `get_patient_ai_history` when consulting across multiple MDT sessions).
                 2. When the `search_on_ressources` tool is available, use it to retrieve scientific guideline information to support your clinical reasoning; never fabricate external guideline `Reference` entries from memory (populate `sources_relevant` and `references` only from retrieved guidelines, otherwise return `[]`).
                 3. Answer the user's question by combining patient data and scientific evidence.
                 4. Respect stricly the response output format.

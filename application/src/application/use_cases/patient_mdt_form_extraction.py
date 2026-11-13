@@ -1,5 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import logging
+import threading
 import time
 import uuid
 from datetime import date, datetime
@@ -94,6 +96,9 @@ class PatientMDTFormExtractionService:
         self._reader = reader
         self._owns_db_client = False
         self._db_client = db_client
+        self._resource_readers_cache: dict[str, DocumentReader] = {}
+        self._resource_cache_lock = threading.Lock()
+        self._available_resource_files: list[str] | None = None
 
         if mdt_form_repo is not None and (
             patient_record_service is not None or patient_repo is not None
@@ -182,6 +187,41 @@ class PatientMDTFormExtractionService:
     # Section Extraction (Single-Agent, Multi-Agent, Collaborative Debate)
     # ------------------------------------------------------------------
 
+    def _get_available_resource_files(self) -> list[str]:
+        """Cache domain guideline filenames for the lifetime of this extraction service."""
+        with self._resource_cache_lock:
+            if self._available_resource_files is None:
+                self._available_resource_files = list(
+                    Ressources.list_from_config(self.config) or []
+                )
+            return self._available_resource_files
+
+    def _get_resource_readers(self, ressources: list[str]) -> list[DocumentReader]:
+        """Reuse read-only DocumentReader instances across Wave 3 agents."""
+        if not ressources:
+            return []
+        with self._resource_cache_lock:
+            readers: list[DocumentReader] = []
+            for ressource in ressources:
+                reader = self._resource_readers_cache.get(ressource)
+                if reader is None:
+                    reader = DocumentReader(
+                        self.config, ressource, document_type="ressource"
+                    )
+                    self._resource_readers_cache[ressource] = reader
+                readers.append(reader)
+            return readers
+
+    @staticmethod
+    def _clone_callbacks(callbacks: list[Any] | None) -> list[Any] | None:
+        """Clone stateful thinking callbacks so parallel worker threads do not share buffers."""
+        if not callbacks:
+            return callbacks
+        return [
+            cb.clone_for_worker() if hasattr(cb, "clone_for_worker") else cb
+            for cb in callbacks
+        ]
+
     def extract_section(
         self,
         model_cls: type[BaseModel] | None = None,
@@ -233,10 +273,11 @@ class PatientMDTFormExtractionService:
                     if filtered:
                         debate_agents = filtered
 
-            available_files = Ressources.list_from_config(self.config)
+            available_files = self._get_available_resource_files()
             debate_ressources = self.form_cls.resolve_agent_ressources(
                 target_form, debate_agents[0], available_files
             )
+            debate_readers = self._get_resource_readers(debate_ressources)
             debate_res = collaborative_debate(
                 agents_classes=debate_agents,
                 question=question,
@@ -246,6 +287,7 @@ class PatientMDTFormExtractionService:
                 logger=self.logger,
                 callbacks=callbacks,
                 ressources=debate_ressources,
+                additionnal_readers=debate_readers if debate_readers else None,
             )
             serialized_value = _serialize_dates(
                 debate_res.model_dump()
@@ -253,18 +295,22 @@ class PatientMDTFormExtractionService:
                 else debate_res
             )
         elif len(agents_list) > 1:
-            available_files = Ressources.list_from_config(self.config)
+            available_files = self._get_available_resource_files()
             multi_res: dict[str, Any] = {}
-            for agent_cls in agents_list:
+
+            def _run_expert_agent(agent_cls: Any) -> tuple[str, dict[str, Any]]:
+                agent_ressources = self.form_cls.resolve_agent_ressources(
+                    target_form, agent_cls, available_files
+                )
+                agent_readers = self._get_resource_readers(agent_ressources)
                 agent = agent_cls(
                     config=self.config,
                     mtd=target_reader,
                     output_format=model_cls,
-                    ressources=self.form_cls.resolve_agent_ressources(
-                        target_form, agent_cls, available_files
-                    ),
+                    ressources=[] if agent_readers else agent_ressources,
+                    additionnal_readers=agent_readers if agent_readers else None,
                 )
-                ans = agent.ask(question, callbacks=callbacks)
+                ans = agent.ask(question, callbacks=self._clone_callbacks(callbacks))
                 ans_dict = (
                     ans.model_dump()
                     if isinstance(ans, BaseModel)
@@ -273,18 +319,31 @@ class PatientMDTFormExtractionService:
                 if getattr(agent, "latest_thinking", ""):
                     ans_dict["reasoning_thinking"] = agent.latest_thinking
                 key = getattr(agent, "agent_name", None) or agent_cls.__name__
-                multi_res[key] = _serialize_dates(ans_dict)
+                return key, _serialize_dates(ans_dict)
+
+            max_workers = max(1, min(3, len(agents_list)))
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [
+                    pool.submit(_run_expert_agent, agent_cls)
+                    for agent_cls in agents_list
+                ]
+                for fut in futures:
+                    key, val = fut.result()
+                    multi_res[key] = val
             serialized_value = multi_res
         elif len(agents_list) == 1:
-            available_files = Ressources.list_from_config(self.config)
+            available_files = self._get_available_resource_files()
             agent_cls = agents_list[0]
+            agent_ressources = self.form_cls.resolve_agent_ressources(
+                target_form, agent_cls, available_files
+            )
+            agent_readers = self._get_resource_readers(agent_ressources)
             agent = agent_cls(
                 config=self.config,
                 mtd=target_reader,
                 output_format=model_cls,
-                ressources=self.form_cls.resolve_agent_ressources(
-                    target_form, agent_cls, available_files
-                ),
+                ressources=[] if agent_readers else agent_ressources,
+                additionnal_readers=agent_readers if agent_readers else None,
             )
             ans = agent.ask(question, callbacks=callbacks)
             ans_dict = (

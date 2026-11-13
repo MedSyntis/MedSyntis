@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 import json
 import gc
 import threading
@@ -93,6 +94,16 @@ def _evict_debate_checkpoint(key: tuple[Any, ...] | None) -> None:
         _DEBATE_ROUND_CACHE.pop(key, None)
 
 
+def _clone_callbacks(callbacks: list[Any] | None) -> list[Any] | None:
+    """Clone stateful thinking callbacks so parallel worker threads do not share buffers."""
+    if not callbacks:
+        return callbacks
+    return [
+        cb.clone_for_worker() if hasattr(cb, "clone_for_worker") else cb
+        for cb in callbacks
+    ]
+
+
 def collaborative_debate(
     agents_classes: list[type[MedSyntisAgent]],
     question: str | None,
@@ -103,6 +114,7 @@ def collaborative_debate(
     coordinator_agent_cls: type["MedSyntisAgent"] | None = None,
     callbacks: list | None = None,
     ressources: list[str] | None = None,
+    additionnal_readers: list[Any] | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
         domain = config.domain
@@ -133,7 +145,15 @@ def collaborative_debate(
         # Step 0 : init agents, name them and assign resources to them
         agents = []
         for magent in agents_classes:
-            if ressources is not None:
+            if additionnal_readers is not None:
+                a = magent(
+                    config=config,
+                    mtd=mtd,
+                    output_format=DebateTurn,
+                    ressources=[],
+                    additionnal_readers=additionnal_readers,
+                )
+            elif ressources is not None:
                 a = magent(
                     config=config,
                     mtd=mtd,
@@ -148,6 +168,8 @@ def collaborative_debate(
                 )
             agents.append(a)
 
+        max_workers = max(1, min(3, len(agents)))
+
         # Step 1: Initial Turn (Parallel Reasoning with DebateTurn format)
         if cached_round1:
             logger.info(
@@ -158,28 +180,37 @@ def collaborative_debate(
         else:
             opinions = {}
             round1_all_ok = True
-            for magent in agents:
+
+            def _run_round1(magent: MedSyntisAgent) -> Any:
                 logger.info(
                     f"Debate: Requesting initial analysis from {magent.agent_name}..."
                 )
-
                 opinion_prompt = (
                     f"Answer in {magent.response_language.capitalize()} language, not mention it in the answer.\n"
                     f"As an expert in {magent.expert_type if hasattr(magent, 'expert_type') else magent.agent_name}, "
                     f"analyze the patient file and provide your initial arguments regarding the following question:\n{question}\n"
                     "Use Markdown formatting inside your `response` field (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections)."
                 )
-                try:
-                    res = magent.ask(opinion_prompt, DebateTurn, callbacks=callbacks)
-                    if res and getattr(res, "response", None):
-                        opinions[magent.agent_name] = res.response
-                except Exception as e:
-                    round1_all_ok = False
-                    logger.error(
-                        "Error getting Round 1 opinion from %s (skipping failed expert): %s",
-                        magent.agent_name,
-                        MedSyntisAgent._summarize_validation_error(e),
-                    )
+                return magent.ask(
+                    opinion_prompt, DebateTurn, callbacks=_clone_callbacks(callbacks)
+                )
+
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                round1_futures = [
+                    (magent, pool.submit(_run_round1, magent)) for magent in agents
+                ]
+                for magent, fut in round1_futures:
+                    try:
+                        res = fut.result()
+                        if res and getattr(res, "response", None):
+                            opinions[magent.agent_name] = res.response
+                    except Exception as e:
+                        round1_all_ok = False
+                        logger.error(
+                            "Error getting Round 1 opinion from %s (skipping failed expert): %s",
+                            magent.agent_name,
+                            MedSyntisAgent._summarize_validation_error(e),
+                        )
 
             if not opinions:
                 raise RuntimeError(
@@ -196,11 +227,10 @@ def collaborative_debate(
 
         updated_opinions = {}
         round2_all_ok = round1_all_ok
-        for magent in agents:
-            if magent.agent_name not in opinions:
-                continue
-            logger.info(f"Debate: Requesting cross-review from {magent.agent_name}...")
+        round2_agents = [magent for magent in agents if magent.agent_name in opinions]
 
+        def _run_round2(magent: MedSyntisAgent) -> Any:
+            logger.info(f"Debate: Requesting cross-review from {magent.agent_name}...")
             debate_prompt = (
                 f"Answer in {magent.response_language.capitalize()} language, not mention it in the answer.\n"
                 f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
@@ -209,18 +239,29 @@ def collaborative_debate(
                 f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help prepare a pre-MDT synthesis for collegial review. "
                 "Use Markdown formatting inside your `response` field (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections)."
             )
-            try:
-                res = magent.ask(debate_prompt, DebateTurn, callbacks=callbacks)
-                updated_opinions[magent.agent_name] = res.response
-            except Exception as e:
-                round2_all_ok = False
-                logger.error(
-                    "Error getting Round 2 opinion from %s: %s",
-                    magent.agent_name,
-                    MedSyntisAgent._summarize_validation_error(e),
-                )
-                if magent.agent_name in opinions:
-                    updated_opinions[magent.agent_name] = opinions[magent.agent_name]
+            return magent.ask(
+                debate_prompt, DebateTurn, callbacks=_clone_callbacks(callbacks)
+            )
+
+        with ThreadPoolExecutor(max_workers=max(1, min(3, len(round2_agents)))) as pool:
+            round2_futures = [
+                (magent, pool.submit(_run_round2, magent)) for magent in round2_agents
+            ]
+            for magent, fut in round2_futures:
+                try:
+                    res = fut.result()
+                    updated_opinions[magent.agent_name] = res.response
+                except Exception as e:
+                    round2_all_ok = False
+                    logger.error(
+                        "Error getting Round 2 opinion from %s: %s",
+                        magent.agent_name,
+                        MedSyntisAgent._summarize_validation_error(e),
+                    )
+                    if magent.agent_name in opinions:
+                        updated_opinions[magent.agent_name] = opinions[
+                            magent.agent_name
+                        ]
 
         if round2_all_ok and updated_opinions:
             _save_debate_checkpoint(checkpoint_key, "round2", updated_opinions)

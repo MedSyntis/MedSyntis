@@ -83,6 +83,7 @@ class TestLiteLLMConnection(unittest.TestCase):
             api_key="test-api-key",
             model="qwen3:14b",
             temperature=0.7,
+            max_tokens=4096,
             model_kwargs={
                 "response_format": {"type": "json_object"},
                 "reasoning": {"effort": "low"},
@@ -91,3 +92,28 @@ class TestLiteLLMConnection(unittest.TestCase):
             streaming=True,
         )
         self.assertEqual(chat_instance._output_schema, mock_output)
+
+    @patch("src.infrastructure.llm.litellm.ChatLiteLLM")
+    @patch("src.infrastructure.llm.litellm.LiteLLMEmbeddings")
+    @patch("src.infrastructure.llm.litellm.httpx.get")
+    def test_chat_creation_with_reasoning_budget(
+        self, mock_get, mock_embeddings_cls, mock_chat_litellm_cls
+    ):
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_get.return_value = mock_response
+
+        conn = LiteLLMConnect(self.mock_config)
+        conn.chat(
+            model="qwen3:14b",
+            output=MagicMock(),
+            reasoning=True,
+            reasoning_budget=1024,
+        )
+
+        call_kwargs = mock_chat_litellm_cls.call_args.kwargs
+        self.assertEqual(call_kwargs["max_tokens"], 4096)
+        self.assertEqual(
+            call_kwargs["model_kwargs"]["extra_body"],
+            {"thinking_budget_tokens": 1024},
+        )

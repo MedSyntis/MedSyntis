@@ -455,7 +455,7 @@ class MedSyntisAgent:
                 from src.application.agent.tools import search_on_patient_mtds
 
                 tools.append(search_on_patient_mtds)
-            else:
+            elif resolved_prefetched_md is None:
                 tools.append(get_patient_mtds_markdown)
             tools.append(get_patient_ai_history)
         elif mtd is not None:
@@ -463,7 +463,7 @@ class MedSyntisAgent:
                 from src.application.agent.tools import search_on_mtd
 
                 tools.append(search_on_mtd)
-            else:
+            elif resolved_prefetched_md is None:
                 tools.append(get_mtd_markdown)
 
         self.additionnal_readers = [

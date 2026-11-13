@@ -91,6 +91,7 @@ class LiteLLMConnect(LLMConnect):
             api_key=self.api_key,
             model=model,
             temperature=temp,
+            max_tokens=4096,
             model_kwargs=model_kwargs,
             reasoning={"effort": "low"} if reasoning else False,
             streaming=True,

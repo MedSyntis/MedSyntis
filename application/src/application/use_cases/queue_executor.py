@@ -42,6 +42,16 @@ class QueueThinkingCallbackHandler(BaseCallbackHandler):
         self._in_think: bool = False
         self._raw_buffer: str = ""
 
+    def clone_for_worker(self) -> "QueueThinkingCallbackHandler":
+        """Return an independent callback instance for a parallel worker thread."""
+        return QueueThinkingCallbackHandler(
+            queue_manager=self.queue_manager,
+            job_id=self.job_id,
+            run_id=self.run_id,
+            lease_id=self.lease_id,
+            section_name=self.section_name,
+        )
+
     def _emit_thinking(self, text: str, reset: bool = False) -> None:
         if not text and not reset:
             return
