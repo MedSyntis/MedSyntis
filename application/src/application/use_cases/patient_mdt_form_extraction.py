@@ -11,12 +11,15 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from src.application.agent.agent import MedSyntisAgent
 from src.application.agent.collaborate import collaborative_debate
 from src.application.app_functions import to_naive
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
 from src.application.ressources import Ressources
 from src.application.use_cases.patient_record import PatientRecordService
+from src.domain.agents import Agents, get_domain_agents_cls
+from src.domain.common.common_ressources import PatientPriority
 from src.domain.patient import Patient
 from src.domain.patient_mdt_form import (
     NonPatientMDTFormError,
@@ -98,6 +101,7 @@ class PatientMDTFormExtractionService:
         self._db_client = db_client
         self._resource_readers_cache: dict[str, DocumentReader] = {}
         self._resource_cache_lock = threading.Lock()
+        self._form_lock = threading.Lock()
         self._available_resource_files: list[str] | None = None
 
         if mdt_form_repo is not None and (
@@ -200,6 +204,9 @@ class PatientMDTFormExtractionService:
         """Reuse read-only DocumentReader instances across Wave 3 agents."""
         if not ressources:
             return []
+        dbvec_type = getattr(getattr(self.config, "dbvec", None), "type", None)
+        if not isinstance(dbvec_type, str) or not dbvec_type.strip():
+            return []
         with self._resource_cache_lock:
             readers: list[DocumentReader] = []
             for ressource in ressources:
@@ -221,6 +228,162 @@ class PatientMDTFormExtractionService:
             cb.clone_for_worker() if hasattr(cb, "clone_for_worker") else cb
             for cb in callbacks
         ]
+
+    @staticmethod
+    def _dump_section_dict(val: Any) -> dict[str, Any]:
+        if isinstance(val, BaseModel):
+            return val.model_dump()
+        if isinstance(val, dict):
+            return val
+        return {}
+
+    def _get_coordinator_agent_cls(self) -> type[MedSyntisAgent]:
+        domain = getattr(self.config, "domain", None)
+        if isinstance(domain, str) and domain.strip():
+            return get_domain_agents_cls(domain).Coordinator_agent
+        return Agents.Coordinator_agent
+
+    def _build_mtd_completeness_context(
+        self, target_form: PatientMDTForm
+    ) -> tuple[str, bool, str | None, list[str]]:
+        """Build deterministic Wave 1+2 and ExpertAnswer completeness context for MTDCompleted."""
+        factual_models = list(self.form_cls.get_factual_clinical_models() or [])
+        missing_sections: list[str] = []
+        present_summaries: list[str] = []
+        has_blocking_missing, blocking_reason = (
+            self.form_cls.get_completeness_guardrail_flags(target_form)
+        )
+
+        for m_cls in factual_models:
+            m_name = m_cls.__name__
+            sec_data = self._dump_section_dict(target_form.sections.get(m_name))
+            if not sec_data:
+                missing_sections.append(m_name)
+                continue
+            non_null_keys = [
+                k for k, v in sec_data.items() if v is not None and v != [] and v != ""
+            ]
+            present_summaries.append(
+                f"- {m_name}: populated fields ({len(non_null_keys)}): {', '.join(non_null_keys[:10])}"
+            )
+
+        expert_ans = target_form.sections.get("ExpertAnswer")
+        expert_lines: list[str] = []
+        if isinstance(expert_ans, dict):
+            for ag_name, ag_val in expert_ans.items():
+                d = self._dump_section_dict(ag_val)
+                if not d:
+                    continue
+                rel = bool(d.get("expert_relevant"))
+                prio = d.get("patient_priority")
+                why = str(d.get("why_relevant") or "").strip()
+                expert_lines.append(
+                    f"- {ag_name} (relevant={rel}, priority={prio}): {why[:400]}"
+                )
+
+        parts: list[str] = ["\n\n## DETERMINISTIC WAVE 1 & 2 COMPLETENESS CHECK"]
+        if missing_sections:
+            parts.append(f"- Missing factual sections: {', '.join(missing_sections)}")
+        if has_blocking_missing and blocking_reason:
+            parts.append(f"- CRITICAL: {blocking_reason}")
+        if present_summaries:
+            parts.append(
+                "### Extracted Factual Sections\n" + "\n".join(present_summaries)
+            )
+        if expert_lines:
+            parts.append("### ExpertAnswer Summary\n" + "\n".join(expert_lines))
+        return (
+            "\n".join(parts),
+            has_blocking_missing,
+            blocking_reason,
+            missing_sections,
+        )
+
+    @staticmethod
+    def _apply_mtd_completeness_guardrails(
+        serialized_value: Any,
+        has_blocking_missing: bool,
+        blocking_reason: str | None,
+        missing_factual_sections: list[str],
+    ) -> Any:
+        """Never mark an MDT file complete when blocking domain info or core factual sections are missing."""
+        if not isinstance(serialized_value, dict):
+            return serialized_value
+        mtd_comp = serialized_value.get("mtd_complete")
+        if not isinstance(mtd_comp, dict):
+            return serialized_value
+        if (has_blocking_missing or missing_factual_sections) and mtd_comp.get(
+            "is_mtd_complete"
+        ) is True:
+            mtd_comp["is_mtd_complete"] = False if has_blocking_missing else "partial"
+            what_missing = list(mtd_comp.get("what_missing") or [])
+            if has_blocking_missing and blocking_reason and not what_missing:
+                what_missing.append(blocking_reason)
+            elif missing_factual_sections and not what_missing:
+                what_missing.append(
+                    f"Sections factuelles manquantes : {', '.join(missing_factual_sections)}"
+                )
+            mtd_comp["what_missing"] = what_missing
+        return serialized_value
+
+    def _extract_relevant_expert_opinions(
+        self, expert_ans: Any
+    ) -> tuple[dict[str, str], set[str], bool]:
+        """Extract opinions, priority set, and urgent flag from relevant ExpertAnswer entries."""
+        relevant_opinions: dict[str, str] = {}
+        priorities: set[str] = set()
+        has_urgent = False
+        if not isinstance(expert_ans, dict):
+            return relevant_opinions, priorities, has_urgent
+
+        for ag_name, ag_val in expert_ans.items():
+            d = self._dump_section_dict(ag_val)
+            if not d or not d.get("expert_relevant"):
+                continue
+            prio = str(d.get("patient_priority") or "").strip().lower()
+            if prio:
+                priorities.add(prio)
+                if (
+                    prio == PatientPriority.urgent.value.lower()
+                    or "high-priority" in prio
+                    or ("urgent" in prio and "not urgent" not in prio)
+                ):
+                    has_urgent = True
+            why = str(d.get("why_relevant") or "").strip()
+            suggestions = d.get("suggestions") or []
+            sugg_lines = []
+            for s in suggestions:
+                if isinstance(s, dict):
+                    sugg_lines.append(
+                        f"  - {s.get('suggestion', '')} ({s.get('why', '')})"
+                    )
+            opinion_parts = [f"Priority: {prio or 'unspecified'}", f"Rationale: {why}"]
+            if sugg_lines:
+                opinion_parts.append("Suggestions:\n" + "\n".join(sugg_lines))
+            relevant_opinions[str(ag_name).strip()] = "\n".join(opinion_parts)
+
+        return relevant_opinions, priorities, has_urgent
+
+    def _should_run_care_debate(
+        self,
+        target_form: PatientMDTForm,
+        relevant_opinions: dict[str, str],
+        priorities: set[str],
+    ) -> bool:
+        """Route CareOrientationProposal to Debate Path only on divergence or clinical complexity."""
+        if not relevant_opinions or len(priorities) > 1:
+            return True
+        return self.form_cls.should_run_care_orientation_debate(target_form)
+
+    @staticmethod
+    def _apply_care_orientation_guardrails(
+        serialized_value: Any, has_urgent: bool
+    ) -> Any:
+        """Enforce urgent priority floor if any relevant specialist flagged urgent."""
+        if has_urgent and isinstance(serialized_value, dict):
+            serialized_value["care_adaptation_suggested"] = True
+            serialized_value["suggested_priority"] = PatientPriority.urgent.value
+        return serialized_value
 
     def extract_section(
         self,
@@ -250,28 +413,64 @@ class PatientMDTFormExtractionService:
         is_collaborative = bool(getattr(model_cls, "collaborative", False))
         question = getattr(model_cls, "question", None)
 
-        if is_collaborative and len(agents_list) >= 1:
+        if section_name == "MTDCompleted" and agents_list:
+            available_files = self._get_available_resource_files()
+            mtd_ressources = self.form_cls.resolve_agent_ressources(
+                target_form, agents_list[0], available_files
+            )
+            mtd_readers = self._get_resource_readers(mtd_ressources)
+            (
+                completeness_ctx,
+                has_blocking_missing,
+                blocking_reason,
+                missing_factual_sections,
+            ) = self._build_mtd_completeness_context(target_form)
+            coordinator_cls = self._get_coordinator_agent_cls()
+            coordinator = coordinator_cls(
+                config=self.config,
+                mtd=target_reader,
+                output_format=model_cls,
+                reasoning=False,
+                ressources=[] if mtd_readers else mtd_ressources,
+                additionnal_readers=mtd_readers if mtd_readers else None,
+            )
+            ans = coordinator.ask(
+                f"{question or ''}{completeness_ctx}",
+                callbacks=callbacks,
+            )
+            ans_dict = (
+                ans.model_dump()
+                if isinstance(ans, BaseModel)
+                else (dict(ans) if isinstance(ans, dict) else {"value": ans})
+            )
+            serialized_value = self._apply_mtd_completeness_guardrails(
+                _serialize_dates(ans_dict),
+                has_blocking_missing=has_blocking_missing,
+                blocking_reason=blocking_reason,
+                missing_factual_sections=missing_factual_sections,
+            )
+        elif is_collaborative and len(agents_list) >= 1:
             debate_agents = list(agents_list)
             expert_ans = target_form.sections.get("ExpertAnswer")
-            if isinstance(expert_ans, dict) and expert_ans:
-                relevant_names = {
-                    str(ag_name).strip()
-                    for ag_name, ag_val in expert_ans.items()
-                    if (
-                        ag_val.model_dump()
-                        if isinstance(ag_val, BaseModel)
-                        else (ag_val if isinstance(ag_val, dict) else {})
-                    ).get("expert_relevant")
-                }
-                if relevant_names:
-                    filtered = [
-                        cls_ag
-                        for cls_ag in debate_agents
-                        if str(getattr(cls_ag, "agent_name", "")).strip()
-                        in relevant_names
-                    ]
-                    if filtered:
-                        debate_agents = filtered
+            relevant_opinions, priorities, has_urgent = (
+                self._extract_relevant_expert_opinions(expert_ans)
+            )
+            if relevant_opinions:
+                relevant_names = set(relevant_opinions.keys())
+                filtered = [
+                    cls_ag
+                    for cls_ag in debate_agents
+                    if str(getattr(cls_ag, "agent_name", "")).strip() in relevant_names
+                ]
+                if filtered:
+                    debate_agents = filtered
+
+            use_seed = section_name == "CareOrientationProposal" and bool(
+                relevant_opinions
+            )
+            skip_round2 = use_seed and not self._should_run_care_debate(
+                target_form, relevant_opinions, priorities
+            )
 
             available_files = self._get_available_resource_files()
             debate_ressources = self.form_cls.resolve_agent_ressources(
@@ -288,12 +487,18 @@ class PatientMDTFormExtractionService:
                 callbacks=callbacks,
                 ressources=debate_ressources,
                 additionnal_readers=debate_readers if debate_readers else None,
+                seed_opinions=relevant_opinions if use_seed else None,
+                skip_round2=skip_round2,
             )
             serialized_value = _serialize_dates(
                 debate_res.model_dump()
                 if isinstance(debate_res, BaseModel)
                 else debate_res
             )
+            if section_name == "CareOrientationProposal":
+                serialized_value = self._apply_care_orientation_guardrails(
+                    serialized_value, has_urgent=has_urgent
+                )
         elif len(agents_list) > 1:
             available_files = self._get_available_resource_files()
             multi_res: dict[str, Any] = {}
@@ -358,50 +563,53 @@ class PatientMDTFormExtractionService:
             raise ValueError(f"No agent defined on section model {section_name}")
 
         elapsed = round(time.perf_counter() - t_start, 2)
-        target_form.set_section(section_name, serialized_value, elapsed_seconds=elapsed)
-        if clear_manual_flag and section_name in target_form.manual_edits:
-            target_form.manual_edits = (
-                self.form_cls.archive_manual_edit_before_ai_rerun(
-                    target_form.manual_edits,
-                    section_name,
-                )
+        with self._form_lock:
+            target_form.set_section(
+                section_name, serialized_value, elapsed_seconds=elapsed
             )
-
-        if upsert and target_file:
-            if section_name == "PatientAdministrative" and isinstance(
-                serialized_value, dict
-            ):
-                patient, merged_admin = (
-                    self.patient_record_service.synchronize_patient_from_admin(
-                        filename=target_file,
-                        admin_data=serialized_value,
-                        target_patient_id=target_form.patient_id,
+            if clear_manual_flag and section_name in target_form.manual_edits:
+                target_form.manual_edits = (
+                    self.form_cls.archive_manual_edit_before_ai_rerun(
+                        target_form.manual_edits,
+                        section_name,
                     )
                 )
-                target_form.patient_id = patient.patient_id
-                target_form.set_section(
-                    section_name, merged_admin, elapsed_seconds=elapsed
+
+            if upsert and target_file:
+                if section_name == "PatientAdministrative" and isinstance(
+                    serialized_value, dict
+                ):
+                    patient, merged_admin = (
+                        self.patient_record_service.synchronize_patient_from_admin(
+                            filename=target_file,
+                            admin_data=serialized_value,
+                            target_patient_id=target_form.patient_id,
+                        )
+                    )
+                    target_form.patient_id = patient.patient_id
+                    target_form.set_section(
+                        section_name, merged_admin, elapsed_seconds=elapsed
+                    )
+                    serialized_value = merged_admin
+
+                upsert_fields_dict: dict[str, Any] = {
+                    section_name: serialized_value,
+                    "execution_times": dict(target_form.execution_times),
+                    "date_refresh": target_form.date_refresh,
+                }
+                if section_name == "PatientAdministrative" and target_form.patient_id:
+                    upsert_fields_dict["patient_id"] = target_form.patient_id
+                if clear_manual_flag:
+                    upsert_fields_dict["manual_edits"] = dict(target_form.manual_edits)
+
+                self.mdt_form_repo.upsert_fields(
+                    target_file,
+                    fields=upsert_fields_dict,
+                    set_on_insert={
+                        "file": target_file,
+                        "ui_date": target_form.ui_date,
+                    },
                 )
-                serialized_value = merged_admin
-
-            upsert_fields_dict: dict[str, Any] = {
-                section_name: serialized_value,
-                "execution_times": dict(target_form.execution_times),
-                "date_refresh": target_form.date_refresh,
-            }
-            if section_name == "PatientAdministrative" and target_form.patient_id:
-                upsert_fields_dict["patient_id"] = target_form.patient_id
-            if clear_manual_flag:
-                upsert_fields_dict["manual_edits"] = dict(target_form.manual_edits)
-
-            self.mdt_form_repo.upsert_fields(
-                target_file,
-                fields=upsert_fields_dict,
-                set_on_insert={
-                    "file": target_file,
-                    "ui_date": target_form.ui_date,
-                },
-            )
 
         return serialized_value
 

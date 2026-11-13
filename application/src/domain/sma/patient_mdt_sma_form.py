@@ -352,3 +352,18 @@ class PatientMDTSmaForm(PatientMDTForm):
             2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., SMN-targeted disease-modifying therapy initiation/switch [nusinersen, risdiplam, onasemnogene abeparvovec], NIV/BiPAP or Cough Assist adaptation, nutritional/gastrostomy support, orthopedic spine management/arthrodesis, or specialized rehabilitation).
             Provide a clear `clinical_rationale` detailing the positions of the experts and French PNDS SMA guidelines, especially highlighting any divergence in opinions regarding urgency.
             """
+
+    @classmethod
+    def should_run_care_orientation_debate(
+        cls,
+        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
+    ) -> bool:
+        """Trigger Debate Path when SMA bulbar or respiratory adaptation complexity is present."""
+        d = cls._as_dict(doc_or_form) if doc_or_form is not None else {}
+        sma_resp = d.get("RespiratoryAssessment")
+        if isinstance(sma_resp, dict) and (
+            sma_resp.get("has_bulbar_symptoms")
+            or sma_resp.get("needs_ventilation_adaptation")
+        ):
+            return True
+        return False

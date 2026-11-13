@@ -318,6 +318,40 @@ class PatientMDTOncologicForm(PatientMDTForm):
         organ = tl.get("tumor_location") if isinstance(tl, dict) else None
         return resolve_oncology_resources(organ)
 
+    @classmethod
+    def get_completeness_guardrail_flags(
+        cls,
+        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
+    ) -> tuple[bool, str | None]:
+        """Block marking an oncology MDT complete when primary tumor location is unknown/missing."""
+        d = cls._as_dict(doc_or_form) if doc_or_form is not None else {}
+        tl = d.get("TumorLocation")
+        organ = (
+            str(tl.get("tumor_location") or "").strip().lower()
+            if isinstance(tl, dict)
+            else ""
+        )
+        if not organ or organ == "unknown":
+            return (
+                True,
+                "Localisation tumorale primitive non identifiée (organe primitif inconnu).",
+            )
+        return False, None
+
+    @classmethod
+    def should_run_care_orientation_debate(
+        cls,
+        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
+    ) -> bool:
+        """Trigger Debate Path for borderline or locally advanced oncology resectability."""
+        d = cls._as_dict(doc_or_form) if doc_or_form is not None else {}
+        resectability = d.get("Resectability")
+        if isinstance(resectability, dict):
+            res_status = str(resectability.get("resectability") or "").strip().lower()
+            if any(k in res_status for k in ("borderline", "locally", "localement")):
+                return True
+        return False
+
     # class PreviousTreatments(default_model):
 
     #     treaments: Optional[List[PreviousTreatmentData]] = Field(description="List of treaments already done, can be None")

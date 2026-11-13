@@ -115,6 +115,8 @@ def collaborative_debate(
     callbacks: list | None = None,
     ressources: list[str] | None = None,
     additionnal_readers: list[Any] | None = None,
+    seed_opinions: dict[str, str] | None = None,
+    skip_round2: bool = False,
 ) -> dict:
     if coordinator_agent_cls is None:
         domain = config.domain
@@ -135,7 +137,13 @@ def collaborative_debate(
     cached_round1 = checkpoint.get("round1")
     cached_round2 = checkpoint.get("round2")
 
-    if cached_round1 and cached_round2:
+    if seed_opinions and skip_round2:
+        logger.info(
+            "Debate fast-path: reusing %d ExpertAnswer opinions directly for coordinator synthesis.",
+            len(seed_opinions),
+        )
+        updated_opinions = dict(seed_opinions)
+    elif cached_round1 and cached_round2 and not seed_opinions:
         logger.info(
             "Debate checkpoint HIT: reusing cached Round 1 and Round 2 expert opinions."
         )
@@ -171,7 +179,14 @@ def collaborative_debate(
         max_workers = max(1, min(3, len(agents)))
 
         # Step 1: Initial Turn (Parallel Reasoning with DebateTurn format)
-        if cached_round1:
+        if seed_opinions:
+            logger.info(
+                "Debate Round 1 seeded from %d ExpertAnswer opinions (skipping Round 1 LLM calls).",
+                len(seed_opinions),
+            )
+            opinions = dict(seed_opinions)
+            round1_all_ok = True
+        elif cached_round1:
             logger.info(
                 "Debate checkpoint HIT: reusing cached Round 1 expert opinions."
             )

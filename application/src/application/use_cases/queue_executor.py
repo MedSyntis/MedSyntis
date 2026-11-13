@@ -1,4 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import threading
 import time
 from typing import Any
 
@@ -540,7 +542,9 @@ class PatientMDTFormQueueJobExecutor:
                 is_Explicit_rerun = bool(job.get("force_replace", False))
                 preserve_manual = bool(job.get("preserve_manual_edits", True))
 
-                for idx, model_cls in enumerate(expert_models, start=1):
+                progress_lock = threading.Lock()
+
+                def _process_wave3_model(idx: int, model_cls: Any) -> None:
                     if queue_manager._is_job_aborted(
                         job_id, run_id=run_id, lease_id=lease_id
                     ):
@@ -560,17 +564,23 @@ class PatientMDTFormQueueJobExecutor:
                         and model_name in service.form.sections
                         and service.form.sections.get(model_name)
                     ):
-                        if model_name not in completed_models:
-                            completed_models.append(model_name)
-                        queue_manager.update_job_progress(
-                            job_id=job_id,
-                            current_step=f"Concertation d'experts ({idx}/{total}) — {model_name} (déjà extraite)",
-                            completed_models=completed_models,
-                            progress_pct=round((idx / total) * 100.0, 1),
-                            run_id=run_id,
-                            lease_id=lease_id,
-                        )
-                        continue
+                        with progress_lock:
+                            if model_name not in completed_models:
+                                completed_models.append(model_name)
+                            queue_manager.update_job_progress(
+                                job_id=job_id,
+                                current_step=f"Concertation d'experts ({idx}/{total}) — {model_name} (déjà extraite)",
+                                completed_models=list(completed_models),
+                                progress_pct=round(
+                                    (len(completed_models) / total) * 100.0, 1
+                                ),
+                                run_id=run_id,
+                                lease_id=lease_id,
+                            )
+                        return
+
+                    with progress_lock:
+                        snapshot_completed = list(completed_models)
 
                     self._run_model_extraction_step(
                         service=service,
@@ -581,13 +591,34 @@ class PatientMDTFormQueueJobExecutor:
                         step_label=f"Concertation d'experts ({idx}/{total}) — {model_name}",
                         idx=idx,
                         total=total,
-                        completed_models=completed_models,
+                        completed_models=snapshot_completed,
                         preserve_manual=preserve_manual,
                         queue_manager=queue_manager,
                         job_id=job_id,
                         run_id=run_id,
                         lease_id=lease_id,
                     )
+                    with progress_lock:
+                        if model_name not in completed_models:
+                            completed_models.append(model_name)
+
+                # Run ExpertAnswer first so MTDCompleted and CareOrientationProposal can consume it
+                if expert_models:
+                    _process_wave3_model(1, expert_models[0])
+
+                remaining_models = list(enumerate(expert_models[1:], start=2))
+                if remaining_models and not queue_manager._is_job_aborted(
+                    job_id, run_id=run_id, lease_id=lease_id
+                ):
+                    with ThreadPoolExecutor(
+                        max_workers=min(2, len(remaining_models))
+                    ) as pool:
+                        futures = [
+                            pool.submit(_process_wave3_model, idx, model_cls)
+                            for idx, model_cls in remaining_models
+                        ]
+                        for fut in futures:
+                            fut.result()
 
                 self.on_job_enqueued(domain, filename, RCPProcessingStatus.COMPLETED)
             finally:
