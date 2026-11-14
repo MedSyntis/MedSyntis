@@ -3598,16 +3598,13 @@ export function renderQueueAdminPage(
     : "";
 
   const activeBannerHtml =
-    stats.running > 0 && (stats.activeFormFile || stats.thinkingPreview)
+    stats.running > 0 && stats.activeFormFile
       ? `<div class="ds-processing-banner" role="status" data-testid="queue-active-banner">
           <span class="ds-spinner" aria-hidden="true"></span>
-          <div style="flex:1; min-width:0">
-            <div class="ds-cluster" style="gap:var(--ds-space-2)">
-              <strong>${esc(stats.activeFormFile ?? tr(lang, "Analyse en cours", "Analysis running"))}</strong>
-              ${stats.activeStep ? `<span class="ds-badge ds-badge--info ds-badge--sm">${esc(stats.activeStep)}</span>` : ""}
-              <span class="ds-small ds-muted">${Math.round(stats.activeProgressPct)} %</span>
-            </div>
-            ${stats.thinkingPreview ? `<div class="ds-small ds-muted" style="margin-top:var(--ds-space-1)">${renderSafeInlineMarkdown(stats.thinkingPreview)}</div>` : ""}
+          <div class="ds-cluster" style="gap:var(--ds-space-2); flex:1; min-width:0">
+            <strong>${esc(stats.activeFormFile)}</strong>
+            ${stats.activeStep ? `<span class="ds-badge ds-badge--info ds-badge--sm">${esc(stats.activeStep)}</span>` : ""}
+            <span class="ds-small ds-muted">${Math.round(stats.activeProgressPct)} %</span>
           </div>
         </div>`
       : "";
