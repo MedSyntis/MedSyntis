@@ -3405,209 +3405,399 @@ export function renderFeedbackPage(
   });
 }
 
-export function renderQueueAdminPage(dashboard: QueueDashboardView, session: UserSession): string {
+function formatQueueStatusLabel(status: string, lang: Language): string {
+  switch (status.toUpperCase()) {
+    case "RUNNING":
+    case "PROCESSING":
+      return tr(lang, "En cours", "Running");
+    case "PENDING":
+      return tr(lang, "En attente", "Pending");
+    case "FAILED":
+      return tr(lang, "En échec", "Failed");
+    case "COMPLETED":
+      return tr(lang, "Terminé", "Completed");
+    case "CANCELLED":
+      return tr(lang, "Annulé", "Cancelled");
+    default:
+      return status;
+  }
+}
+
+function formatQueueDomainLabel(domain: string, lang: Language): string {
+  const norm = domain.trim().toLowerCase();
+  if (norm === "sma") return "SMA";
+  if (norm === "oncology") return tr(lang, "Oncologie", "Oncology");
+  return domain;
+}
+
+function formatQueueCreatedAndDuration(
+  j: QueueJobItem,
+  lang: Language,
+): {
+  createdLabel: string;
+  durationLabel: string;
+} {
+  let createdLabel = "—";
+  if (j.createdAt) {
+    const d = new Date(j.createdAt);
+    if (!Number.isNaN(d.getTime())) {
+      createdLabel = new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : "en-US", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(d);
+    }
+  }
+  let durationLabel = "";
+  if (j.startedAt) {
+    const startMs = Date.parse(j.startedAt);
+    const endMs = j.completedAt ? Date.parse(j.completedAt) : Date.now();
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs >= startMs) {
+      const sec = Math.max(0, Math.round((endMs - startMs) / 1000));
+      durationLabel = formatDurationMinSec(sec);
+    }
+  }
+  return { createdLabel, durationLabel };
+}
+
+export function renderQueueAdminPage(
+  dashboard: QueueDashboardView,
+  session: UserSession,
+  drawerQueueJobs?: QueueJobItem[],
+): string {
   const lang = session.language;
+  const isAdmin = Boolean(session.isAdmin);
   const domainParam = encodeURIComponent(session.domain);
   const { stats, jobs, page, pageSize, totalItems, totalPages, statusFilter } = dashboard;
   const startItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const endItem = totalItems === 0 ? 0 : Math.min(totalItems, (page - 1) * pageSize + jobs.length);
-  const queueUrl = (targetPage: number) =>
-    `/admin/queue?domain=${domainParam}&page=${targetPage}&pageSize=${pageSize}&status=${encodeURIComponent(statusFilter)}`;
+  const queueUrl = (targetPage: number, targetStatus = statusFilter) =>
+    `/admin/queue?domain=${domainParam}&page=${targetPage}&pageSize=${pageSize}&status=${encodeURIComponent(targetStatus)}`;
+  const processingActive = stats.running > 0 || stats.pending > 0;
+  const colSpan = isAdmin ? 7 : 6;
 
   const jobsRows = jobs
     .map((j, idx) => {
       const jobHref = resolveQueueJobHref(j, session.domain);
       const rowDataAttr = jobHref
-        ? ` data-href="${jobHref}" title="Cliquer pour ouvrir ${esc(j.filename ?? j.jobId)}"`
+        ? ` data-href="${jobHref}" title="${esc(tr(lang, `Ouvrir ${j.filename ?? j.jobId}`, `Open ${j.filename ?? j.jobId}`))}"`
         : "";
       const fileCellHtml =
         j.filename && jobHref
           ? `<a class="ds-table__primary-link" href="${jobHref}">${esc(j.filename)}</a>`
           : esc(j.filename ?? "—");
+      const shortJobId = j.jobId.length > 12 ? `${j.jobId.slice(0, 8)}…` : j.jobId;
+      const stepPrimary = j.section
+        ? translateValue(j.section, lang)
+        : translateValue(j.jobType, lang);
+      const stepSecondary = j.step ? `<div class="ds-small ds-muted">${esc(j.step)}</div>` : "";
+      const errorHtml =
+        j.status === "FAILED" && j.error
+          ? `<span class="ds-queue-error-snippet" title="${esc(j.error)}">${esc(j.error)}</span>`
+          : "";
+      const { createdLabel, durationLabel } = formatQueueCreatedAndDuration(j, lang);
+      const pct = Math.round(j.progressPct);
+      const progressClass =
+        j.status === "FAILED"
+          ? "ds-progress ds-progress--danger"
+          : j.status === "COMPLETED"
+            ? "ds-progress ds-progress--success"
+            : "ds-progress";
+      const statusBadgeClass =
+        j.status === "RUNNING"
+          ? "ds-badge--info"
+          : j.status === "FAILED"
+            ? "ds-badge--danger"
+            : j.status === "COMPLETED"
+              ? "ds-badge--success"
+              : "ds-badge--neutral";
+      const statusIcon =
+        j.status === "RUNNING"
+          ? '<span class="ds-spinner" aria-hidden="true"></span>'
+          : iconSvg(
+              j.status === "FAILED"
+                ? "ic-error"
+                : j.status === "COMPLETED"
+                  ? "ic-check-circle"
+                  : "ic-clock",
+            );
+
       return `<tr${rowDataAttr} data-testid="queue-job-row-${esc(j.jobId)}">
-        <td data-label="ID Job" class="ds-mono">${esc(j.jobId)}</td>
-        <td data-label="Domaine"><span class="ds-badge ${j.domain === "sma" ? "ds-badge--domain-sma" : "ds-badge--domain-onco"} ds-badge--sm">${iconSvg(j.domain === "sma" ? "ic-dna" : "ic-ribbon")} ${esc(j.domain)}</span></td>
-        <td data-label="Fichier" class="ds-mono ds-table__primary-cell">${fileCellHtml}</td>
-        <td data-label="Étape">${esc(j.section ?? j.jobType)}</td>
-        <td data-label="Statut">
-          <span class="ds-badge ${j.status === "RUNNING" ? "ds-badge--info" : j.status === "FAILED" ? "ds-badge--danger" : j.status === "COMPLETED" ? "ds-badge--success" : "ds-badge--neutral"} ds-badge--sm">
-            ${j.status === "RUNNING" ? '<span class="ds-spinner" aria-hidden="true"></span>' : iconSvg(j.status === "FAILED" ? "ic-error" : j.status === "COMPLETED" ? "ic-check-circle" : "ic-clock")}
-            ${esc(j.status)}
+        <td data-label="${esc(tr(lang, "Fichier", "File"))}" class="ds-table__primary-cell">
+          ${fileCellHtml}
+          ${session.expertMode ? `<div class="ds-small ds-muted ds-mono" title="${esc(j.jobId)}">${esc(shortJobId)}</div>` : ""}
+        </td>
+        <td data-label="${esc(tr(lang, "Domaine", "Domain"))}"><span class="ds-badge ${j.domain === "sma" ? "ds-badge--domain-sma" : "ds-badge--domain-onco"} ds-badge--sm">${iconSvg(j.domain === "sma" ? "ic-dna" : "ic-ribbon")} ${esc(formatQueueDomainLabel(j.domain, lang))}</span></td>
+        <td data-label="${esc(tr(lang, "Étape / Détail", "Step / Detail"))}">
+          <span>${esc(stepPrimary)}</span>
+          ${stepSecondary}
+          ${errorHtml}
+        </td>
+        <td data-label="${esc(tr(lang, "Créé / Durée", "Created / Duration"))}">
+          <span class="ds-small">${esc(createdLabel)}</span>
+          ${durationLabel ? `<div class="ds-small ds-muted ds-mono">${esc(durationLabel)}</div>` : ""}
+        </td>
+        <td data-label="${esc(tr(lang, "Statut", "Status"))}">
+          <span class="ds-badge ${statusBadgeClass} ds-badge--sm">
+            ${statusIcon}
+            ${esc(formatQueueStatusLabel(j.status, lang))}
           </span>
         </td>
-        <td data-label="Progression">
-          <progress class="ds-progress" max="100" value="${Math.round(j.progressPct)}" style="width:6rem"></progress>
-          <span class="ds-small ds-muted">${Math.round(j.progressPct)} %</span>
+        <td data-label="${esc(tr(lang, "Progression", "Progress"))}">
+          <progress class="${progressClass}" max="100" value="${pct}" aria-label="${esc(tr(lang, `Progression ${pct} %`, `Progress ${pct}%`))}" style="width:5.5rem"></progress>
+          <span class="ds-small ds-muted">${pct} %</span>
         </td>
-        <td class="ds-table__actions">
+        ${
+          isAdmin
+            ? `<td class="ds-table__actions">
           <div class="ds-cluster" style="justify-content:flex-end">
             ${
               j.status === "FAILED"
-                ? `<form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/retry?domain=${domainParam}"><button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_retry_${esc(j.jobId)}">${iconSvg("ic-refresh")} Relancer</button></form>`
+                ? `<form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/retry?domain=${domainParam}"><button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_retry_${esc(j.jobId)}">${iconSvg("ic-refresh")} ${esc(tr(lang, "Relancer", "Retry"))}</button></form>`
                 : ""
             }
-            <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" data-open="del-job-dialog-${idx}" aria-label="Supprimer le job ${esc(j.jobId)}" data-testid="btn_del_job_${esc(j.jobId)}">${iconSvg("ic-delete")}</button>
+            <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" data-open="del-job-dialog-${idx}" aria-label="${esc(tr(lang, `Supprimer le job ${j.jobId}`, `Delete job ${j.jobId}`))}" data-testid="btn_del_job_${esc(j.jobId)}">${iconSvg("ic-delete")}</button>
           </div>
-        </td>
+        </td>`
+            : ""
+        }
       </tr>`;
     })
     .join("");
 
-  const deleteJobDialogsHtml = jobs
-    .map(
-      (
-        j,
-        idx,
-      ) => `<dialog class="ds-modal ds-modal--danger" id="del-job-dialog-${idx}" aria-labelledby="del-job-title-${idx}">
+  const deleteJobDialogsHtml = isAdmin
+    ? jobs
+        .map(
+          (
+            j,
+            idx,
+          ) => `<dialog class="ds-modal ds-modal--danger" id="del-job-dialog-${idx}" aria-labelledby="del-job-title-${idx}">
         <div class="ds-modal__header">
           <span>${iconSvg("ic-delete")}</span>
-          <h2 id="del-job-title-${idx}">Supprimer le job ${esc(j.jobId)} ?</h2>
+          <h2 id="del-job-title-${idx}">${esc(tr(lang, `Supprimer le job ${j.filename ?? j.jobId} ?`, `Delete job ${j.filename ?? j.jobId}?`))}</h2>
         </div>
         <div class="ds-modal__body">
           <div class="ds-alert ds-alert--danger" role="alert">
             <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
             <div class="ds-alert__content">
-              <span class="ds-alert__title">Suppression d'un traitement de la file</span>
-              <span>Le job <strong>${esc(j.jobId)}</strong> (${esc(j.filename ?? j.jobType)}) sera retiré de la file d'attente.</span>
+              <span class="ds-alert__title">${esc(tr(lang, "Suppression d'un traitement de la file", "Remove job from queue"))}</span>
+              <span>${tr(lang, `Le job <strong>${esc(j.jobId)}</strong> (${esc(j.filename ?? j.jobType)}) sera retiré de la file d'attente.`, `Job <strong>${esc(j.jobId)}</strong> (${esc(j.filename ?? j.jobType)}) will be removed from the queue.`)}</span>
             </div>
           </div>
         </div>
         <div class="ds-modal__footer">
-          <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+          <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>${esc(tr(lang, "Annuler", "Cancel"))}</button></form>
           <form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/delete?domain=${domainParam}">
-            <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_job_${esc(j.jobId)}">${iconSvg("ic-delete")} Confirmer la suppression</button>
+            <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_job_${esc(j.jobId)}">${iconSvg("ic-delete")} ${esc(tr(lang, "Confirmer la suppression", "Confirm deletion"))}</button>
           </form>
         </div>
       </dialog>`,
-    )
+        )
+        .join("")
+    : "";
+
+  const activeBannerHtml =
+    stats.running > 0 && (stats.activeFormFile || stats.thinkingPreview)
+      ? `<div class="ds-processing-banner" role="status" data-testid="queue-active-banner">
+          <span class="ds-spinner" aria-hidden="true"></span>
+          <div style="flex:1; min-width:0">
+            <div class="ds-cluster" style="gap:var(--ds-space-2)">
+              <strong>${esc(stats.activeFormFile ?? tr(lang, "Analyse en cours", "Analysis running"))}</strong>
+              ${stats.activeStep ? `<span class="ds-badge ds-badge--info ds-badge--sm">${esc(stats.activeStep)}</span>` : ""}
+              <span class="ds-small ds-muted">${Math.round(stats.activeProgressPct)} %</span>
+            </div>
+            ${stats.thinkingPreview ? `<div class="ds-small ds-muted" style="margin-top:var(--ds-space-1)">${renderSafeInlineMarkdown(stats.thinkingPreview)}</div>` : ""}
+          </div>
+        </div>`
+      : "";
+
+  const statusChips = [
+    { key: "ALL", label: tr(lang, "Tous", "All"), count: stats.total },
+    { key: "RUNNING", label: tr(lang, "En cours", "Running"), count: stats.running },
+    { key: "PENDING", label: tr(lang, "En attente", "Pending"), count: stats.pending },
+    { key: "FAILED", label: tr(lang, "En échec", "Failed"), count: stats.failed },
+    { key: "COMPLETED", label: tr(lang, "Terminés", "Completed"), count: stats.completed },
+    { key: "CANCELLED", label: tr(lang, "Annulés", "Cancelled"), count: stats.cancelled },
+  ];
+
+  const chipsHtml = statusChips
+    .map((chip) => {
+      const isActive = statusFilter === chip.key;
+      return `<a class="ds-chip ${isActive ? "is-active" : ""}" href="${queueUrl(1, chip.key)}" ${isActive ? 'aria-current="true"' : ""} data-testid="queue-chip-${chip.key.toLowerCase()}">${esc(chip.label)} (${chip.count})</a>`;
+    })
     .join("");
 
+  const emptyStateHtml = `<tr><td colspan="${colSpan}">
+    <div class="ds-empty" style="padding:var(--ds-space-6)">
+      <span class="ds-empty__icon" aria-hidden="true">${iconSvg("ic-check-circle", "ds-icon--lg")}</span>
+      <p class="ds-empty__title">${esc(tr(lang, "Aucun job à afficher", "No jobs to display"))}</p>
+      <p class="ds-empty__desc">${esc(
+        statusFilter !== "ALL"
+          ? tr(
+              lang,
+              "Aucun traitement ne correspond au filtre sélectionné.",
+              "No jobs match the selected filter.",
+            )
+          : tr(
+              lang,
+              "La file d'analyse est actuellement vide.",
+              "The analysis queue is currently empty.",
+            ),
+      )}</p>
+      ${
+        statusFilter !== "ALL"
+          ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(1, "ALL")}" data-testid="btn_queue_reset_filter">${esc(tr(lang, "Réinitialiser les filtres", "Reset filters"))}</a>`
+          : ""
+      }
+    </div>
+  </td></tr>`;
+
   const bodyHtml = `
-    <div class="ds-page-header">
-      <div class="ds-page-header__text">
-        <h1>Supervision de la file d'analyse &amp; verrous GPU</h1>
-        <p class="ds-muted">Suivi temps réel Cross-Domains (Oncologie &amp; SMA) de la file PriorityQueue et de l'inférence LLM locale.</p>
-      </div>
-      <div class="ds-page-header__actions">
-        <button type="button" class="ds-btn ds-btn--secondary" data-open="release-locks-dialog" data-testid="btn_release_locks">
-          ${iconSvg("ic-refresh")} Libérer les verrous GPU (${stats.gpuLocksCount})
-        </button>
-        <button type="button" class="ds-btn ds-btn--tonal" data-open="clean-completed-dialog" data-testid="btn_clean_completed">
-          ${iconSvg("ic-check")} Purger les terminés
-        </button>
-      </div>
-    </div>
-
-    <div class="ds-kpi-grid">
-      <div class="ds-kpi ds-kpi--info"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--info" aria-hidden="true">${iconSvg("ic-play", "ds-icon--md")}</span> En cours</span><span class="ds-kpi__value">${stats.running}</span></div>
-      <div class="ds-kpi"><span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-clock", "ds-icon--md")}</span> En attente</span><span class="ds-kpi__value">${stats.pending}</span></div>
-      <div class="ds-kpi ds-kpi--success"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-check-circle", "ds-icon--md")}</span> Terminés</span><span class="ds-kpi__value">${stats.completed}</span></div>
-      <div class="ds-kpi ds-kpi--danger"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-error", "ds-icon--md")}</span> En échec</span><span class="ds-kpi__value">${stats.failed}</span></div>
-    </div>
-
-    <form class="ds-toolbar" method="get" action="/admin/queue" data-testid="queue-filter-toolbar">
-      <input type="hidden" name="domain" value="${esc(session.domain)}">
-      <input type="hidden" name="page" value="1">
-      <div class="ds-cluster">
-        <label class="ds-small ds-muted" for="queue-status-filter">Statut</label>
-        <select id="queue-status-filter" name="status" class="ds-select" data-testid="queue-status-select">
-          <option value="ALL"${statusFilter === "ALL" ? " selected" : ""}>Tous (${stats.total})</option>
-          <option value="RUNNING"${statusFilter === "RUNNING" ? " selected" : ""}>En cours (${stats.running})</option>
-          <option value="PENDING"${statusFilter === "PENDING" ? " selected" : ""}>En attente (${stats.pending})</option>
-          <option value="FAILED"${statusFilter === "FAILED" ? " selected" : ""}>En échec (${stats.failed})</option>
-          <option value="COMPLETED"${statusFilter === "COMPLETED" ? " selected" : ""}>Terminés (${stats.completed})</option>
-          <option value="CANCELLED"${statusFilter === "CANCELLED" ? " selected" : ""}>Annulés (${stats.cancelled})</option>
-        </select>
-        <label class="ds-small ds-muted" for="queue-page-size">Par page</label>
-        <select id="queue-page-size" name="pageSize" class="ds-select" data-testid="queue-page-size-select">
-          <option value="25"${pageSize === 25 ? " selected" : ""}>25</option>
-          <option value="50"${pageSize === 50 ? " selected" : ""}>50</option>
-          <option value="100"${pageSize === 100 ? " selected" : ""}>100</option>
-        </select>
-        <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_queue_filter">Appliquer</button>
-      </div>
-      <span class="ds-small ds-muted" data-testid="queue-pagination-summary">
-        ${totalItems === 0 ? "Aucun job" : `Affichage ${startItem}–${endItem} sur ${totalItems}`}
-      </span>
-    </form>
-
-    <div class="ds-table-wrap">
-      <table class="ds-table ds-table--dense" data-testid="queue-jobs-table">
-        <thead>
-          <tr>
-            <th scope="col">ID Job</th>
-            <th scope="col">Domaine</th>
-            <th scope="col">Fichier</th>
-            <th scope="col">Étape / Rubrique</th>
-            <th scope="col">Statut</th>
-            <th scope="col">Progression</th>
-            <th scope="col" class="ds-table__actions">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${jobsRows || '<tr><td colspan="7" class="ds-muted">Aucun job dans cette page.</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-    <nav class="ds-toolbar" aria-label="Pagination de la file d'analyse" data-testid="queue-pagination-nav">
-      <span class="ds-small ds-muted">Page ${page} / ${totalPages}</span>
-      <div class="ds-cluster">
+    <div data-processing-active="${processingActive ? "true" : "false"}">
+      <div class="ds-page-header">
+        <div class="ds-page-header__text">
+          <h1>${esc(tr(lang, "Supervision de la file d'analyse & verrous GPU", "Analysis Queue & GPU Locks Supervision"))}</h1>
+          <p class="ds-muted">${esc(tr(lang, "Suivi temps réel Cross-Domains (Oncologie & SMA) de la file PriorityQueue et de l'inférence LLM locale.", "Real-time cross-domain monitoring (Oncology & SMA) of the PriorityQueue and local LLM inference."))}</p>
+        </div>
         ${
-          page > 1
-            ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page - 1)}" data-testid="btn_queue_prev">Précédent</a>`
-            : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_prev_disabled">Précédent</span>`
-        }
-        ${
-          page < totalPages
-            ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page + 1)}" data-testid="btn_queue_next">Suivant</a>`
-            : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_next_disabled">Suivant</span>`
+          isAdmin
+            ? `<div class="ds-page-header__actions">
+          <button type="button" class="ds-btn ds-btn--secondary" data-open="release-locks-dialog" data-testid="btn_release_locks">
+            ${iconSvg("ic-refresh")} ${esc(tr(lang, `Libérer les verrous GPU (${stats.gpuLocksCount})`, `Release GPU locks (${stats.gpuLocksCount})`))}
+          </button>
+          <button type="button" class="ds-btn ds-btn--tonal" data-open="clean-completed-dialog" data-testid="btn_clean_completed">
+            ${iconSvg("ic-check")} ${esc(tr(lang, "Purger les terminés", "Purge completed"))}
+          </button>
+        </div>`
+            : ""
         }
       </div>
-    </nav>
+
+      ${activeBannerHtml}
+
+      <div class="ds-kpi-grid ds-kpi-grid--compact">
+        <a class="ds-kpi ds-kpi--info" href="${queueUrl(1, "RUNNING")}"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--info" aria-hidden="true">${iconSvg("ic-play", "ds-icon--sm")}</span> ${esc(tr(lang, "En cours", "Running"))}</span><span class="ds-kpi__value">${stats.running}</span></a>
+        <a class="ds-kpi" href="${queueUrl(1, "PENDING")}"><span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-clock", "ds-icon--sm")}</span> ${esc(tr(lang, "En attente", "Pending"))}</span><span class="ds-kpi__value">${stats.pending}</span></a>
+        <a class="ds-kpi ds-kpi--success" href="${queueUrl(1, "COMPLETED")}"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-check-circle", "ds-icon--sm")}</span> ${esc(tr(lang, "Terminés", "Completed"))}</span><span class="ds-kpi__value">${stats.completed}</span></a>
+        <a class="ds-kpi ds-kpi--danger" href="${queueUrl(1, "FAILED")}"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-error", "ds-icon--sm")}</span> ${esc(tr(lang, "En échec", "Failed"))}</span><span class="ds-kpi__value">${stats.failed}</span></a>
+      </div>
+
+      <form class="ds-toolbar ds-queue-toolbar" method="get" action="/admin/queue" data-testid="queue-filter-toolbar">
+        <input type="hidden" name="domain" value="${esc(session.domain)}">
+        <input type="hidden" name="page" value="1">
+        <input type="hidden" name="status" value="${esc(statusFilter)}">
+        <div class="ds-queue-toolbar__chips" role="group" aria-label="${esc(tr(lang, "Filtrer par statut", "Filter by status"))}">
+          ${chipsHtml}
+        </div>
+        <div class="ds-queue-toolbar__controls">
+          <div class="ds-queue-toolbar__page-size">
+            <label class="ds-small ds-muted" for="queue-page-size">${esc(tr(lang, "Par page", "Per page"))}</label>
+            <select id="queue-page-size" name="pageSize" class="ds-select" data-autosubmit="true" data-testid="queue-page-size-select">
+              <option value="25"${pageSize === 25 ? " selected" : ""}>25</option>
+              <option value="50"${pageSize === 50 ? " selected" : ""}>50</option>
+              <option value="100"${pageSize === 100 ? " selected" : ""}>100</option>
+            </select>
+          </div>
+          <noscript><button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_queue_filter">${esc(tr(lang, "Appliquer", "Apply"))}</button></noscript>
+        </div>
+      </form>
+
+      <div class="ds-table-wrap">
+        <table class="ds-table ds-table--dense" data-testid="queue-jobs-table">
+          <thead>
+            <tr>
+              <th scope="col">${esc(tr(lang, "Fichier", "File"))}</th>
+              <th scope="col">${esc(tr(lang, "Domaine", "Domain"))}</th>
+              <th scope="col">${esc(tr(lang, "Étape / Détail", "Step / Detail"))}</th>
+              <th scope="col">${esc(tr(lang, "Créé / Durée", "Created / Duration"))}</th>
+              <th scope="col">${esc(tr(lang, "Statut", "Status"))}</th>
+              <th scope="col">${esc(tr(lang, "Progression", "Progress"))}</th>
+              ${isAdmin ? `<th scope="col" class="ds-table__actions">${esc(tr(lang, "Actions", "Actions"))}</th>` : ""}
+            </tr>
+          </thead>
+          <tbody>
+            ${jobsRows || emptyStateHtml}
+          </tbody>
+        </table>
+      </div>
+      <nav class="ds-pagination" aria-label="${esc(tr(lang, "Pagination de la file d'analyse", "Analysis queue pagination"))}" data-testid="queue-pagination-nav">
+        <span class="ds-small ds-muted" data-testid="queue-pagination-summary">
+          ${
+            totalItems === 0
+              ? esc(tr(lang, "Aucun job", "No jobs"))
+              : esc(
+                  tr(
+                    lang,
+                    `Affichage ${startItem}–${endItem} sur ${totalItems}`,
+                    `Showing ${startItem}–${endItem} of ${totalItems}`,
+                  ),
+                )
+          }
+        </span>
+        <div class="ds-pagination__controls">
+          ${
+            page > 1
+              ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page - 1)}" data-testid="btn_queue_prev">${esc(tr(lang, "Précédent", "Previous"))}</a>`
+              : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_prev_disabled">${esc(tr(lang, "Précédent", "Previous"))}</span>`
+          }
+          <span class="ds-pagination__page">${esc(tr(lang, `Page ${page} / ${totalPages}`, `Page ${page} / ${totalPages}`))}</span>
+          ${
+            page < totalPages
+              ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page + 1)}" data-testid="btn_queue_next">${esc(tr(lang, "Suivant", "Next"))}</a>`
+              : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_next_disabled">${esc(tr(lang, "Suivant", "Next"))}</span>`
+          }
+        </div>
+      </nav>
+    </div>
     ${deleteJobDialogsHtml}
-    <dialog class="ds-modal ds-modal--danger" id="release-locks-dialog" aria-labelledby="release-locks-title">
+    ${
+      isAdmin
+        ? `<dialog class="ds-modal ds-modal--danger" id="release-locks-dialog" aria-labelledby="release-locks-title">
       <div class="ds-modal__header">
         <span>${iconSvg("ic-refresh")}</span>
-        <h2 id="release-locks-title">Libérer les verrous GPU ?</h2>
+        <h2 id="release-locks-title">${esc(tr(lang, "Libérer les verrous GPU ?", "Release GPU locks?"))}</h2>
       </div>
       <div class="ds-modal__body">
         <div class="ds-alert ds-alert--danger" role="alert">
           <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
           <div class="ds-alert__content">
-            <span class="ds-alert__title">Action d'administration GPU</span>
-            <span>Les verrous d'inférence bloqués (${stats.gpuLocksCount}) seront forcés à l'état libre. N'utilisez cette action qu'en cas de blocage avéré d'un worker.</span>
+            <span class="ds-alert__title">${esc(tr(lang, "Action d'administration GPU", "GPU administration action"))}</span>
+            <span>${esc(tr(lang, `Les verrous d'inférence bloqués (${stats.gpuLocksCount}) seront forcés à l'état libre. N'utilisez cette action qu'en cas de blocage avéré d'un worker.`, `Stale inference locks (${stats.gpuLocksCount}) will be forced free. Only use this if a worker is genuinely stuck.`))}</span>
           </div>
         </div>
       </div>
       <div class="ds-modal__footer">
-        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>${esc(tr(lang, "Annuler", "Cancel"))}</button></form>
         <form method="post" action="/admin/queue/locks/release?domain=${domainParam}">
-          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_release_locks">${iconSvg("ic-refresh")} Confirmer la libération</button>
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_release_locks">${iconSvg("ic-refresh")} ${esc(tr(lang, "Confirmer la libération", "Confirm release"))}</button>
         </form>
       </div>
     </dialog>
     <dialog class="ds-modal ds-modal--danger" id="clean-completed-dialog" aria-labelledby="clean-completed-title">
       <div class="ds-modal__header">
         <span>${iconSvg("ic-delete")}</span>
-        <h2 id="clean-completed-title">Purger les jobs terminés ?</h2>
+        <h2 id="clean-completed-title">${esc(tr(lang, "Purger les jobs terminés ?", "Purge completed jobs?"))}</h2>
       </div>
       <div class="ds-modal__body">
         <div class="ds-alert ds-alert--danger" role="alert">
           <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
           <div class="ds-alert__content">
-            <span class="ds-alert__title">Nettoyage de l'historique de file</span>
-            <span>Les entrées terminées (${stats.completed}) seront supprimées de l'historique d'exécution.</span>
+            <span class="ds-alert__title">${esc(tr(lang, "Nettoyage de l'historique de file", "Queue history cleanup"))}</span>
+            <span>${esc(tr(lang, `Les entrées terminées (${stats.completed}) seront supprimées de l'historique d'exécution.`, `Completed entries (${stats.completed}) will be removed from the execution history.`))}</span>
           </div>
         </div>
       </div>
       <div class="ds-modal__footer">
-        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>${esc(tr(lang, "Annuler", "Cancel"))}</button></form>
         <form method="post" action="/admin/queue/clean?domain=${domainParam}">
           <input type="hidden" name="mode" value="completed">
-          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_clean_completed">${iconSvg("ic-check")} Confirmer la purge</button>
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_clean_completed">${iconSvg("ic-check")} ${esc(tr(lang, "Confirmer la purge", "Confirm purge"))}</button>
         </form>
       </div>
-    </dialog>
+    </dialog>`
+        : ""
+    }
   `;
 
   return renderLayout({
@@ -3616,7 +3806,7 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
     breadcrumbs: [{ label: t("nav.queue", lang) }],
     session,
     queueStats: stats,
-    queueJobs: jobs,
+    queueJobs: drawerQueueJobs ?? jobs,
     bodyHtml,
   });
 }
