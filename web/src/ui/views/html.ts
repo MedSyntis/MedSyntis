@@ -215,14 +215,16 @@ export function iconSvg(id: string, sizeClass = ""): string {
 }
 
 export function deriveRcpTone(
-  priorityLevel: string | undefined,
+  priorityLevel: number | string | undefined,
   isComplete = true,
 ): "red" | "orange" | "green" {
-  const norm = (priorityLevel ?? "").toLowerCase();
-  if (norm === "high" || (norm.includes("urgent") && !norm.includes("semi"))) {
+  const norm = String(priorityLevel ?? "")
+    .trim()
+    .toUpperCase();
+  if (norm === "1" || norm === "P1") {
     return "red";
   }
-  if (norm === "medium" || norm.includes("semi") || norm.includes("mod") || !isComplete) {
+  if (norm === "2" || norm === "P2" || norm === "9" || norm === "NOT_ASSESSED" || !isComplete) {
     return "orange";
   }
   return "green";

@@ -19,7 +19,7 @@ from src.application.reader import DocumentReader
 from src.application.ressources import Ressources
 from src.application.use_cases.patient_record import PatientRecordService
 from src.domain.agents import Agents, get_domain_agents_cls
-from src.domain.common.common_ressources import PatientPriority
+from src.domain.common.common_ressources import DiscussionPriority
 from src.domain.patient import Patient
 from src.domain.patient_mdt_form import (
     NonPatientMDTFormError,
@@ -275,7 +275,7 @@ class PatientMDTFormExtractionService:
                 if not d:
                     continue
                 rel = bool(d.get("expert_relevant"))
-                prio = d.get("patient_priority")
+                prio = d.get("discussion_priority")
                 why = str(d.get("why_relevant") or "").strip()
                 expert_lines.append(
                     f"- {ag_name} (relevant={rel}, priority={prio}): {why[:400]}"
@@ -327,53 +327,39 @@ class PatientMDTFormExtractionService:
         return serialized_value
 
     @staticmethod
-    def _normalize_priority_rank(priority: Any) -> tuple[int, str | None]:
-        """Map PatientPriority enum instances, labels, or aliases to (rank, canonical_enum_value)."""
-        if isinstance(priority, Enum):
-            priority = priority.value
-        raw = str(priority or "").strip().lower()
-        if not raw or raw == PatientPriority.not_given.value.lower():
+    def _normalize_priority_rank(priority: Any) -> tuple[int, int | None]:
+        """Map DiscussionPriority instances or codes to (strength_rank 1..4, canonical_int)."""
+        parsed = DiscussionPriority.from_any(priority)
+        if parsed is None or parsed == DiscussionPriority.NOT_ASSESSED:
             return 0, None
-        if (
-            raw == PatientPriority.urgent.value.lower()
-            or raw in ("patientpriority.urgent", "high")
-            or "high-priority" in raw
-            or ("urgent" in raw and "not urgent" not in raw and "semi" not in raw)
-        ):
-            return 3, PatientPriority.urgent.value
-        if (
-            raw == PatientPriority.medium.value.lower()
-            or raw in ("patientpriority.medium", "medium")
-            or "semi-urgent" in raw
-        ):
-            return 2, PatientPriority.medium.value
-        if (
-            raw == PatientPriority.low.value.lower()
-            or raw in ("patientpriority.low", "low")
-            or "not urgent" in raw
-        ):
-            return 1, PatientPriority.low.value
-        return 0, None
+        strength = {
+            DiscussionPriority.TIME_BOUND: 4,
+            DiscussionPriority.DECISION_NEEDED: 3,
+            DiscussionPriority.STANDARD_SIGN_OFF: 2,
+            DiscussionPriority.INFORMATION: 1,
+        }.get(parsed, 0)
+        return (strength, int(parsed)) if strength else (0, None)
 
     def _extract_relevant_expert_opinions(
         self, expert_ans: Any
-    ) -> tuple[dict[str, str], set[str], str | None]:
-        """Extract clinical opinions, guideline references, and max priority from relevant ExpertAnswer entries."""
+    ) -> tuple[dict[str, str], dict[str, int], int | None]:
+        """Extract clinical opinions, per-expert priorities, and max priority from relevant ExpertAnswer entries."""
         relevant_opinions: dict[str, str] = {}
-        priorities: set[str] = set()
+        priorities_by_expert: dict[str, int] = {}
         max_rank = 0
-        max_priority: str | None = None
+        max_priority: int | None = None
         if not isinstance(expert_ans, dict):
-            return relevant_opinions, priorities, max_priority
+            return relevant_opinions, priorities_by_expert, max_priority
 
         for ag_name, ag_val in expert_ans.items():
             d = self._dump_section_dict(ag_val)
             if not d or not d.get("expert_relevant"):
                 continue
-            raw_prio = d.get("patient_priority")
+            clean_name = str(ag_name).strip()
+            raw_prio = d.get("discussion_priority")
             rank, canonical_prio = self._normalize_priority_rank(raw_prio)
-            if canonical_prio:
-                priorities.add(canonical_prio)
+            if canonical_prio is not None:
+                priorities_by_expert[clean_name] = canonical_prio
                 if rank > max_rank:
                     max_rank = rank
                     max_priority = canonical_prio
@@ -397,31 +383,39 @@ class PatientMDTFormExtractionService:
                 opinion_parts.append(
                     "Supporting guideline references:\n" + "\n".join(source_lines)
                 )
-            opinion_parts.append(
-                f"Initial pre-debate priority assessment: {canonical_prio or str(raw_prio or 'unspecified')}"
+            prio_obj = (
+                DiscussionPriority.from_any(canonical_prio)
+                if canonical_prio is not None
+                else None
             )
-            relevant_opinions[str(ag_name).strip()] = "\n".join(opinion_parts)
+            prio_desc = (
+                prio_obj.label_en
+                if prio_obj is not None
+                else str(raw_prio or "unspecified")
+            )
+            opinion_parts.append(f"Initial pre-debate discussion priority: {prio_desc}")
+            relevant_opinions[clean_name] = "\n".join(opinion_parts)
 
-        return relevant_opinions, priorities, max_priority
+        return relevant_opinions, priorities_by_expert, max_priority
 
     @classmethod
-    def _max_priority(cls, *candidates: Any) -> str | None:
-        """Return the highest canonical PatientPriority value across all candidate inputs."""
+    def _max_priority(cls, *candidates: Any) -> int | None:
+        """Return the highest DiscussionPriority integer across all candidate inputs."""
         best_rank = 0
-        best_val: str | None = None
+        best_val: int | None = None
         for cand in candidates:
             rank, val = cls._normalize_priority_rank(cand)
-            if val and rank > best_rank:
+            if val is not None and rank > best_rank:
                 best_rank = rank
                 best_val = val
         return best_val
 
     @classmethod
     def _apply_care_orientation_guardrails(
-        cls, serialized_value: Any, max_expert_priority: str | None
+        cls, serialized_value: Any, max_expert_priority: int | str | None
     ) -> Any:
         """Never downgrade CareOrientationProposal below the highest relevant expert priority."""
-        if not max_expert_priority or not isinstance(serialized_value, dict):
+        if max_expert_priority is None or not isinstance(serialized_value, dict):
             return serialized_value
         expert_rank, canonical_expert_prio = cls._normalize_priority_rank(
             max_expert_priority
@@ -429,9 +423,9 @@ class PatientMDTFormExtractionService:
         current_rank, _ = cls._normalize_priority_rank(
             serialized_value.get("suggested_priority")
         )
-        if canonical_expert_prio and current_rank < expert_rank:
+        if canonical_expert_prio is not None and current_rank < expert_rank:
             serialized_value["suggested_priority"] = canonical_expert_prio
-        if expert_rank >= 2:
+        if expert_rank >= 4:
             serialized_value["care_adaptation_suggested"] = True
         return serialized_value
 
@@ -502,7 +496,7 @@ class PatientMDTFormExtractionService:
         elif is_collaborative and len(agents_list) >= 1:
             debate_agents = list(agents_list)
             expert_ans = target_form.sections.get("ExpertAnswer")
-            relevant_opinions, _, max_expert_priority = (
+            relevant_opinions, priorities_by_expert, max_expert_priority = (
                 self._extract_relevant_expert_opinions(expert_ans)
             )
             if relevant_opinions:
@@ -519,7 +513,7 @@ class PatientMDTFormExtractionService:
                 relevant_opinions
             )
 
-            round2_priorities: list[Any] = []
+            round2_priorities: dict[str, Any] = {}
             available_files = self._get_available_resource_files()
             debate_ressources = self.form_cls.resolve_agent_ressources(
                 target_form, debate_agents[0], available_files
@@ -545,8 +539,15 @@ class PatientMDTFormExtractionService:
                 else debate_res
             )
             if section_name == "CareOrientationProposal":
-                effective_max_priority = self._max_priority(
-                    max_expert_priority, *round2_priorities
+                effective_by_expert = dict(priorities_by_expert)
+                for ag_name, r2_prio in round2_priorities.items():
+                    _, canon_r2 = self._normalize_priority_rank(r2_prio)
+                    if canon_r2:
+                        effective_by_expert[ag_name.strip()] = canon_r2
+                effective_max_priority = (
+                    self._max_priority(*effective_by_expert.values())
+                    if effective_by_expert
+                    else max_expert_priority
                 )
                 serialized_value = self._apply_care_orientation_guardrails(
                     serialized_value, max_expert_priority=effective_max_priority

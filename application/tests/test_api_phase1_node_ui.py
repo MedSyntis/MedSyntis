@@ -80,7 +80,7 @@ def test_rcp_and_patient_card_responses_include_processing_and_care_fields(
         },
         "CareOrientationProposal": {
             "care_adaptation_suggested": True,
-            "suggested_priority": "Urgent, a treatment is needed quickly",
+            "suggested_priority": 1,
             "proposed_care_type": "Palliative chemotherapy",
             "clinical_rationale": "Rapid progression",
         },
@@ -182,7 +182,7 @@ def test_get_patientmdtform_schema_returns_pure_domain_sections_and_enums(
 
     # Enums check
     assert "Gender" in body["enums"]
-    assert "PatientPriority" in body["enums"]
+    assert "DiscussionPriority" in body["enums"]
     assert "WHOPerformanceStatus" in body["enums"]
     assert "PrimaryOrganEnum" in body["enums"]
 
@@ -265,7 +265,7 @@ def test_per_form_metrics_and_mdt_date_in_detail_and_patient_endpoints(
         },
         "CareOrientationProposal": {
             "care_adaptation_suggested": True,
-            "suggested_priority": "Urgent, a treatment is needed quickly",
+            "suggested_priority": 1,
             "proposed_care_type": "Surgery",
             "clinical_rationale": "Resectable tumor",
         },
@@ -292,7 +292,8 @@ def test_per_form_metrics_and_mdt_date_in_detail_and_patient_endpoints(
     assert form_resp.status_code == 200
     form_body = form_resp.json()
     assert "metrics" in form_body and form_body["metrics"] is not None
-    assert form_body["metrics"]["urgency_score"] == 2
+    assert form_body["metrics"]["discussion_priority"] == 1
+    assert form_body["metrics"]["discussion_priority_code"] == "P1"
     assert form_body["metrics"]["last_name"] == "Curie"
     assert form_body["mdt_date"] is not None
     assert form_body["mdt_date"].startswith("2026-03-15")
@@ -303,7 +304,8 @@ def test_per_form_metrics_and_mdt_date_in_detail_and_patient_endpoints(
     assert len(p_body["rcps"]) == 1
     rcp_entry = p_body["rcps"][0]
     assert "metrics" in rcp_entry and rcp_entry["metrics"] is not None
-    assert rcp_entry["metrics"]["urgency_score"] == 2
+    assert rcp_entry["metrics"]["discussion_priority"] == 1
+    assert rcp_entry["metrics"]["discussion_priority_code"] == "P1"
     assert rcp_entry["mdt_date"].startswith("2026-03-15")
 
 

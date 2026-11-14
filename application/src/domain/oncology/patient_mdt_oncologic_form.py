@@ -294,10 +294,10 @@ class PatientMDTOncologicForm(PatientMDTForm):
             Based on the multidisciplinary oncology expert debate, synthesize a pre-MDT orientation proposal to assist the medical board (do not replace the physicians' final decision):
             Determine if an initiation or adaptation of medical, surgical, or radiological care should be discussed for this patient.
             If yes, specify:
-            1. The suggested priority level (`suggested_priority`) for the MDT discussion.
-               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate recommends or identifies that the case is urgent or high priority (e.g., due to rapid tumor progression, biliary obstruction, or suspected metastases), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts disagree or recommend a lower priority.
+            1. The MDT discussion priority (`suggested_priority`: 1=P1 Time-bound, 2=P2 Decision needed, 3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed).
+               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate recommends `P1` (`TIME_BOUND = 1`, e.g., upcoming therapeutic window, post-induction resectability reassessment, progression under active treatment, biliary obstruction, or scheduled surgery awaiting board sign-off), you MUST classify `suggested_priority` as `1` (`P1 · Time-bound`), regardless of whether other experts recommend a lower discussion priority.
             2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., surgery, chemotherapy, biliary drainage, endoscopy, radiotherapy, or surveillance).
-            Provide a clear `clinical_rationale` detailing the positions of the experts and applicable guideline references (when available), especially highlighting any divergence in opinions regarding urgency.
+            Provide a clear `clinical_rationale` detailing the positions of the experts and applicable guideline references (when available), especially highlighting any divergence in opinions regarding discussion priority.
             """
 
     @classmethod

@@ -15,12 +15,13 @@ import {
   resolveCanonicalSectionName,
 } from "../../domain/catalog.js";
 import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
-import { normalizePriorityLevel } from "../../domain/triage.js";
+import { discussionPriorityCode, normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
   BatchStatus,
   BugReportItem,
   ClinicalDomain,
+  DiscussionPriorityLevel,
   DomainFormSchema,
   Language,
   MdtAgendaEnrollInput,
@@ -35,6 +36,7 @@ import type {
   PatientMetricPointView,
   PatientMetricSeriesView,
   PatientRecordSummaryView,
+  PrioritySource,
   QueueJobItem,
   QueueStats,
   RawCompletenessStatus,
@@ -277,14 +279,23 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         ? (raw.experts as string[])
         : [];
 
-    const priorityLevel = normalizePriorityLevel(raw.priority_level ?? raw.priority ?? raw.urgency);
-    const priorityReasons = Array.isArray(raw.urgency_reasons)
-      ? (raw.urgency_reasons as unknown[]).map((r) => String(r).trim()).filter(Boolean)
+    const priorityLevel = normalizePriorityLevel(
+      raw.discussion_priority ?? raw.discussion_priority_code,
+    );
+    const priorityCode = discussionPriorityCode(priorityLevel);
+    const priorityReasons = Array.isArray(raw.priority_reasons)
+      ? (raw.priority_reasons as unknown[]).map((r) => String(r).trim()).filter(Boolean)
       : [];
-    const priorityReason = raw.urgency_reason
-      ? String(raw.urgency_reason).trim()
+    const priorityReason = raw.priority_reason
+      ? String(raw.priority_reason).trim()
       : priorityReasons.length > 0
         ? priorityReasons.join("\n\n")
+        : null;
+    const prioritySource =
+      raw.priority_source === "rule" ||
+      raw.priority_source === "ai" ||
+      raw.priority_source === "manual"
+        ? (raw.priority_source as PrioritySource)
         : null;
 
     return {
@@ -300,8 +311,10 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       domain,
       mdtDate: this.formatIsoDate(raw.mdt_date ?? raw.date),
       priorityLevel,
+      priorityCode,
       priorityReason,
       priorityReasons,
+      prioritySource,
       isComplete,
       completenessStatus,
       missingCount,
@@ -400,18 +413,18 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
 
     const expertSec = sections.ExpertAnswer ?? {};
     const derivedSpecialties: string[] = [];
-    let highestPriority: string | null = orientSec.suggested_priority
-      ? String(orientSec.suggested_priority)
-      : null;
+    let highestPriority: DiscussionPriorityLevel = normalizePriorityLevel(
+      orientSec.suggested_priority,
+    );
     for (const [agentKey, val] of Object.entries(expertSec)) {
       if (!val || typeof val !== "object") continue;
       const op = val as Record<string, unknown>;
       if (!op.expert_relevant) continue;
       derivedSpecialties.push(agentKey);
-      const p = normalizePriorityLevel(op.patient_priority);
-      if (p === "high") highestPriority = "high";
-      else if (p === "medium" && highestPriority !== "high") highestPriority = "medium";
-      else if (p === "low" && !highestPriority) highestPriority = "low";
+      const p = normalizePriorityLevel(op.discussion_priority);
+      if (p !== 9 && (highestPriority === 9 || p < highestPriority)) {
+        highestPriority = p;
+      }
     }
 
     const allMissingItems = Array.isArray(rawMetrics.all_missing_items)
@@ -501,11 +514,13 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         ? (rawMetrics.experts as string[])
         : derivedSpecialties;
 
+    const resolvedPriority = normalizePriorityLevel(
+      rawMetrics.discussion_priority ?? rawMetrics.discussion_priority_code ?? highestPriority,
+    );
     const metrics: MdtFormDetail["metrics"] = {
       ...rawMetrics,
-      priority_level: String(
-        rawMetrics.priority_level ?? rawMetrics.urgency ?? highestPriority ?? "none",
-      ),
+      discussion_priority: resolvedPriority,
+      discussion_priority_code: discussionPriorityCode(resolvedPriority),
       is_complete: isComplete,
       completeness_status: completenessStatus,
       completeness_tone: completenessTone,
@@ -1696,57 +1711,67 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         : "hybrid";
 
     const rawItems = Array.isArray(raw.items) ? (raw.items as Array<Record<string, unknown>>) : [];
-    const items = rawItems.map((it, idx) => ({
-      position: Number(it.position ?? idx + 1),
-      patientId: String(it.patient_id ?? it.filename ?? ""),
-      filename: String(it.filename ?? ""),
-      patientName: String(it.patient_name ?? it.patient_id ?? ""),
-      firstName: String(it.first_name ?? ""),
-      lastName: String(it.last_name ?? ""),
-      dateBirth: this.formatIsoDate(it.date_birth),
-      urgency: String(it.urgency ?? ""),
-      urgencyScore: Number(it.urgency_score ?? 0),
-      priorityLevel: normalizePriorityLevel(it.priority_level ?? it.urgency),
-      priorityReason: it.urgency_reason ? String(it.urgency_reason) : null,
-      priorityReasons: Array.isArray(it.urgency_reasons)
-        ? (it.urgency_reasons as string[]).map(String).filter(Boolean)
-        : [],
-      isComplete:
-        typeof it.is_complete === "boolean"
-          ? it.is_complete
-          : String(it.completeness_status ?? "").toLowerCase() === "yes",
-      completenessStatus: (["yes", "partial", "no", "pending"].includes(
-        String(it.completeness_status ?? "").toLowerCase(),
-      )
-        ? String(it.completeness_status).toLowerCase()
-        : typeof it.is_complete === "boolean"
-          ? it.is_complete
-            ? "yes"
-            : "no"
-          : "pending") as RawCompletenessStatus,
-      missingCount: Number(it.missing_count ?? 0),
-      missingItems: Array.isArray(it.missing_items)
-        ? (it.missing_items as string[]).map(String)
-        : [],
-      careAdaptationSuggested:
-        typeof it.care_adaptation_suggested === "boolean" ? it.care_adaptation_suggested : null,
-      proposedCareType: it.proposed_care_type ? String(it.proposed_care_type) : null,
-      requiredExperts: Array.isArray(it.required_experts)
-        ? (it.required_experts as string[]).map(String)
-        : [],
-      presentRequiredExperts: Array.isArray(it.present_required_experts)
-        ? (it.present_required_experts as string[]).map(String)
-        : [],
-      absentRequiredExperts: Array.isArray(it.absent_required_experts)
-        ? (it.absent_required_experts as string[]).map(String)
-        : [],
-      quorumMet: Boolean(it.quorum_met ?? true),
-      expertCoverageRatio: Number(it.expert_coverage_ratio ?? 1),
-      clusterKey: String(it.cluster_key ?? "general"),
-      pinned: Boolean(it.pinned ?? false),
-      rankReason: String(it.rank_reason ?? ""),
-      mdtDate: this.formatIsoDate(it.mdt_date),
-    }));
+    const items = rawItems.map((it, idx) => {
+      const priorityLevel = normalizePriorityLevel(
+        it.discussion_priority ?? it.discussion_priority_code,
+      );
+      return {
+        position: Number(it.position ?? idx + 1),
+        patientId: String(it.patient_id ?? it.filename ?? ""),
+        filename: String(it.filename ?? ""),
+        patientName: String(it.patient_name ?? it.patient_id ?? ""),
+        firstName: String(it.first_name ?? ""),
+        lastName: String(it.last_name ?? ""),
+        dateBirth: this.formatIsoDate(it.date_birth),
+        priorityLevel,
+        priorityCode: discussionPriorityCode(priorityLevel),
+        priorityReason: it.priority_reason ? String(it.priority_reason) : null,
+        priorityReasons: Array.isArray(it.priority_reasons)
+          ? (it.priority_reasons as string[]).map(String).filter(Boolean)
+          : [],
+        prioritySource:
+          it.priority_source === "rule" ||
+          it.priority_source === "ai" ||
+          it.priority_source === "manual"
+            ? (it.priority_source as PrioritySource)
+            : null,
+        isComplete:
+          typeof it.is_complete === "boolean"
+            ? it.is_complete
+            : String(it.completeness_status ?? "").toLowerCase() === "yes",
+        completenessStatus: (["yes", "partial", "no", "pending"].includes(
+          String(it.completeness_status ?? "").toLowerCase(),
+        )
+          ? String(it.completeness_status).toLowerCase()
+          : typeof it.is_complete === "boolean"
+            ? it.is_complete
+              ? "yes"
+              : "no"
+            : "pending") as RawCompletenessStatus,
+        missingCount: Number(it.missing_count ?? 0),
+        missingItems: Array.isArray(it.missing_items)
+          ? (it.missing_items as string[]).map(String)
+          : [],
+        careAdaptationSuggested:
+          typeof it.care_adaptation_suggested === "boolean" ? it.care_adaptation_suggested : null,
+        proposedCareType: it.proposed_care_type ? String(it.proposed_care_type) : null,
+        requiredExperts: Array.isArray(it.required_experts)
+          ? (it.required_experts as string[]).map(String)
+          : [],
+        presentRequiredExperts: Array.isArray(it.present_required_experts)
+          ? (it.present_required_experts as string[]).map(String)
+          : [],
+        absentRequiredExperts: Array.isArray(it.absent_required_experts)
+          ? (it.absent_required_experts as string[]).map(String)
+          : [],
+        quorumMet: Boolean(it.quorum_met ?? true),
+        expertCoverageRatio: Number(it.expert_coverage_ratio ?? 1),
+        clusterKey: String(it.cluster_key ?? "general"),
+        pinned: Boolean(it.pinned ?? false),
+        rankReason: String(it.rank_reason ?? ""),
+        mdtDate: this.formatIsoDate(it.mdt_date),
+      };
+    });
 
     const rawWindows = Array.isArray(raw.expert_windows)
       ? (raw.expert_windows as Array<Record<string, unknown>>)
@@ -1769,43 +1794,55 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     const rawCandidates = Array.isArray(raw.candidates)
       ? (raw.candidates as Array<Record<string, unknown>>)
       : [];
-    const candidates = rawCandidates.map((c) => ({
-      patientId: String(c.patient_id ?? c.filename ?? ""),
-      filename: String(c.filename ?? ""),
-      patientName: String(c.patient_name ?? c.patient_id ?? ""),
-      firstName: String(c.first_name ?? ""),
-      lastName: String(c.last_name ?? ""),
-      dateBirth: this.formatIsoDate(c.date_birth),
-      urgency: String(c.urgency ?? ""),
-      urgencyScore: Number(c.urgency_score ?? 0),
-      priorityLevel: normalizePriorityLevel(c.priority_level ?? c.urgency),
-      priorityReason: c.urgency_reason ? String(c.urgency_reason) : null,
-      priorityReasons: Array.isArray(c.urgency_reasons)
-        ? (c.urgency_reasons as string[]).map(String).filter(Boolean)
-        : [],
-      isComplete:
-        typeof c.is_complete === "boolean"
-          ? c.is_complete
-          : String(c.completeness_status ?? "").toLowerCase() === "yes",
-      completenessStatus: (["yes", "partial", "no", "pending"].includes(
-        String(c.completeness_status ?? "").toLowerCase(),
-      )
-        ? String(c.completeness_status).toLowerCase()
-        : typeof c.is_complete === "boolean"
-          ? c.is_complete
-            ? "yes"
-            : "no"
-          : "pending") as RawCompletenessStatus,
-      missingCount: Number(c.missing_count ?? 0),
-      missingItems: Array.isArray(c.missing_items) ? (c.missing_items as string[]).map(String) : [],
-      careAdaptationSuggested:
-        typeof c.care_adaptation_suggested === "boolean" ? c.care_adaptation_suggested : null,
-      proposedCareType: c.proposed_care_type ? String(c.proposed_care_type) : null,
-      requiredExperts: Array.isArray(c.required_experts)
-        ? (c.required_experts as string[]).map(String)
-        : [],
-      mdtDate: this.formatIsoDate(c.mdt_date),
-    }));
+    const candidates = rawCandidates.map((c) => {
+      const priorityLevel = normalizePriorityLevel(
+        c.discussion_priority ?? c.discussion_priority_code,
+      );
+      return {
+        patientId: String(c.patient_id ?? c.filename ?? ""),
+        filename: String(c.filename ?? ""),
+        patientName: String(c.patient_name ?? c.patient_id ?? ""),
+        firstName: String(c.first_name ?? ""),
+        lastName: String(c.last_name ?? ""),
+        dateBirth: this.formatIsoDate(c.date_birth),
+        priorityLevel,
+        priorityCode: discussionPriorityCode(priorityLevel),
+        priorityReason: c.priority_reason ? String(c.priority_reason) : null,
+        priorityReasons: Array.isArray(c.priority_reasons)
+          ? (c.priority_reasons as string[]).map(String).filter(Boolean)
+          : [],
+        prioritySource:
+          c.priority_source === "rule" ||
+          c.priority_source === "ai" ||
+          c.priority_source === "manual"
+            ? (c.priority_source as PrioritySource)
+            : null,
+        isComplete:
+          typeof c.is_complete === "boolean"
+            ? c.is_complete
+            : String(c.completeness_status ?? "").toLowerCase() === "yes",
+        completenessStatus: (["yes", "partial", "no", "pending"].includes(
+          String(c.completeness_status ?? "").toLowerCase(),
+        )
+          ? String(c.completeness_status).toLowerCase()
+          : typeof c.is_complete === "boolean"
+            ? c.is_complete
+              ? "yes"
+              : "no"
+            : "pending") as RawCompletenessStatus,
+        missingCount: Number(c.missing_count ?? 0),
+        missingItems: Array.isArray(c.missing_items)
+          ? (c.missing_items as string[]).map(String)
+          : [],
+        careAdaptationSuggested:
+          typeof c.care_adaptation_suggested === "boolean" ? c.care_adaptation_suggested : null,
+        proposedCareType: c.proposed_care_type ? String(c.proposed_care_type) : null,
+        requiredExperts: Array.isArray(c.required_experts)
+          ? (c.required_experts as string[]).map(String)
+          : [],
+        mdtDate: this.formatIsoDate(c.mdt_date),
+      };
+    });
 
     return {
       agendaId: String(raw.agenda_id ?? `next_mdt_${domain}`),

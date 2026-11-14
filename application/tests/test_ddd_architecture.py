@@ -271,7 +271,7 @@ class TestPureDomainEntitiesAndValueObjects:
             "ExpertAnswer": {
                 "digestive surgeon expert": {
                     "expert_relevant": True,
-                    "patient_priority": "Patient must be treated urgently",
+                    "discussion_priority": 1,
                     "why_relevant": "Urgence pancréatique",
                     "sources_relevant": [],
                     "suggestions": [],
@@ -285,14 +285,14 @@ class TestPureDomainEntitiesAndValueObjects:
         assert form.sections["TumorLocation"].tumor_location.value == "Pancreas"
 
         metrics = PatientMDTOncologicForm.extract_card_metrics(form)
-        assert metrics["urgency"] == "Urgent"
-        assert metrics["urgency_score"] == 2
+        assert metrics["discussion_priority"] == 1
+        assert metrics["discussion_priority_code"] == "P1"
         assert metrics["experts"] == ["digestive surgeon expert"]
         assert (
             "**Chirurgie digestive** : Urgence pancréatique"
-            in metrics["urgency_reasons"]
+            in metrics["priority_reasons"]
         )
-        assert "Urgence pancréatique" in metrics["urgency_reason"]
+        assert "Urgence pancréatique" in metrics["priority_reason"]
         assert metrics["patient"] == "Jean Dupont"
 
         # Non-relevant expert (expert_relevant=False) priority must be ignored
@@ -301,14 +301,14 @@ class TestPureDomainEntitiesAndValueObjects:
             "ExpertAnswer": {
                 "digestive surgeon expert": {
                     "expert_relevant": True,
-                    "patient_priority": "Patient is not urgent",
+                    "discussion_priority": 3,
                     "why_relevant": "Surveillance standard post-opératoire",
                     "sources_relevant": [],
                     "suggestions": [],
                 },
                 "radiation oncologist expert": {
                     "expert_relevant": False,
-                    "patient_priority": "Patient must be treated urgently",
+                    "discussion_priority": 1,
                     "why_relevant": "Hors périmètre radiothérapie",
                     "sources_relevant": [],
                     "suggestions": [],
@@ -316,13 +316,13 @@ class TestPureDomainEntitiesAndValueObjects:
             },
         }
         metrics_non_rel = PatientMDTOncologicForm.extract_card_metrics(doc_non_rel)
-        assert metrics_non_rel["urgency"] == "Standard"
-        assert metrics_non_rel["urgency_score"] == 0
+        assert metrics_non_rel["discussion_priority"] == 2
+        assert metrics_non_rel["discussion_priority_code"] == "P2"
         assert metrics_non_rel["experts"] == ["digestive surgeon expert"]
-        assert metrics_non_rel["urgency_reasons"] == [
+        assert metrics_non_rel["priority_reasons"] == [
             "**Chirurgie digestive** : Surveillance standard post-opératoire"
         ]
-        assert "Hors périmètre" not in metrics_non_rel["urgency_reason"]
+        assert "Hors périmètre" not in metrics_non_rel["priority_reason"]
         # Without MTDCompleted section evaluated by AI, is_complete must be False and status is "pending"
         assert metrics["is_complete"] is False
         assert metrics["completeness_status"] == "pending"
@@ -407,7 +407,7 @@ class TestPureDomainEntitiesAndValueObjects:
     def test_cross_domain_care_orientation_proposal_collaborative_schema_and_metrics(
         self,
     ):
-        from src.domain.common.common_ressources import PatientPriority
+        from src.domain.common.common_ressources import DiscussionPriority
         from src.domain.common.patient_mdt_common_form import (
             PatientMDTForm as BasePatientMDTForm,
         )
@@ -437,12 +437,12 @@ class TestPureDomainEntitiesAndValueObjects:
 
         proposal = sma_proposal_cls(
             care_adaptation_suggested=True,
-            suggested_priority=PatientPriority.urgent,
+            suggested_priority=DiscussionPriority.TIME_BOUND,
             proposed_care_type="Initiation of SMN-targeted therapy and NIV",
             clinical_rationale="Infant SMA Type 1 with 2 SMN2 copies requires immediate therapy discussion.",
         )
         assert proposal.care_adaptation_suggested is True
-        assert proposal.suggested_priority == PatientPriority.urgent
+        assert proposal.suggested_priority == DiscussionPriority.TIME_BOUND
 
         raw_doc = {
             "file": "sma_patient_2026.pdf",
@@ -572,7 +572,7 @@ class TestRepositoriesAndApplicationUseCases:
                 "ExpertAnswer": {
                     "medical oncologist expert": {
                         "expert_relevant": True,
-                        "patient_priority": "Patient must be treated urgently",
+                        "discussion_priority": 1,
                     }
                 },
                 "processing_status": RCPProcessingStatus.COMPLETED.value,
@@ -588,7 +588,8 @@ class TestRepositoriesAndApplicationUseCases:
         assert p_cards[0]["patient_id"] == expected_pid
         assert p_cards[0]["file"] == file_new
         assert p_cards[0]["rcp_count"] == 2
-        assert p_cards[0]["urgency"] == "Urgent"
+        assert p_cards[0]["discussion_priority"] == 1
+        assert p_cards[0]["discussion_priority_code"] == "P1"
 
         # Resolve PatientRecord by patient_id
         resolved_patient, rcps, selected_file = service.resolve_patient_record(

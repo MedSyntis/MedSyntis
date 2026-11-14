@@ -553,7 +553,7 @@ class TestMedSyntisAgent(unittest.TestCase):
         )
         self.assertEqual(
             expert_schema["properties"]["why_relevant"]["description"],
-            "Explain why your expertise is relevant (or not) for this patient and justify the priority given.",
+            "Explain why your expertise is relevant (or not) for this patient and justify the discussion priority given.",
         )
 
         mtd_complete_schema = MTDComplete.model_json_schema()

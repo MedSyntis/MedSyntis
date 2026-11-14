@@ -230,7 +230,7 @@ class TestExtractionDebateAndMigration:
                 expert_relevant=True,
                 why_relevant="Pertinent",
                 sources_relevant=[],
-                patient_priority="Patient must be treated as soon as possible",
+                discussion_priority=2,
                 suggestions=[],
             ),
             "messages": [],
@@ -341,7 +341,7 @@ class TestExtractionDebateAndMigration:
     ) -> None:
         mock_collab.return_value = {
             "care_adaptation_suggested": True,
-            "suggested_priority": "Patient must be treated urgently",
+            "suggested_priority": 1,
             "proposed_care_type": "Chimiothérapie d'induction",
             "clinical_rationale": "Synthèse RCP",
         }
@@ -450,7 +450,7 @@ class TestExtractionDebateAndMigration:
 
             def ask(self, *_args, **_kwargs):
                 out = MagicMock()
-                out.model_dump_json.return_value = '{"care_adaptation_suggested": true, "suggested_priority": "Patient must be treated urgently", "proposed_care_type": "Chirurgie", "clinical_rationale": "OK"}'
+                out.model_dump_json.return_value = '{"care_adaptation_suggested": true, "suggested_priority": 1, "proposed_care_type": "Chirurgie", "clinical_rationale": "OK"}'
                 return out
 
         clear_debate_checkpoint_cache()

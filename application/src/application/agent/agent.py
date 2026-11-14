@@ -8,7 +8,7 @@ from pydantic import ValidationError, BaseModel, Field
 from langchain.agents import create_agent
 
 from src.application.config import AppConfig
-from src.domain.common.common_ressources import MarkdownStr, PatientPriority
+from src.domain.common.common_ressources import DiscussionPriority, MarkdownStr
 from src.infrastructure.llm.factory import get_llm_client
 from src.infrastructure.observability import get_metrics
 
@@ -143,11 +143,12 @@ class DebateTurn(BaseModel):
     response: MarkdownStr = Field(
         description="Your clinical opinion, arguments, and recommendations based on your specialty."
     )
-    suggested_priority: PatientPriority | None = Field(
+    suggested_priority: DiscussionPriority | None = Field(
         default=None,
         description=(
-            "Your updated pre-MDT priority assessment after reviewing clinical red flags "
-            "and peer specialist arguments (optional)."
+            "Your updated MDT discussion priority (1=P1 Time-bound, 2=P2 Decision needed, "
+            "3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed) after reviewing clinical "
+            "red flags and peer specialist arguments (optional)."
         ),
     )
 

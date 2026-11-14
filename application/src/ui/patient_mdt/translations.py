@@ -164,7 +164,7 @@ TRANSLATIONS = {
     "chemotherapy_end_date": "Date de fin",
     "chemotherapy_tolerance": "Tolérance",
     "expert_relevant": "Expertise pertinente",
-    "patient_priority": "Priorité",
+    "discussion_priority": "Priorité de discussion",
     "why_relevant": "Raison de la pertinence",
     "sources_relevant": "Sources & Références",
     "suggestions": "Suggestions",

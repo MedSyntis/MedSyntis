@@ -11,7 +11,10 @@ from src.ui.patient_mdt.translations import (
     translate,
     translate_domain_fr,
 )
-from src.domain.common.common_ressources import PatientPriority, WHOPerformanceStatus
+from src.domain.common.common_ressources import (
+    DiscussionPriority,
+    WHOPerformanceStatus,
+)
 
 
 def test_translation_french():
@@ -29,11 +32,8 @@ def test_translation_french():
         == "0 - Pas de limitation des activités (normal)"
     )
 
-    # Test standard Enum (PatientPriority)
-    assert (
-        translate(PatientPriority.urgent)
-        == "Priorité haute (discussion pré-RCP prioritaire)"
-    )
+    # Test DiscussionPriority
+    assert DiscussionPriority.TIME_BOUND.label_fr == "P1 · Échéance proche"
 
     # Test reflection
     assert translate("reflection") == "Réflexion / Synthèse du débat"
@@ -70,7 +70,7 @@ def test_translation_english():
     assert translate("First name of the patient") == "First name of the patient"
     assert translate("first_name") == "first_name"
     assert translate(WHOPerformanceStatus._0) == "No limitation of activities (none)"
-    assert translate(PatientPriority.urgent) == "High-priority pre-MDT review suggested"
+    assert DiscussionPriority.TIME_BOUND.label_en == "P1 · Time-bound"
     assert translate("reflection") == "reflection"
     assert (
         translate(

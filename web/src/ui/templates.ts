@@ -663,7 +663,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
 
 function renderPriorityBadgeHtml(
   prio: {
-    level: string;
+    level: number | string;
+    code?: string;
     icon: string;
     badgeClass: string;
     label: string;
@@ -681,7 +682,7 @@ function renderPriorityBadgeHtml(
 ): string {
   const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
   const jumpAttrs = options?.jumpSection
-    ? ` role="button" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
+    ? ` role="button" aria-label="${esc(prio.label)}" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
     : "";
   const interactiveCls = options?.jumpSection ? " ds-badge--interactive" : "";
   const rawReasons =
@@ -718,7 +719,7 @@ function renderCompletenessBadgeHtml(
 ): string {
   const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
   const jumpAttrs = options?.jumpSection
-    ? ` role="button" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
+    ? ` role="button" aria-label="${esc(compl.label)}" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
     : "";
   const interactiveCls = options?.jumpSection ? " ds-badge--interactive" : "";
   const hasItems = compl.missingItems.length > 0;
@@ -847,7 +848,15 @@ export function renderWorklistPage(
                   </span>`;
 
             const prioSortVal =
-              c.priorityLevel === "high" ? "1" : c.priorityLevel === "medium" ? "2" : "3";
+              c.priorityLevel === 1
+                ? "1"
+                : c.priorityLevel === 2
+                  ? "2"
+                  : c.priorityLevel === 9
+                    ? "3"
+                    : c.priorityLevel === 3
+                      ? "4"
+                      : "5";
             const complSortVal =
               compl.status === "incomplete"
                 ? String(100 - Math.min(99, c.missingCount))
@@ -858,7 +867,7 @@ export function renderWorklistPage(
                     : "400";
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
             const rowCls = [
-              c.priorityLevel === "high" ? "is-urgent" : "",
+              c.priorityLevel === 1 ? "is-urgent" : "",
               proc.isProcessing ? "is-processing" : "",
             ]
               .filter(Boolean)
@@ -867,8 +876,8 @@ export function renderWorklistPage(
               ? ` data-processing-active="true" data-processing-file="${esc(c.file)}"`
               : "";
 
-            return `<tr class="${rowCls}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
-              <td data-label="Priorité" data-sort-value="${prioSortVal}">
+            return `<tr class="${rowCls}" data-href="${dossierHref}" title="${esc(lang === "fr" ? `Cliquer pour ouvrir le dossier de ${c.patientName}` : `Click to open ${c.patientName}'s record`)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
+              <td data-label="${esc(lang === "fr" ? "Priorité" : "Priority")}" data-sort-value="${prioSortVal}">
                 ${renderPriorityBadgeHtml(prio, {
                   reason: c.priorityReason,
                   reasons: c.priorityReasons,
@@ -1109,7 +1118,7 @@ export function renderWorklistPage(
               <tr>
                 ${(
                   [
-                    { key: "priority", label: "Priorité", col: 0 },
+                    { key: "priority", label: lang === "fr" ? "Priorité" : "Priority", col: 0 },
                     { key: "patient", label: "Patient", col: 1 },
                     { key: "completeness", label: "Complétude", col: 2 },
                     {
@@ -1178,10 +1187,15 @@ export function renderWorklistPage(
         <span class="ds-kpi__value">${kpis.structuredCount}</span>
         <span class="ds-kpi__meta">${esc(t("kpi.structured.meta", lang))}</span>
       </a>
-      <a class="ds-kpi ds-kpi--danger" href="/worklist?domain=${domainParam}&priority=high" data-testid="kpi-priority-high">
-        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-priority-high", "ds-icon--md")}</span> ${esc(t("kpi.priorityHigh", lang))}</span>
-        <span class="ds-kpi__value">${kpis.highPriorityCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.priorityHigh.meta", lang))}</span>
+      <a class="ds-kpi ds-kpi--danger" href="/worklist?domain=${domainParam}&priority=1" data-testid="kpi-priority-p1">
+        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-priority-high", "ds-icon--md")}</span> ${esc(t("kpi.priorityP1", lang))}</span>
+        <span class="ds-kpi__value">${kpis.p1Count}</span>
+        <span class="ds-kpi__meta">${esc(t("kpi.priorityP1.meta", lang))}</span>
+      </a>
+      <a class="ds-kpi" href="/worklist?domain=${domainParam}&priority=9" data-testid="kpi-priority-not-assessed">
+        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-priority-none", "ds-icon--md")}</span> ${esc(t("kpi.priorityNotAssessed", lang))}</span>
+        <span class="ds-kpi__value">${kpis.notAssessedCount}</span>
+        <span class="ds-kpi__meta">${esc(t("kpi.priorityNotAssessed.meta", lang))}</span>
       </a>
       <a class="ds-kpi ds-kpi--warning" href="/worklist?domain=${domainParam}&completeness=incomplete" data-testid="kpi-completeness">
         <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--warning" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--md")}</span> ${esc(t("kpi.completeness", lang))}</span>
@@ -1220,12 +1234,14 @@ export function renderWorklistPage(
           </select>
         </div>
         <div class="ds-field">
-          <label class="ds-label" for="f-prio">Priorité</label>
+          <label class="ds-label" for="f-prio">${lang === "fr" ? "Priorité" : "Priority"}</label>
           <select id="f-prio" name="priority" class="ds-select" data-autosubmit="true" data-testid="select-priority">
-            <option value="all" ${(filter.priority ?? "all") === "all" ? "selected" : ""}>Toutes priorités</option>
-            <option value="high" ${filter.priority === "high" ? "selected" : ""}>Priorité haute</option>
-            <option value="medium" ${filter.priority === "medium" ? "selected" : ""}>Priorité modérée</option>
-            <option value="low" ${filter.priority === "low" ? "selected" : ""}>Priorité standard</option>
+            <option value="all" ${(filter.priority ?? "all") === "all" ? "selected" : ""}>${lang === "fr" ? "Toutes priorités" : "All priorities"}</option>
+            <option value="1" ${filter.priority === "1" || filter.priority === "P1" ? "selected" : ""}>${esc(t("priority.P1", lang))}</option>
+            <option value="2" ${filter.priority === "2" || filter.priority === "P2" ? "selected" : ""}>${esc(t("priority.P2", lang))}</option>
+            <option value="9" ${filter.priority === "9" || filter.priority === "NOT_ASSESSED" ? "selected" : ""}>${esc(t("priority.NOT_ASSESSED", lang))}</option>
+            <option value="3" ${filter.priority === "3" || filter.priority === "P3" ? "selected" : ""}>${esc(t("priority.P3", lang))}</option>
+            <option value="4" ${filter.priority === "4" || filter.priority === "P4" ? "selected" : ""}>${esc(t("priority.P4", lang))}</option>
           </select>
         </div>
         <div class="ds-field">
@@ -1870,15 +1886,15 @@ export function renderDossierPage(
   const timelineHtml = `${dossier.timeline
     .map((step) => {
       const markerCls =
-        step.priorityLevel === "high" || step.completenessStatus === "incomplete"
+        step.priorityLevel === 1 || step.completenessStatus === "incomplete"
           ? "ds-timeline__marker--high"
-          : step.priorityLevel === "medium" || step.completenessStatus === "partial"
+          : step.priorityLevel === 2 || step.completenessStatus === "partial"
             ? "ds-timeline__marker--medium"
             : "ds-timeline__marker--low";
       const markerIcon =
-        step.priorityLevel === "high"
+        step.priorityLevel === 1
           ? "ic-priority-high"
-          : step.priorityLevel === "medium"
+          : step.priorityLevel === 2
             ? "ic-trend-up"
             : step.completenessStatus === "incomplete"
               ? "ic-error"
@@ -1888,9 +1904,9 @@ export function renderDossierPage(
                   ? "ic-clock"
                   : "ic-check";
       const stepTone =
-        step.priorityLevel === "high" || step.completenessStatus === "incomplete"
+        step.priorityLevel === 1 || step.completenessStatus === "incomplete"
           ? "red"
-          : step.priorityLevel === "medium" || step.completenessStatus === "partial"
+          : step.priorityLevel === 2 || step.completenessStatus === "partial"
             ? "orange"
             : step.completenessStatus === "pending"
               ? "neutral"
@@ -3582,11 +3598,13 @@ export function renderAgendaPage(
   const strategyOptions: Array<{ value: string; label: string }> = [
     {
       value: "hybrid",
-      label: lang === "fr" ? "Hybride (Urgences + Spécialités)" : "Hybrid (Urgency + Specialties)",
+      label:
+        lang === "fr" ? "Hybride (Priorités P1–P4 + Spécialités)" : "Hybrid (P1–P4 + Specialties)",
     },
     {
       value: "urgency_first",
-      label: lang === "fr" ? "Par urgence clinique" : "By clinical urgency",
+      label:
+        lang === "fr" ? "Par priorité de discussion (P1→P4)" : "By discussion priority (P1→P4)",
     },
     {
       value: "expert_grouping",
@@ -3683,7 +3701,7 @@ export function renderAgendaPage(
               const isFirst = idx === 0;
               const isLast = idx === agenda.items.length - 1;
               const rankTone =
-                item.priorityLevel === "high"
+                item.priorityLevel === 1
                   ? "ds-agenda-item__rank--high"
                   : !item.isComplete || !item.quorumMet
                     ? "ds-agenda-item__rank--warning"
@@ -3694,7 +3712,7 @@ export function renderAgendaPage(
               const isItemDimmed =
                 activeFocusExpert !== null && !item.requiredExperts.includes(activeFocusExpert);
 
-              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-href="${dossierHref}" data-patient-id="${esc(item.patientId)}" data-position="${item.position}" data-required-experts="${esc(item.requiredExperts.join("|"))}" title="Cliquer pour ouvrir le dossier de ${esc(item.patientName)}" data-testid="agenda-item-${esc(item.patientId)}">
+              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === 1 ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-href="${dossierHref}" data-patient-id="${esc(item.patientId)}" data-position="${item.position}" data-required-experts="${esc(item.requiredExperts.join("|"))}" title="Cliquer pour ouvrir le dossier de ${esc(item.patientName)}" data-testid="agenda-item-${esc(item.patientId)}">
                 <div class="ds-agenda-item__rank ${rankTone}" data-agenda-drag-handle="true" data-testid="agenda-rank-${esc(item.patientId)}" title="Maintenir cliqué et glisser pour modifier l'ordre de passage" aria-label="Rang de passage ${item.position}">
                   <span class="ds-agenda-item__pos">#${item.position}</span>
                   ${item.pinned ? `<span class="ds-agenda-item__pin-indicator" title="Position verrouillée manuellement">${iconSvg("ic-lock", "ds-icon--xs")}</span>` : ""}
@@ -3962,7 +3980,7 @@ export function renderAgendaPage(
                           <input type="hidden" name="enrollAllCandidates" value="true">
                           <input type="hidden" name="filterMode" value="urgent">
                           <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_urgent">
-                            + Urgences
+                            ${lang === "fr" ? "+ Priorités P1" : "+ P1 priorities"}
                           </button>
                         </form>
                         <form method="post" action="/agenda/patients?domain=${domainParam}">
@@ -4000,7 +4018,7 @@ export function renderAgendaPage(
                     ${iconSvg("ic-layers", "ds-icon--xs")} ${agenda.totalEnrolled} dossier${agenda.totalEnrolled > 1 ? "s" : ""}
                   </span>
                   <span class="ds-badge ${agenda.urgentCount > 0 ? "ds-badge--urgency-high" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-urgent">
-                    ${iconSvg("ic-priority-high", "ds-icon--xs")} ${agenda.urgentCount} urgence${agenda.urgentCount > 1 ? "s" : ""}
+                    ${iconSvg("ic-priority-high", "ds-icon--xs")} ${agenda.urgentCount} ${lang === "fr" ? `priorité${agenda.urgentCount > 1 ? "s" : ""} P1` : `P1 case${agenda.urgentCount > 1 ? "s" : ""}`}
                   </span>
                   <span class="ds-badge ${agenda.quorumWarningCount > 0 ? "ds-badge--incomplete" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-quorum">
                     ${iconSvg("ic-users", "ds-icon--xs")} ${agenda.attendingExperts.length}/${agenda.availableExperts.length} experts${agenda.quorumWarningCount > 0 ? ` · ${agenda.quorumWarningCount} alerte(s) quorum` : ""}

@@ -4,6 +4,7 @@ import {
   resolveCanonicalSectionName,
   type SectionFieldSchema,
 } from "./field-schema.js";
+import { normalizePriorityLevel } from "./triage.js";
 import type { DomainFormSchema } from "./types.js";
 
 const EMPTY_PLACEHOLDERS = new Set([
@@ -213,46 +214,6 @@ export function coerceSelectValue(
     const uw = options.find((o) => o.value.includes("Underweight"));
     if (uw) return uw.value;
   }
-  // Priority level / PatientPriority enum aliases
-  if (
-    rawLower === "high" ||
-    rawLower === "urgent" ||
-    rawLower.includes("high-priority") ||
-    rawLower.includes("urgently") ||
-    (rawLower.includes("urgent") && !rawLower.includes("semi") && !rawLower.includes("not urgent"))
-  ) {
-    const hi = options.find(
-      (o) =>
-        o.value === "high" ||
-        o.value.toLowerCase().includes("high-priority") ||
-        o.value.toLowerCase().includes("urgently"),
-    );
-    if (hi) return hi.value;
-  }
-  if (
-    rawLower === "medium" ||
-    rawLower.includes("semi-urgent") ||
-    rawLower.includes("soon as possible") ||
-    rawLower.includes("modérée")
-  ) {
-    const med = options.find(
-      (o) =>
-        o.value === "medium" ||
-        o.value.toLowerCase().includes("semi-urgent") ||
-        o.value.toLowerCase().includes("soon as possible"),
-    );
-    if (med) return med.value;
-  }
-  if (rawLower === "low" || rawLower.includes("not urgent") || rawLower.includes("standard")) {
-    const lo = options.find(
-      (o) => o.value === "low" || o.value.toLowerCase() === "patient is not urgent",
-    );
-    if (lo) return lo.value;
-  }
-  if (rawLower === "none" || rawLower === "no answer" || rawLower === "not_given") {
-    const noneOpt = options.find((o) => o.value === "none" || o.value === "no answer");
-    if (noneOpt) return noneOpt.value;
-  }
   return fallback;
 }
 
@@ -410,43 +371,6 @@ export function coerceSectionUpdatePayload(
   };
 
   if (canonical === "CareOrientationProposal") {
-    const normalizeSuggestedPriority = (raw: unknown): "high" | "medium" | "low" | "none" => {
-      const s = String(raw ?? "")
-        .trim()
-        .toLowerCase();
-      if (
-        s === "high" ||
-        s === "urgent" ||
-        s.includes("high-priority") ||
-        s.includes("urgently") ||
-        (s.includes("urgent") && !s.includes("semi") && !s.includes("not urgent")) ||
-        s.includes("priorité haute") ||
-        s.includes("priorite haute")
-      ) {
-        return "high";
-      }
-      if (
-        s === "medium" ||
-        s === "semi-urgent" ||
-        s.includes("semi-urgent") ||
-        s.includes("as soon as possible") ||
-        s.includes("priorité modérée") ||
-        s.includes("priorite moderee")
-      ) {
-        return "medium";
-      }
-      if (
-        s === "low" ||
-        s === "standard" ||
-        s.includes("not urgent") ||
-        s.includes("priorité standard") ||
-        s.includes("priorite standard")
-      ) {
-        return "low";
-      }
-      return "none";
-    };
-
     const rawAdapt =
       rawBody.care_adaptation_suggested !== undefined
         ? rawBody.care_adaptation_suggested
@@ -456,8 +380,8 @@ export function coerceSectionUpdatePayload(
     const rawPrio =
       rawBody.suggested_priority !== undefined
         ? rawBody.suggested_priority
-        : (existingSectionData.suggested_priority ?? "medium");
-    const suggestedPriority = normalizeSuggestedPriority(rawPrio);
+        : (existingSectionData.suggested_priority ?? 9);
+    const suggestedPriority = normalizePriorityLevel(rawPrio);
 
     const rawPrioReason =
       rawBody.priority_reason !== undefined
@@ -787,36 +711,7 @@ export function buildStrictBackendSectionPayload(
         ? (matchedSection.json_schema.properties as Record<string, Record<string, unknown>>)
         : null;
 
-    const prioRaw = String(coercedPayload.suggested_priority ?? "none");
-    const prioLower = prioRaw.toLowerCase();
-    let mappedPriority: string | null = prioRaw;
-    if (props?.suggested_priority) {
-      const propJson = JSON.stringify(props.suggested_priority);
-      if (propJson.includes("High-priority pre-MDT review suggested")) {
-        mappedPriority =
-          prioLower === "high" ||
-          prioLower === "urgent" ||
-          prioLower.includes("high-priority") ||
-          prioLower.includes("urgently")
-            ? "High-priority pre-MDT review suggested"
-            : prioLower === "medium" ||
-                prioLower.includes("semi-urgent") ||
-                prioLower.includes("soon as possible")
-              ? "Semi-urgent pre-MDT review suggested"
-              : prioLower === "low" || prioLower.includes("not urgent")
-                ? "Patient is not urgent"
-                : "no answer";
-      } else if (propJson.includes("Patient must be treated urgently")) {
-        mappedPriority =
-          prioLower === "high" || prioLower === "urgent" || prioLower.includes("urgently")
-            ? "Patient must be treated urgently"
-            : prioLower === "medium" || prioLower.includes("soon as possible")
-              ? "Patient must be treated as soon as possible"
-              : prioLower === "low" || prioLower.includes("not urgent")
-                ? "Patient is not urgent"
-                : "no answer";
-      }
-    }
+    const mappedPriority = normalizePriorityLevel(coercedPayload.suggested_priority);
 
     const rationale =
       (coercedPayload.orientation_rationale as string | null | undefined) ??

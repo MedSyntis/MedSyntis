@@ -52,10 +52,11 @@ export const MTD_COMPLETENESS_SELECT_OPTIONS: FieldSelectOption[] = [
 ];
 
 export const CARE_ORIENTATION_PRIORITY_OPTIONS: FieldSelectOption[] = [
-  { value: "high", labelFr: "Priorité haute (Urgent)", labelEn: "High priority (Urgent)" },
-  { value: "medium", labelFr: "Priorité modérée (Semi-urgent)", labelEn: "Moderate priority" },
-  { value: "low", labelFr: "Priorité standard", labelEn: "Standard priority" },
-  { value: "none", labelFr: "Non évaluée", labelEn: "Not assessed" },
+  { value: "1", labelFr: "P1 · Fenêtre thérapeutique limitée", labelEn: "P1 · Time-bound" },
+  { value: "2", labelFr: "P2 · Décision collégiale requise", labelEn: "P2 · Decision needed" },
+  { value: "3", labelFr: "P3 · Validation standard", labelEn: "P3 · Standard sign-off" },
+  { value: "4", labelFr: "P4 · Pour information", labelEn: "P4 · Information only" },
+  { value: "9", labelFr: "Non évaluée", labelEn: "Not assessed" },
 ];
 
 const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
@@ -740,7 +741,7 @@ const SECTION_FIELD_SCHEMAS: Record<string, SectionFieldSchema[]> = {
       key: "suggested_priority",
       inputType: "select",
       nullable: false,
-      defaultValue: "medium",
+      defaultValue: "9",
       options: CARE_ORIENTATION_PRIORITY_OPTIONS,
     },
     {
@@ -992,6 +993,9 @@ export function parseJsonSchemaToFieldSchemas(
 
     const isTextarea =
       fb?.inputType === "textarea" ||
+      node.format === "markdown" ||
+      propKey === "clinical_rationale" ||
+      propKey === "orientation_rationale" ||
       propKey === "reflection" ||
       propKey === "other_genetic_variants";
     results.push({

@@ -30,14 +30,13 @@ APP_API_PATH = Path(__file__).resolve().parent.parent / "app-api.py"
 def _make_snapshot(
     patient_id: str,
     patient_name: str,
-    urgency_score: int = 0,
+    discussion_priority: int = 3,
     required_experts: list[str] | None = None,
     is_complete: bool = True,
     missing_items: list[str] | None = None,
     care_adaptation_suggested: bool = False,
 ) -> MDTAgendaCandidateSnapshot:
-    urgency_map = {2: "Urgent", 1: "Semi-urgent", 0: "Standard"}
-    prio_map = {2: "high", 1: "medium", 0: "low"}
+    code_map = {1: "P1", 2: "P2", 3: "P3", 4: "P4", 9: "NOT_ASSESSED"}
     missing = list(missing_items or ([] if is_complete else ["IRM hépatique"]))
     return MDTAgendaCandidateSnapshot(
         patient_id=patient_id,
@@ -45,9 +44,9 @@ def _make_snapshot(
         patient_name=patient_name,
         first_name=patient_name.split()[0],
         last_name=patient_name.split()[-1],
-        urgency=urgency_map.get(urgency_score, "Standard"),
-        urgency_score=urgency_score,
-        priority_level=prio_map.get(urgency_score, "low"),  # type: ignore[arg-type]
+        discussion_priority=discussion_priority,
+        discussion_priority_code=code_map.get(discussion_priority, "NOT_ASSESSED"),
+        priority_source="ai",
         is_complete=is_complete,
         missing_count=len(missing),
         missing_items=missing,
@@ -75,33 +74,33 @@ class TestMDTAgendaDomainAndScheduler:
             "p_std_panc_1": _make_snapshot(
                 "p_std_panc_1",
                 "Alice StandardPanc1",
-                urgency_score=0,
+                discussion_priority=3,
                 required_experts=["digestive surgeon expert"],
             ),
             "p_semi_oeso": _make_snapshot(
                 "p_semi_oeso",
                 "Bruno SemiOeso",
-                urgency_score=1,
+                discussion_priority=2,
                 required_experts=["gastroenterologist expert"],
                 care_adaptation_suggested=True,
             ),
             "p_urg_panc": _make_snapshot(
                 "p_urg_panc",
                 "Claire UrgentPanc",
-                urgency_score=2,
+                discussion_priority=1,
                 required_experts=["digestive surgeon expert"],
                 care_adaptation_suggested=True,
             ),
             "p_std_panc_2": _make_snapshot(
                 "p_std_panc_2",
                 "David StandardPanc2",
-                urgency_score=1,
+                discussion_priority=2,
                 required_experts=["digestive surgeon expert"],
             ),
             "p_incomp_urg": _make_snapshot(
                 "p_incomp_urg",
                 "Eva IncompleteUrgent",
-                urgency_score=2,
+                discussion_priority=1,
                 required_experts=["digestive surgeon expert"],
                 is_complete=False,
                 missing_items=["Biopsie", "Scanner"],
@@ -154,25 +153,25 @@ class TestMDTAgendaDomainAndScheduler:
             "p_urg_oeso": _make_snapshot(
                 "p_urg_oeso",
                 "Patient UrgOeso",
-                urgency_score=2,
+                discussion_priority=1,
                 required_experts=["gastroenterologist expert"],
             ),
             "p_urg_panc": _make_snapshot(
                 "p_urg_panc",
                 "Patient UrgPanc",
-                urgency_score=2,
+                discussion_priority=1,
                 required_experts=["digestive surgeon expert"],
             ),
             "p_std_oeso": _make_snapshot(
                 "p_std_oeso",
                 "Patient StdOeso",
-                urgency_score=0,
+                discussion_priority=3,
                 required_experts=["gastroenterologist expert"],
             ),
             "p_std_panc": _make_snapshot(
                 "p_std_panc",
                 "Patient StdPanc",
-                urgency_score=0,
+                discussion_priority=3,
                 required_experts=["digestive surgeon expert"],
             ),
         }
@@ -204,7 +203,7 @@ class TestMDTAgendaDomainAndScheduler:
             "p_needs_both": _make_snapshot(
                 "p_needs_both",
                 "Jean QuorumMissing",
-                urgency_score=2,
+                discussion_priority=1,
                 required_experts=[
                     "digestive surgeon expert",
                     "medical oncologist expert",
@@ -213,7 +212,7 @@ class TestMDTAgendaDomainAndScheduler:
             "p_needs_panc": _make_snapshot(
                 "p_needs_panc",
                 "Marie QuorumFull",
-                urgency_score=2,
+                discussion_priority=1,
                 required_experts=["digestive surgeon expert"],
             ),
         }
@@ -275,7 +274,7 @@ class TestMDTAgendaServiceAndRouter:
                 "Martin",
                 "Dupont",
                 datetime(1960, 4, 10),
-                "Patient is not urgent",
+                3,
                 ["digestive surgeon expert"],
                 True,
                 [],
@@ -285,7 +284,7 @@ class TestMDTAgendaServiceAndRouter:
                 "Sophie",
                 "Laurent",
                 datetime(1972, 8, 22),
-                "Patient must be treated urgently",
+                1,
                 ["digestive surgeon expert"],
                 True,
                 [],
@@ -295,7 +294,7 @@ class TestMDTAgendaServiceAndRouter:
                 "Paul",
                 "Bernard",
                 datetime(1955, 1, 5),
-                "Patient must be treated as soon as possible",
+                2,
                 ["gastroenterologist expert"],
                 False,
                 ["Scanner thoracique"],
@@ -328,7 +327,7 @@ class TestMDTAgendaServiceAndRouter:
                     "ExpertAnswer": {
                         exp: {
                             "expert_relevant": True,
-                            "patient_priority": prio,
+                            "discussion_priority": prio,
                         }
                         for exp in exps
                     },

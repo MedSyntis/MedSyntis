@@ -117,7 +117,7 @@ def collaborative_debate(
     additionnal_readers: list[Any] | None = None,
     seed_opinions: dict[str, str] | None = None,
     coordinator_reasoning: bool = False,
-    out_round2_priorities: list[Any] | None = None,
+    out_round2_priorities: dict[str, Any] | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
         domain = config.domain
@@ -252,7 +252,7 @@ def collaborative_debate(
                 f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
                 f"{compiled_opinions}\n\n"
                 f"The overall question is: {question}\n\n"
-                f"Please review the opinions of the other experts. Independently re-evaluate clinical urgency and all red flags defined in the question above (do NOT passively anchor on initial priority labels if peer findings or the patient record warrant higher urgency), set `suggested_priority`, and provide your final refined clinical assessment to help prepare a pre-MDT synthesis for collegial review. "
+                f"Please review the opinions of the other experts. Independently re-evaluate the MDT discussion priority (1=P1 Time-bound, 2=P2 Decision needed, 3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed) and all clinical red flags defined in the question above (do NOT passively anchor on initial priority labels if peer findings or the patient record warrant higher discussion priority), set `suggested_priority`, and provide your final refined clinical assessment to help prepare a pre-MDT synthesis for collegial review. "
                 "Use Markdown formatting inside your `response` field (`**bold**` for key clinical arguments/guidelines, bullet points `- `, and concise sub-sections)."
             )
             return magent.ask(
@@ -275,7 +275,7 @@ def collaborative_debate(
                             else str(upd_prio)
                         )
                         if out_round2_priorities is not None:
-                            out_round2_priorities.append(prio_val)
+                            out_round2_priorities[magent.agent_name] = prio_val
                         resp_text = (
                             f"{resp_text}\n*(Updated Round 2 Priority: {prio_val})*"
                         )

@@ -15,12 +15,17 @@ import {
   buildPatientDashboardFromForms,
   synthesizePatientSummaryFromForms,
 } from "../../domain/patient-dashboard.js";
-import { normalizePriorityLevel } from "../../domain/triage.js";
+import {
+  discussionPriorityCode,
+  normalizePriorityLevel,
+  priorityRank,
+} from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
   BatchStatus,
   BugReportItem,
   ClinicalDomain,
+  DiscussionPriorityLevel,
   DomainFormSchema,
   Language,
   MdtAgendaCandidate,
@@ -36,7 +41,7 @@ import type {
   PatientDashboardView,
   PatientListItem,
   PatientRecordSummaryView,
-  PriorityLevel,
+  PrioritySource,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -181,7 +186,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       examResult: string;
       chemoName: string;
       chemoTolerance: string;
-      priority: "low" | "medium";
+      priority: DiscussionPriorityLevel;
       proposedCare: string;
       rationale: string;
       executionTimes: Record<string, number>;
@@ -232,7 +237,9 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       manualEdits: {},
       executionTimes: opts.executionTimes,
       metrics: {
-        priority_level: opts.priority,
+        discussion_priority: opts.priority,
+        discussion_priority_code: discussionPriorityCode(opts.priority),
+        priority_source: "ai",
         is_complete: true,
         missing_count: 0,
         missing_items: [],
@@ -253,7 +260,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       examResult: "Masse céphalique pancréatique 26 mm, cT2 N0 M0.",
       chemoName: "FOLFIRINOX néo-adjuvant (initiation)",
       chemoTolerance: "Good",
-      priority: "low",
+      priority: 3,
       proposedCare: "Poursuite FOLFIRINOX",
       rationale: "Bilan complet, induction par FOLFIRINOX selon TNCD Pancréas.",
       executionTimes: { TumorLocation: 6.2, ChemotherapyTreament: 8.1 },
@@ -270,7 +277,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       examResult: "Stabilité lésionnelle céphalique, contact VMS < 180°.",
       chemoName: "FOLFIRINOX (4 cures)",
       chemoTolerance: "Medium",
-      priority: "medium",
+      priority: 2,
       proposedCare: "Réévaluation après 6 cures",
       rationale: "Élévation modérée du CA 19-9 à 298 U/mL.",
       executionTimes: { TumorLocation: 7.4, ChemotherapyTreament: 9.0 },
@@ -364,7 +371,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ExpertAnswer: {
           "digestive surgeon expert": {
             expert_relevant: true,
-            patient_priority: "Patient must be treated urgently",
+            discussion_priority: 1,
             why_relevant:
               "Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
             reasoning_thinking:
@@ -406,7 +413,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           },
           "radiation oncologist expert": {
             expert_relevant: true,
-            patient_priority: "Patient is not urgent",
+            discussion_priority: 3,
             why_relevant: "Évaluation d'une chimioradiothérapie de clôture éventuelle.",
             suggestions: [
               {
@@ -421,7 +428,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         },
         CareOrientationProposal: {
           care_adaptation_suggested: true,
-          suggested_priority: "high",
+          suggested_priority: 1,
           proposed_care_type: "Chimiothérapie 2e ligne (gemcitabine + nab-paclitaxel)",
           clinical_rationale:
             "Progression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
@@ -435,10 +442,12 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ExpertAnswer: 18.5,
       },
       metrics: {
-        priority_level: "high",
-        urgency_reason:
+        discussion_priority: 1,
+        discussion_priority_code: "P1",
+        priority_source: "ai",
+        priority_reason:
           "**Chirurgie digestive** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.\n\nProgression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
-        urgency_reasons: [
+        priority_reasons: [
           "**Chirurgie digestive** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
           "Progression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
         ],
@@ -502,7 +511,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         MTDCompleted: { is_mtd_complete: true, what_missing: [] },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "medium",
+          suggested_priority: 2,
           proposed_care_type: "Protocole FLOT péri-opératoire",
           clinical_rationale: "Bilan d'extension complet et conforme au référentiel TNCD Œsophage.",
         },
@@ -510,9 +519,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       manualEdits: {},
       executionTimes: { TumorLocation: 8.2 },
       metrics: {
-        priority_level: "medium",
-        urgency_reason: "Bilan d'extension complet et conforme au référentiel TNCD Œsophage.",
-        urgency_reasons: ["Bilan d'extension complet et conforme au référentiel TNCD Œsophage."],
+        discussion_priority: 2,
+        discussion_priority_code: "P2",
+        priority_source: "ai",
+        priority_reason: "Bilan d'extension complet et conforme au référentiel TNCD Œsophage.",
+        priority_reasons: ["Bilan d'extension complet et conforme au référentiel TNCD Œsophage."],
         is_complete: true,
         missing_count: 0,
         missing_items: [],
@@ -572,7 +583,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         MTDCompleted: { is_mtd_complete: true, what_missing: [] },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "low",
+          suggested_priority: 3,
           proposed_care_type: "Poursuite nusinersen intrathécal",
           clinical_rationale: "Stabilité motrice et respiratoire sous nusinersen.",
         },
@@ -580,7 +591,9 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       manualEdits: {},
       executionTimes: { GeneticDiagnosis: 5.1, MotorFunctionStatus: 7.3 },
       metrics: {
-        priority_level: "low",
+        discussion_priority: 3,
+        discussion_priority_code: "P3",
+        priority_source: "ai",
         is_complete: true,
         missing_count: 0,
         missing_items: [],
@@ -625,7 +638,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ExpertAnswer: {
           "neurologist expert": {
             expert_relevant: true,
-            patient_priority: "Patient is not urgent",
+            discussion_priority: 3,
             why_relevant: "Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
             suggestions: [
               {
@@ -645,7 +658,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           },
           "pulmonologist expert": {
             expert_relevant: true,
-            patient_priority: "Patient is not urgent",
+            discussion_priority: 3,
             why_relevant: "Surveillance de la capacité vitale forcée (CVF à 72 %).",
             suggestions: [
               {
@@ -660,7 +673,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "low",
+          suggested_priority: 3,
           proposed_care_type: "Suivi habituel sous nusinersen + kinésithérapie",
           clinical_rationale:
             "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
@@ -673,10 +686,12 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ExpertAnswer: 14.1,
       },
       metrics: {
-        priority_level: "low",
-        urgency_reason:
+        discussion_priority: 3,
+        discussion_priority_code: "P3",
+        priority_source: "ai",
+        priority_reason:
           "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).\n\n**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).\n\nÉvolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
-        urgency_reasons: [
+        priority_reasons: [
           "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
           "**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).",
           "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
@@ -906,14 +921,23 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
                 : "no";
     const isComplete = completenessStatus === "yes";
 
-    const priorityLevel = normalizePriorityLevel(form.metrics.priority_level);
-    const priorityReasons = Array.isArray(form.metrics.urgency_reasons)
-      ? form.metrics.urgency_reasons.map((r) => String(r).trim()).filter(Boolean)
+    const priorityLevel = normalizePriorityLevel(
+      form.metrics.discussion_priority ?? form.metrics.discussion_priority_code,
+    );
+    const priorityCode = discussionPriorityCode(priorityLevel);
+    const priorityReasons = Array.isArray(form.metrics.priority_reasons)
+      ? form.metrics.priority_reasons.map((r) => String(r).trim()).filter(Boolean)
       : [];
-    const priorityReason = form.metrics.urgency_reason
-      ? String(form.metrics.urgency_reason).trim()
+    const priorityReason = form.metrics.priority_reason
+      ? String(form.metrics.priority_reason).trim()
       : priorityReasons.length > 0
         ? priorityReasons.join("\n\n")
+        : null;
+    const prioritySource =
+      form.metrics.priority_source === "rule" ||
+      form.metrics.priority_source === "ai" ||
+      form.metrics.priority_source === "manual"
+        ? (form.metrics.priority_source as PrioritySource)
         : null;
 
     return {
@@ -929,8 +953,10 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       domain: form.domain,
       mdtDate: form.mdtDate,
       priorityLevel,
+      priorityCode,
       priorityReason,
       priorityReasons,
+      prioritySource,
       isComplete,
       completenessStatus,
       missingCount,
@@ -1085,8 +1111,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             ? coerced.proposed_care_type.trim()
             : null;
       }
-      if (typeof coerced.suggested_priority === "string" && coerced.suggested_priority) {
-        form.metrics.priority_level = coerced.suggested_priority as PriorityLevel;
+      if (coerced.suggested_priority !== undefined) {
+        const nextPrio = normalizePriorityLevel(coerced.suggested_priority);
+        form.metrics.discussion_priority = nextPrio as DiscussionPriorityLevel;
+        form.metrics.discussion_priority_code = discussionPriorityCode(nextPrio);
+        form.metrics.priority_source = "manual";
       }
     }
     if (section === "MTDCompleted") {
@@ -1247,8 +1276,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             ? String(restored.proposed_care_type)
             : null;
         }
-        if (typeof restored.suggested_priority === "string" && restored.suggested_priority) {
-          form.metrics.priority_level = restored.suggested_priority as PriorityLevel;
+        if (restored.suggested_priority !== undefined) {
+          const restoredPrio = normalizePriorityLevel(restored.suggested_priority);
+          form.metrics.discussion_priority = restoredPrio as DiscussionPriorityLevel;
+          form.metrics.discussion_priority_code = discussionPriorityCode(restoredPrio);
+          form.metrics.priority_source = "ai";
         }
       }
       if (canonical === "MTDCompleted") {
@@ -1470,7 +1502,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           MTDCompleted: { is_mtd_complete: true, what_missing: [] },
           CareOrientationProposal: {
             care_adaptation_suggested: false,
-            suggested_priority: "medium",
+            suggested_priority: 2,
             proposed_care_type: "Analyse initiale terminée",
             clinical_rationale: "Document importé et structuré automatiquement.",
           },
@@ -1478,7 +1510,9 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         manualEdits: {},
         executionTimes: { DocumentParser: 2.1 },
         metrics: {
-          priority_level: "medium",
+          discussion_priority: 2,
+          discussion_priority_code: "P2",
+          priority_source: "ai",
           is_complete: true,
           missing_count: 0,
           missing_items: [],
@@ -1937,21 +1971,15 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       const quorumMet = absentReq.length === 0;
       const coverage = effectiveReq.length > 0 ? presentReq.length / effectiveReq.length : 1.0;
       const clusterKey = presentReq[0] ?? effectiveReq[0] ?? "general";
-      const urgencyScore =
-        card.priorityLevel === "high" ? 2 : card.priorityLevel === "medium" ? 1 : 0;
-      const urgencyLabel =
-        card.priorityLevel === "high"
-          ? "Urgent"
-          : card.priorityLevel === "medium"
-            ? "Semi-urgent"
-            : "Standard";
       const pinned = Boolean(st.pinnedMap.get(pid));
 
       const reasons: string[] = [];
       if (pinned) reasons.push("Position épinglée manuellement");
-      if (card.priorityLevel === "high") reasons.push("Priorité haute");
-      else if (card.priorityLevel === "medium") reasons.push("Priorité modérée");
-      else reasons.push("Priorité standard");
+      if (card.priorityLevel === 1) reasons.push("P1 · Fenêtre thérapeutique limitée");
+      else if (card.priorityLevel === 2) reasons.push("P2 · Décision collégiale requise");
+      else if (card.priorityLevel === 3) reasons.push("P3 · Validation standard");
+      else if (card.priorityLevel === 4) reasons.push("P4 · Pour information");
+      else reasons.push("Priorité non évaluée");
 
       if (effectiveReq.length > 0) {
         if (quorumMet) {
@@ -1974,11 +2002,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         firstName: card.firstName,
         lastName: card.lastName,
         dateBirth: card.dateBirth ?? null,
-        urgency: urgencyLabel,
-        urgencyScore,
         priorityLevel: card.priorityLevel,
+        priorityCode: card.priorityCode,
         priorityReason: card.priorityReason ?? null,
         priorityReasons: card.priorityReasons ?? [],
+        prioritySource: card.prioritySource ?? null,
         isComplete: card.isComplete,
         completenessStatus: card.completenessStatus,
         missingCount: card.missingCount,
@@ -2001,7 +2029,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     for (const item of rawItems) {
       const cur = clusterStats.get(item.clusterKey) ?? { urgent: 0, total: 0 };
       cur.total += 1;
-      if (item.priorityLevel === "high") cur.urgent += 1;
+      if (item.priorityLevel === 1) cur.urgent += 1;
       clusterStats.set(item.clusterKey, cur);
     }
 
@@ -2015,7 +2043,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           return a.isComplete ? -1 : 1;
         }
         if (st.sortStrategy === "urgency_first") {
-          if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+          const prioDiff = priorityRank(a.priorityLevel) - priorityRank(b.priorityLevel);
+          if (prioDiff !== 0) return prioDiff;
           if (b.expertCoverageRatio !== a.expertCoverageRatio) {
             return b.expertCoverageRatio - a.expertCoverageRatio;
           }
@@ -2036,11 +2065,12 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             if (cb.total !== ca.total) return cb.total - ca.total;
             return a.clusterKey.localeCompare(b.clusterKey);
           }
-          if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+          const prioDiff = priorityRank(a.priorityLevel) - priorityRank(b.priorityLevel);
+          if (prioDiff !== 0) return prioDiff;
           return a.patientName.localeCompare(b.patientName, "fr");
         }
-        const aTopUrgent = a.priorityLevel === "high" && a.quorumMet;
-        const bTopUrgent = b.priorityLevel === "high" && b.quorumMet;
+        const aTopUrgent = a.priorityLevel === 1 && a.quorumMet;
+        const bTopUrgent = b.priorityLevel === 1 && b.quorumMet;
         if (aTopUrgent !== bTopUrgent) return aTopUrgent ? -1 : 1;
         if (a.quorumMet !== b.quorumMet) return a.quorumMet ? -1 : 1;
         if (a.clusterKey !== b.clusterKey) {
@@ -2049,7 +2079,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           if (cb.urgent !== ca.urgent) return cb.urgent - ca.urgent;
           if (cb.total !== ca.total) return cb.total - ca.total;
         }
-        if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+        const prioDiff = priorityRank(a.priorityLevel) - priorityRank(b.priorityLevel);
+        if (prioDiff !== 0) return prioDiff;
         return a.patientName.localeCompare(b.patientName, "fr");
       });
 
@@ -2082,7 +2113,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         expertName: exp,
         isAttending: attendingSet.has(exp),
         caseCount: matching.length,
-        urgentCaseCount: matching.filter((it) => it.priorityLevel === "high").length,
+        urgentCaseCount: matching.filter((it) => it.priorityLevel === 1).length,
         firstPosition: firstPos,
         lastPosition: lastPos,
         isContiguous,
@@ -2094,13 +2125,6 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       .filter((c) => !enrolledSet.has(c.patientId ?? c.id))
       .map((c) => {
         const pid = c.patientId ?? c.id;
-        const urgencyScore = c.priorityLevel === "high" ? 2 : c.priorityLevel === "medium" ? 1 : 0;
-        const urgencyLabel =
-          c.priorityLevel === "high"
-            ? "Urgent"
-            : c.priorityLevel === "medium"
-              ? "Semi-urgent"
-              : "Standard";
         return {
           patientId: pid,
           filename: c.file,
@@ -2108,11 +2132,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           firstName: c.firstName,
           lastName: c.lastName,
           dateBirth: c.dateBirth ?? null,
-          urgency: urgencyLabel,
-          urgencyScore,
           priorityLevel: c.priorityLevel,
+          priorityCode: c.priorityCode,
           priorityReason: c.priorityReason ?? null,
           priorityReasons: c.priorityReasons ?? [],
+          prioritySource: c.prioritySource ?? null,
           isComplete: c.isComplete,
           completenessStatus: c.completenessStatus,
           missingCount: c.missingCount,
@@ -2133,7 +2157,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       availableExperts,
       attendingExperts: st.attendingExperts,
       totalEnrolled: ordered.length,
-      urgentCount: ordered.filter((i) => i.priorityLevel === "high").length,
+      urgentCount: ordered.filter((i) => i.priorityLevel === 1).length,
       incompleteCount: ordered.filter((i) => !i.isComplete).length,
       quorumWarningCount: ordered.filter((i) => !i.quorumMet).length,
       items: ordered,
@@ -2191,7 +2215,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       for (const c of cards) {
         const pid = c.patientId ?? c.id;
         if (input.filterMode === "complete" && !c.isComplete) continue;
-        if (input.filterMode === "urgent" && c.priorityLevel !== "high") continue;
+        if (input.filterMode === "urgent" && c.priorityLevel !== 1) continue;
         toAdd.push(pid);
       }
     }

@@ -55,7 +55,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(res.body).toContain('data-testid="btn_theme_light"');
     expect(res.body).toContain('data-testid="btn_theme_dark"');
     expect(res.body).toContain('data-testid="kpi-structured"');
-    expect(res.body).toContain('data-testid="kpi-priority-high"');
+    expect(res.body).toContain('data-testid="kpi-priority-p1"');
+    expect(res.body).toContain('data-testid="kpi-priority-not-assessed"');
     expect(res.body).toContain('data-testid="worklist-table"');
     expect(res.body).toContain("FICTIVE Jeanne");
     // Medico-legal check: never use "Intervention requise"

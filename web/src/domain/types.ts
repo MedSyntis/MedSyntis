@@ -1,5 +1,7 @@
 export type ClinicalDomain = "oncology" | "sma";
-export type PriorityLevel = "high" | "medium" | "low" | "none";
+export type DiscussionPriorityLevel = 1 | 2 | 3 | 4 | 9;
+export type DiscussionPriorityCode = "P1" | "P2" | "P3" | "P4" | "NOT_ASSESSED";
+export type PrioritySource = "rule" | "ai" | "manual";
 export type CompletenessStatus = "complete" | "partial" | "incomplete" | "pending";
 export type RawCompletenessStatus = "yes" | "partial" | "no" | "pending";
 export type OrientationStatus = "adapt" | "standard" | "pending";
@@ -32,9 +34,11 @@ export interface MdtFormCard {
   gender?: string | null;
   domain: ClinicalDomain;
   mdtDate: string | null;
-  priorityLevel: PriorityLevel;
+  priorityLevel: DiscussionPriorityLevel;
+  priorityCode: DiscussionPriorityCode;
   priorityReason?: string | null;
   priorityReasons?: string[];
+  prioritySource?: PrioritySource | null;
   isComplete: boolean;
   completenessStatus?: RawCompletenessStatus;
   missingCount: number;
@@ -63,9 +67,11 @@ export interface ManualEditMetadata {
 }
 
 export interface CardMetrics {
-  priority_level?: string | null;
-  urgency_reason?: string | null;
-  urgency_reasons?: string[];
+  discussion_priority?: DiscussionPriorityLevel | number | null;
+  discussion_priority_code?: DiscussionPriorityCode | string | null;
+  priority_reason?: string | null;
+  priority_reasons?: string[];
+  priority_source?: PrioritySource | string | null;
   is_complete?: boolean;
   completeness_status?: RawCompletenessStatus;
   completeness_label?: string;
@@ -142,7 +148,7 @@ export interface SpecialtyOpinionItem {
   agentLabel: string;
   agentIcon: string;
   relevant: boolean;
-  priorityLevel: PriorityLevel;
+  priorityLevel: DiscussionPriorityLevel;
   whyRelevant: string;
   suggestions: ExpertSuggestion[];
   sources: CitationRef[];
@@ -243,7 +249,7 @@ export interface BugReportItem {
 export interface WorklistFilter {
   query?: string;
   completeness?: "all" | "complete" | "partial" | "incomplete";
-  priority?: "all" | "high" | "medium" | "low";
+  priority?: "all" | "1" | "2" | "3" | "4" | "9" | DiscussionPriorityCode;
   orientation?: "all" | "adapt" | "standard" | "pending";
   domain?: "all" | ClinicalDomain;
   viewMode?: "patients" | "rcp";
@@ -255,7 +261,8 @@ export interface WorklistFilter {
 
 export interface WorklistKpis {
   structuredCount: number;
-  highPriorityCount: number;
+  p1Count: number;
+  notAssessedCount: number;
   incompleteCount: number;
   adaptationSuggestedCount: number;
 }
@@ -270,11 +277,11 @@ export interface MdtAgendaItem {
   firstName: string;
   lastName: string;
   dateBirth: string | null;
-  urgency: string;
-  urgencyScore: number;
-  priorityLevel: PriorityLevel;
+  priorityLevel: DiscussionPriorityLevel;
+  priorityCode: DiscussionPriorityCode;
   priorityReason?: string | null;
   priorityReasons?: string[];
+  prioritySource?: PrioritySource | null;
   isComplete: boolean;
   completenessStatus?: RawCompletenessStatus;
   missingCount: number;
@@ -310,11 +317,11 @@ export interface MdtAgendaCandidate {
   firstName: string;
   lastName: string;
   dateBirth: string | null;
-  urgency: string;
-  urgencyScore: number;
-  priorityLevel: PriorityLevel;
+  priorityLevel: DiscussionPriorityLevel;
+  priorityCode: DiscussionPriorityCode;
   priorityReason?: string | null;
   priorityReasons?: string[];
+  prioritySource?: PrioritySource | null;
   isComplete: boolean;
   completenessStatus?: RawCompletenessStatus;
   missingCount: number;

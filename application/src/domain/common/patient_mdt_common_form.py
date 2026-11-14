@@ -769,9 +769,9 @@ class PatientMDTForm:
         date_mcp = _to_naive_paris(date_mcp)
 
         relevant_experts = []
-        urgency_level = "Indéfini"
-        urgency_score = 0
-        expert_priority_entries: list[tuple[str, int, str]] = []
+        rule_assessment = suggest_priority(d)  # noqa: F405
+        ai_expert_level: DiscussionPriority | None = None  # noqa: F405
+        expert_priority_entries: list[tuple[str, DiscussionPriority, str]] = []  # noqa: F405
 
         if "ExpertAnswer" in d and isinstance(d["ExpertAnswer"], dict):
             for agent_name, agent_data in d["ExpertAnswer"].items():
@@ -780,36 +780,18 @@ class PatientMDTForm:
                         continue
                     relevant_experts.append(agent_name)
 
-                    raw_prio = agent_data.get("patient_priority", "")
-                    p_prio = str(
-                        raw_prio.value if isinstance(raw_prio, Enum) else raw_prio
-                    ).lower()
+                    raw_prio = agent_data.get("discussion_priority")
                     why_rel = str(agent_data.get("why_relevant") or "").strip()
-                    resolved_urgency = PatientPriority._missing_(p_prio)  # noqa: F405
-                    if resolved_urgency is None:
-                        for cand in list(PatientPriority):  # noqa: F405
-                            if p_prio in (cand.value.lower(), cand.name.lower()):
-                                resolved_urgency = cand
-                                break
-                    if resolved_urgency is not None:
-                        exp_score = 0
-                        if resolved_urgency.name == "urgent":
-                            exp_score = 2
-                            if urgency_score < 2:
-                                urgency_score = 2
-                                urgency_level = "Urgent"
-                        elif resolved_urgency.name == "medium":
-                            exp_score = 1
-                            if urgency_score < 1:
-                                urgency_score = 1
-                                urgency_level = "Semi-urgent"
-                        elif resolved_urgency.name == "low":
-                            exp_score = 0
-                            if urgency_score == 0:
-                                urgency_level = "Standard"
+                    resolved_prio = DiscussionPriority.from_any(raw_prio)  # noqa: F405
+                    if resolved_prio is not None:
+                        if resolved_prio != DiscussionPriority.NOT_ASSESSED and (  # noqa: F405
+                            ai_expert_level is None
+                            or int(resolved_prio) < int(ai_expert_level)
+                        ):
+                            ai_expert_level = resolved_prio
                         if why_rel and why_rel.lower() != "no data":
                             expert_priority_entries.append(
-                                (agent_name, exp_score, why_rel)
+                                (agent_name, resolved_prio, why_rel)
                             )
 
         def _parse_completeness_flag(val: Any) -> bool | str | None:
@@ -976,46 +958,59 @@ class PatientMDTForm:
                         clinical_rationale = agent_data.get("clinical_rationale")
                         break
 
-        if suggested_priority_raw is not None:
-            s_prio = str(
-                suggested_priority_raw.value
-                if isinstance(suggested_priority_raw, Enum)
-                else suggested_priority_raw
-            ).lower()
-            is_manual_proposal = cls.is_section_manually_edited(
-                d, "CareOrientationProposal"
-            )
-            resolved_s_prio = PatientPriority._missing_(s_prio)  # noqa: F405
-            if resolved_s_prio is None:
-                for cand in list(PatientPriority):  # noqa: F405
-                    if s_prio in (cand.value.lower(), cand.name.lower()):
-                        resolved_s_prio = cand
-                        break
+        is_manual_proposal = cls.is_section_manually_edited(
+            d, "CareOrientationProposal"
+        )
+        manual_assessment: PriorityAssessment | None = None  # noqa: F405
+        ai_assessment: PriorityAssessment | None = None  # noqa: F405
+
+        resolved_s_prio = (
+            DiscussionPriority.from_any(suggested_priority_raw)  # noqa: F405
+            if suggested_priority_raw is not None
+            else None
+        )
+        if is_manual_proposal:
             if resolved_s_prio is not None:
-                if resolved_s_prio.name == "urgent":
-                    urgency_score = 2
-                    urgency_level = "Urgent"
-                elif resolved_s_prio.name == "medium":
-                    if is_manual_proposal or urgency_score < 1:
-                        urgency_score = 1
-                        urgency_level = "Semi-urgent"
-                elif resolved_s_prio.name == "low":
-                    if is_manual_proposal or urgency_score == 0:
-                        urgency_score = 0
-                        urgency_level = "Standard"
-                elif resolved_s_prio.name == "not_given" and is_manual_proposal:
-                    urgency_score = 0
-                    urgency_level = "Indéfini"
-        elif (
-            cls.is_section_manually_edited(d, "CareOrientationProposal")
-            and care_adaptation_suggested is False
-        ):
-            urgency_score = 0
-            urgency_level = "Standard"
+                manual_assessment = PriorityAssessment(  # noqa: F405
+                    level=resolved_s_prio,
+                    reason=str(clinical_rationale or "").strip(),
+                    source="manual",
+                )
+            elif care_adaptation_suggested is False:
+                manual_assessment = PriorityAssessment(  # noqa: F405
+                    level=DiscussionPriority.STANDARD_SIGN_OFF,  # noqa: F405
+                    reason=str(clinical_rationale or "").strip(),
+                    source="manual",
+                )
+        else:
+            effective_ai_level = ai_expert_level
+            if (
+                resolved_s_prio is not None
+                and resolved_s_prio != DiscussionPriority.NOT_ASSESSED  # noqa: F405
+                and (
+                    effective_ai_level is None
+                    or int(resolved_s_prio) < int(effective_ai_level)
+                )
+            ):
+                effective_ai_level = resolved_s_prio
+            if effective_ai_level is not None:
+                ai_assessment = PriorityAssessment(  # noqa: F405
+                    level=effective_ai_level,
+                    reason=str(clinical_rationale or "").strip(),
+                    source="ai",
+                )
+
+        final_priority = merge_priority(  # noqa: F405
+            rule=rule_assessment,
+            ai=ai_assessment,
+            manual=manual_assessment,
+        )
 
         matching_expert_entries = [
-            entry for entry in expert_priority_entries if entry[1] == urgency_score
-        ] or sorted(expert_priority_entries, key=lambda x: x[1], reverse=True)
+            entry
+            for entry in expert_priority_entries
+            if entry[1] == final_priority.level
+        ] or sorted(expert_priority_entries, key=lambda x: x[1].sort_rank)
 
         expert_labels = {
             "digestive surgeon expert": "Chirurgie digestive",
@@ -1030,7 +1025,7 @@ class PatientMDTForm:
             "physiotherapy expert": "MPR / Kinésithérapie",
             "orthopedist expert": "Orthopédie & Rachis",
         }
-        urgency_reasons: list[str] = []
+        priority_reasons: list[str] = []
         seen_reasons: set[str] = set()
         for agent_name, _, why_rel in matching_expert_entries:
             label = expert_labels.get(agent_name.strip().lower(), agent_name)
@@ -1038,16 +1033,28 @@ class PatientMDTForm:
             norm = formatted.lower()
             if norm not in seen_reasons:
                 seen_reasons.add(norm)
-                urgency_reasons.append(formatted)
+                priority_reasons.append(formatted)
 
         clean_rationale = str(clinical_rationale or "").strip()
         if clean_rationale and clean_rationale.lower() != "no data":
             norm_rat = clean_rationale.lower()
             if norm_rat not in seen_reasons:
                 seen_reasons.add(norm_rat)
-                urgency_reasons.append(clean_rationale)
+                priority_reasons.append(clean_rationale)
 
-        urgency_reason = "\n\n".join(urgency_reasons) if urgency_reasons else ""
+        if (
+            final_priority.source == "rule"
+            and final_priority.level.code == "P1"
+            and final_priority.reason
+        ):
+            rule_reason = final_priority.reason.strip()
+            if rule_reason and rule_reason.lower() not in seen_reasons:
+                seen_reasons.add(rule_reason.lower())
+                priority_reasons.insert(0, rule_reason)
+
+        priority_reason = (
+            "\n\n".join(priority_reasons) if priority_reasons else final_priority.reason
+        )
 
         patient_id = d.get("patient_id")
         file_name = d.get("file", "")
@@ -1076,10 +1083,11 @@ class PatientMDTForm:
             "all_missing_items": raw_missing,
             "hidden_missing_items": hidden_missing_items,
             "hide_missing_items": hide_missing_items,
-            "urgency": urgency_level,
-            "urgency_score": urgency_score,
-            "urgency_reason": urgency_reason,
-            "urgency_reasons": urgency_reasons,
+            "discussion_priority": int(final_priority.level),
+            "discussion_priority_code": final_priority.level.code,
+            "priority_reason": priority_reason,
+            "priority_reasons": priority_reasons,
+            "priority_source": final_priority.source,
             "link": link,
             "care_adaptation_suggested": care_adaptation_suggested,
             "proposed_care_type": proposed_care_type,
@@ -1266,11 +1274,16 @@ class PatientMDTForm:
         expert_relevant: bool = Field(
             description="Is your expertise relevant for this patient's case?"
         )
-        patient_priority: PatientPriority = Field(  # noqa: F405
-            description="Suggested priority level for pre-MDT review"
+        discussion_priority: DiscussionPriority = Field(  # noqa: F405
+            description=(
+                "MDT discussion priority: 1=P1 Time-bound (upcoming therapeutic window, progression, scheduled surgery), "
+                "2=P2 Decision needed (diagnostic or therapeutic choice), "
+                "3=P3 Standard sign-off (guideline-compliant validation), "
+                "4=P4 Information (traceability only), 9=Not assessed"
+            )
         )
         why_relevant: MarkdownStr = Field(
-            description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
+            description="Explain why your expertise is relevant (or not) for this patient and justify the discussion priority given."
         )
         sources_relevant: list[Reference] = Field(  # noqa: F405
             description="Give the sources of your relevant answer"
@@ -1280,7 +1293,7 @@ class PatientMDTForm:
         )
 
         question: ClassVar[str] = """
-            As an expert in your field, assess the suggested priority level for pre-MDT collegial review, determine if your expertise is relevant to this case, and provide pre-MDT orientation options grounded in guidelines.
+            As an expert in your field, assess the MDT discussion priority (`discussion_priority`: 1=P1 Time-bound, 2=P2 Decision needed, 3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed), determine if your expertise is relevant to this case, and provide pre-MDT orientation options grounded in guidelines.
             You can use tools multiple times for each element and retrieve supporting scientific references.
             """
 
@@ -1314,9 +1327,12 @@ class PatientMDTForm:
                 "(medical, respiratory, nutritional, rehabilitative, or surgical) should be discussed by the physicians?"
             )
         )
-        suggested_priority: Optional[PatientPriority] = Field(  # noqa: F405
+        suggested_priority: Optional[DiscussionPriority] = Field(  # noqa: F405
             default=None,
-            description="Suggested priority level for MDT discussion and care management. None if routine follow-up.",
+            description=(
+                "MDT discussion priority: 1=P1 Time-bound, 2=P2 Decision needed, "
+                "3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed."
+            ),
         )
         proposed_care_type: Optional[MarkdownStr] = Field(
             default=None,
@@ -1334,8 +1350,8 @@ class PatientMDTForm:
             Based on the multidisciplinary expert debate, synthesize a pre-MDT orientation proposal to assist the medical board (do not replace the physicians' final decision):
             Determine whether an initiation or adaptation of care should be discussed for this patient.
             If yes, specify:
-            1. The suggested priority level for the MDT discussion.
-               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate flags the case as urgent or high priority, you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
+            1. The MDT discussion priority (`suggested_priority`: 1=P1 Time-bound, 2=P2 Decision needed, 3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed).
+               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate proposes `P1` (`TIME_BOUND = 1`), you MUST classify `suggested_priority` as `1` (`P1 · Time-bound`), regardless of whether other experts recommend a lower discussion priority.
             2. The proposed area or modality of care to discuss.
-            Provide a clear clinical rationale detailing the positions of the experts and highlighting any divergence in opinions regarding urgency.
+            Provide a clear clinical rationale detailing the positions of the experts and highlighting any divergence in opinions regarding discussion priority.
             """

@@ -145,7 +145,7 @@ class TestManualSectionEditing:
             section_name="CareOrientationProposal",
             section_data={
                 "care_adaptation_suggested": True,
-                "suggested_priority": "Urgent, a treatment is needed quickly",
+                "suggested_priority": 1,
                 "proposed_care_type": "Chirurgie DPC d'emblée",
                 "clinical_rationale": "Validation collégiale RCP.",
             },

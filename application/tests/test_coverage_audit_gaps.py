@@ -17,7 +17,7 @@ from pymilvus import MilvusException
 
 from src.application.reader import DocumentReader
 from src.application.use_cases import PatientRecordService
-from src.domain.common.common_ressources import PatientPriority
+from src.domain.common.common_ressources import DiscussionPriority
 from src.domain.mdt_agenda import MDTAgenda, MDTAgendaEntry
 from src.domain.patient import Patient
 from src.domain.patient_mdt_form import PatientMDTOncologicForm
@@ -698,17 +698,17 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
         assert vecs == [[0.3, 0.4], [0.1, 0.2]]
 
     # Manual CareOrientationProposal priority overrides in PatientMDTForm.extract_card_metrics
-    for prio_val, expected_score in (
-        (PatientPriority.medium.value, 1),
-        (PatientPriority.low.value, 0),
-        (PatientPriority.not_given.value, 0),
+    for prio_val, expected_prio in (
+        (int(DiscussionPriority.DECISION_NEEDED), 2),
+        (int(DiscussionPriority.STANDARD_SIGN_OFF), 3),
+        (int(DiscussionPriority.NOT_ASSESSED), 9),
     ):
         metrics = PatientMDTOncologicForm.extract_card_metrics(
             {
                 "ExpertAnswer": {
                     "medical oncologist expert": {
                         "expert_relevant": True,
-                        "patient_priority": PatientPriority.urgent.value,
+                        "discussion_priority": int(DiscussionPriority.TIME_BOUND),
                     }
                 },
                 "CareOrientationProposal": {
@@ -723,7 +723,8 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
                 },
             }
         )
-        assert metrics["urgency_score"] == expected_score
+        assert metrics["discussion_priority"] == expected_prio
+        assert metrics["priority_source"] == "manual"
 
     # Manual CareOrientationProposal with care_adaptation_suggested=False and no suggested_priority
     metrics_no_adapt = PatientMDTOncologicForm.extract_card_metrics(
@@ -731,7 +732,7 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
             "ExpertAnswer": {
                 "medical oncologist expert": {
                     "expert_relevant": True,
-                    "patient_priority": PatientPriority.urgent.value,
+                    "discussion_priority": int(DiscussionPriority.TIME_BOUND),
                 }
             },
             "CareOrientationProposal": {
@@ -743,4 +744,6 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
             },
         }
     )
-    assert metrics_no_adapt["urgency_score"] == 0
+    assert metrics_no_adapt["discussion_priority"] == int(
+        DiscussionPriority.STANDARD_SIGN_OFF
+    )

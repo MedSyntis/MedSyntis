@@ -8,6 +8,8 @@ from typing import Any, Literal, Optional, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.domain.common.common_ressources import DiscussionPriority
+
 
 class MDTAgendaSortStrategy(str, Enum):
     """Selectable organization and scheduling strategies for an MDT meeting agenda."""
@@ -18,16 +20,10 @@ class MDTAgendaSortStrategy(str, Enum):
     MANUAL = "manual"
 
 
-PriorityLevelLiteral = Literal["high", "medium", "low"]
-
-
-def map_urgency_score_to_priority_level(urgency_score: int) -> PriorityLevelLiteral:
-    """Map numeric `urgency_score` (0..2) to canonical priority level (`high`, `medium`, `low`)."""
-    if urgency_score >= 2:
-        return "high"
-    if urgency_score == 1:
-        return "medium"
-    return "low"
+def discussion_priority_weight(priority: DiscussionPriority | int | None) -> int:
+    """Return descending weight (higher = earlier) matching Q1: P1 -> P2 -> NOT_ASSESSED -> P3 -> P4."""
+    parsed = DiscussionPriority.from_any(priority) or DiscussionPriority.NOT_ASSESSED
+    return 6 - parsed.sort_rank
 
 
 def _coerce_optional_date(val: Any) -> Optional[date]:
@@ -87,11 +83,11 @@ class MDTAgendaCandidateSnapshot(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     date_birth: Optional[datetime] = None
-    urgency: str = "Indéfini"
-    urgency_score: int = 0
-    urgency_reason: str = ""
-    urgency_reasons: list[str] = Field(default_factory=list)
-    priority_level: PriorityLevelLiteral = "low"
+    discussion_priority: int = int(DiscussionPriority.NOT_ASSESSED)
+    discussion_priority_code: str = DiscussionPriority.NOT_ASSESSED.code
+    priority_reason: str = ""
+    priority_reasons: list[str] = Field(default_factory=list)
+    priority_source: Literal["rule", "ai", "manual"] = "rule"
     is_complete: bool = True
     completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int = 0
@@ -114,11 +110,11 @@ class MDTAgendaScheduledItem(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     date_birth: Optional[datetime] = None
-    urgency: str
-    urgency_score: int
-    urgency_reason: str = ""
-    urgency_reasons: list[str] = Field(default_factory=list)
-    priority_level: PriorityLevelLiteral
+    discussion_priority: int
+    discussion_priority_code: str
+    priority_reason: str = ""
+    priority_reasons: list[str] = Field(default_factory=list)
+    priority_source: Literal["rule", "ai", "manual"] = "rule"
     is_complete: bool
     completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int
@@ -498,11 +494,11 @@ class MDTAgendaScheduler:
                     first_name=snap.first_name,
                     last_name=snap.last_name,
                     date_birth=snap.date_birth,
-                    urgency=snap.urgency,
-                    urgency_score=snap.urgency_score,
-                    urgency_reason=snap.urgency_reason,
-                    urgency_reasons=list(snap.urgency_reasons),
-                    priority_level=snap.priority_level,
+                    discussion_priority=snap.discussion_priority,
+                    discussion_priority_code=snap.discussion_priority_code,
+                    priority_reason=snap.priority_reason,
+                    priority_reasons=list(snap.priority_reasons),
+                    priority_source=snap.priority_source,
                     is_complete=snap.is_complete,
                     completeness_status=snap.completeness_status,
                     missing_count=snap.missing_count,
@@ -529,7 +525,11 @@ class MDTAgendaScheduler:
             attending_set=attending_set,
         )
 
-        urgent_count = sum(1 for item in scheduled_items if item.urgency_score >= 2)
+        urgent_count = sum(
+            1
+            for item in scheduled_items
+            if item.discussion_priority == int(DiscussionPriority.TIME_BOUND)
+        )
         incomplete_count = sum(1 for item in scheduled_items if not item.is_complete)
         quorum_warning_count = sum(1 for item in scheduled_items if not item.quorum_met)
 
@@ -573,10 +573,10 @@ class MDTAgendaScheduler:
 
     @classmethod
     def _base_priority_tuple(cls, c: _EnrichedCandidate) -> tuple:
-        """Return descending-priority tuple (higher values are more critical)."""
+        """Return descending-priority tuple (higher values are earlier)."""
         return (
             1 if c.quorum_met else 0,
-            c.snapshot.urgency_score,
+            discussion_priority_weight(c.snapshot.discussion_priority),
             1 if c.snapshot.care_adaptation_suggested else 0,
             1 if c.snapshot.is_complete else 0,
             c.expert_coverage_ratio,
@@ -600,15 +600,21 @@ class MDTAgendaScheduler:
         if strategy == MDTAgendaSortStrategy.EXPERT_GROUPING:
             return cls._sort_by_expert_clusters(tier_items)
         # Default: HYBRID
-        urgent_cases = [
-            c for c in tier_items if c.snapshot.urgency_score >= 2 and c.quorum_met
+        p1_cases = [
+            c
+            for c in tier_items
+            if c.snapshot.discussion_priority == int(DiscussionPriority.TIME_BOUND)
+            and c.quorum_met
         ]
         remaining_cases = [
             c
             for c in tier_items
-            if not (c.snapshot.urgency_score >= 2 and c.quorum_met)
+            if not (
+                c.snapshot.discussion_priority == int(DiscussionPriority.TIME_BOUND)
+                and c.quorum_met
+            )
         ]
-        ordered_urgent = cls._chain_by_shared_experts(urgent_cases)
+        ordered_urgent = cls._chain_by_shared_experts(p1_cases)
         ordered_remaining = cls._sort_by_expert_clusters(
             remaining_cases,
             seed_experts=(
@@ -621,10 +627,13 @@ class MDTAgendaScheduler:
     def _sort_urgency_first(
         cls, items: list[_EnrichedCandidate]
     ) -> list[_EnrichedCandidate]:
-        """Sort strictly by clinical urgency and quorum, chaining shared experts on equal urgency."""
+        """Sort strictly by discussion priority (P1 -> P2 -> NOT_ASSESSED -> P3 -> P4) and quorum."""
         buckets: dict[tuple[int, int], list[_EnrichedCandidate]] = {}
         for c in items:
-            key = (1 if c.quorum_met else 0, c.snapshot.urgency_score)
+            key = (
+                1 if c.quorum_met else 0,
+                discussion_priority_weight(c.snapshot.discussion_priority),
+            )
             buckets.setdefault(key, []).append(c)
 
         ordered_keys = sorted(buckets.keys(), reverse=True)
@@ -704,8 +713,14 @@ class MDTAgendaScheduler:
             members = clusters[sig]
             quorum_all = 1 if all(m.quorum_met for m in members) else 0
             avg_cov = sum(m.expert_coverage_ratio for m in members) / len(members)
-            max_urg = max(m.snapshot.urgency_score for m in members)
-            sum_urg = sum(m.snapshot.urgency_score for m in members)
+            max_urg = max(
+                discussion_priority_weight(m.snapshot.discussion_priority)
+                for m in members
+            )
+            sum_urg = sum(
+                discussion_priority_weight(m.snapshot.discussion_priority)
+                for m in members
+            )
             has_experts = 1 if len(sig) > 0 else 0
             return (
                 quorum_all,
@@ -779,8 +794,8 @@ class MDTAgendaScheduler:
 
         if strategy == MDTAgendaSortStrategy.MANUAL:
             parts.append(f"Ordre manuel (#{position})")
-        elif snap.urgency_score >= 2:
-            parts.append("Priorité haute (Urgent)")
+        elif snap.discussion_priority == int(DiscussionPriority.TIME_BOUND):
+            parts.append("P1 · Échéance proche")
         elif (
             strategy == MDTAgendaSortStrategy.EXPERT_GROUPING
             and cand.present_required_experts
@@ -788,10 +803,10 @@ class MDTAgendaScheduler:
             parts.append(
                 f"Bloc spécialistes : {', '.join(cand.present_required_experts)}"
             )
-            if snap.urgency_score == 1:
-                parts.append("Priorité semi-urgente")
-        elif snap.urgency_score == 1:
-            parts.append("Priorité semi-urgente")
+            if snap.discussion_priority == int(DiscussionPriority.DECISION_NEEDED):
+                parts.append("P2 · Décision à prendre")
+        elif snap.discussion_priority == int(DiscussionPriority.DECISION_NEEDED):
+            parts.append("P2 · Décision à prendre")
             if cand.present_required_experts:
                 parts.append(
                     f"Bloc spécialistes : {', '.join(cand.present_required_experts)}"
@@ -802,7 +817,11 @@ class MDTAgendaScheduler:
                     f"Bloc spécialistes : {', '.join(cand.present_required_experts)}"
                 )
             else:
-                parts.append("Priorité standard")
+                prio_obj = (
+                    DiscussionPriority.from_any(snap.discussion_priority)
+                    or DiscussionPriority.NOT_ASSESSED
+                )
+                parts.append(prio_obj.label_fr)
 
         if cand.quorum_met and cand.required_experts:
             n_req = len(cand.required_experts)
@@ -832,7 +851,7 @@ class MDTAgendaScheduler:
                 if exp in item.required_experts:
                     positions.append(item.position)
                     patient_ids.append(item.patient_id)
-                    if item.urgency_score >= 2:
+                    if item.discussion_priority == int(DiscussionPriority.TIME_BOUND):
                         urgent_count += 1
 
             if positions:

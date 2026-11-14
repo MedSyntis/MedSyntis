@@ -17,7 +17,7 @@ from src.application.config import AppConfig
 from src.application.reader import DocumentReader
 from src.application.use_cases import PatientRecordService
 from src.domain.bug_report import BugCategory, BugReport, BugSeverity, BugStatus
-from src.domain.common.common_ressources import Gender, PatientPriority
+from src.domain.common.common_ressources import DiscussionPriority, Gender
 from src.domain.oncology.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.domain.patient import Patient, PatientIdentity
 from src.domain.sma.patient_mdt_sma_form import PatientMDTSmaForm
@@ -332,7 +332,7 @@ class TestCareOrientationHumanOversightAndLongitudinalDates:
             "CareOrientationProposal",
             {
                 "care_adaptation_suggested": True,
-                "suggested_priority": PatientPriority.urgent.value,
+                "suggested_priority": int(DiscussionPriority.TIME_BOUND),
                 "proposed_care_type": "Pre-MDT collegial surgical review",
                 "clinical_rationale": "Clinician override after multidisciplinary review.",
             },

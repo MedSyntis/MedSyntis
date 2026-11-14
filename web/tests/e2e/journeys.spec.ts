@@ -6,7 +6,7 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
   }) => {
     await page.goto("/worklist?domain=oncology");
     await expect(page.getByTestId("kpi-structured")).toBeVisible();
-    await expect(page.getByTestId("kpi-priority-high")).toContainText("1");
+    await expect(page.getByTestId("kpi-priority-p1")).toContainText("1");
     await expect(page.getByTestId("worklist-table")).toContainText("FICTIVE Jeanne");
     await expect(page.getByTestId("rail-fab-ingest")).toBeVisible();
 

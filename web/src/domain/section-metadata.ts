@@ -63,7 +63,7 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
     titleFr: "Avis des experts & Référentiels",
     titleEn: "Specialty Expert Opinions & Guidelines",
     defaultUserPrompt:
-      "As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case, explain your reasoning, and provide therapeutic/diagnostic suggestions grounded in scientific guidelines.",
+      "As an expert in your field, assess the MDT discussion priority (P1 Time-bound, P2 Decision needed, P3 Standard sign-off, P4 Information only). Assess if your expertise is relevant to this case, explain your reasoning, and provide therapeutic/diagnostic suggestions grounded in scientific guidelines.",
   },
   TumorLocation: {
     icon: "ic-microscope",
