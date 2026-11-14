@@ -20,6 +20,7 @@ export interface QueueDashboardView {
 
 const QUEUE_STATUS_SORT_RANK: Record<string, number> = {
   RUNNING: 0,
+  PROCESSING: 0,
   PENDING: 1,
   FAILED: 2,
   COMPLETED: 3,

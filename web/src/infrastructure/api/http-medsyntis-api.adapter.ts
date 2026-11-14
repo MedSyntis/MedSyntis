@@ -1636,10 +1636,11 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
       );
       return rows.map((rawRow) => {
         const r = RawQueueJobSchema.parse(rawRow);
+        const rawStatus = String(r.status ?? "PENDING").toUpperCase();
         return {
           jobId: String(r.job_id ?? r.id ?? ""),
           jobType: String(r.job_type ?? "FULL_EXTRACTION"),
-          status: String(r.status ?? "PENDING"),
+          status: rawStatus === "PROCESSING" ? "RUNNING" : rawStatus,
           priority: r.priority,
           domain: String(r.domain ?? domain),
           filename: r.filename ? String(r.filename) : null,

@@ -3461,6 +3461,23 @@ function formatQueueCreatedAndDuration(
   return { createdLabel, durationLabel };
 }
 
+function formatQueueJobTypeLabel(jobType: string, lang: Language): string {
+  switch (jobType.toUpperCase()) {
+    case "WAVE1_ADMIN":
+      return tr(lang, "Administration (Vague 1)", "Admin (Wave 1)");
+    case "WAVE2_CLINICAL":
+      return tr(lang, "Clinique (Vague 2)", "Clinical (Wave 2)");
+    case "WAVE3_EXPERTS":
+      return tr(lang, "Concertation experts", "Expert consultation");
+    case "FULL_EXTRACTION":
+      return tr(lang, "Extraction complète", "Full extraction");
+    case "PATIENT_SUMMARY":
+      return tr(lang, "Synthèse patient", "Patient summary");
+    default:
+      return translateValue(jobType, lang);
+  }
+}
+
 export function renderQueueAdminPage(
   dashboard: QueueDashboardView,
   session: UserSession,
@@ -3490,7 +3507,7 @@ export function renderQueueAdminPage(
       const shortJobId = j.jobId.length > 12 ? `${j.jobId.slice(0, 8)}…` : j.jobId;
       const stepPrimary = j.section
         ? translateValue(j.section, lang)
-        : translateValue(j.jobType, lang);
+        : formatQueueJobTypeLabel(j.jobType, lang);
       const stepSecondary = j.step ? `<div class="ds-small ds-muted">${esc(j.step)}</div>` : "";
       const errorHtml =
         j.status === "FAILED" && j.error
@@ -3651,7 +3668,7 @@ export function renderQueueAdminPage(
   </td></tr>`;
 
   const bodyHtml = `
-    <div data-processing-active="${processingActive ? "true" : "false"}">
+    <div class="ds-stack--lg" data-processing-active="${processingActive ? "true" : "false"}">
       <div class="ds-page-header">
         <div class="ds-page-header__text">
           <h1>${esc(tr(lang, "Supervision de la file d'analyse & verrous GPU", "Analysis Queue & GPU Locks Supervision"))}</h1>
