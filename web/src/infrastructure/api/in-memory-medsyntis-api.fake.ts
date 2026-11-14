@@ -1838,7 +1838,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
   }
 
   async getQueueStats(domain: ClinicalDomain, allDomains = true): Promise<QueueStats> {
-    const jobs = await this.listQueueJobs(domain, allDomains);
+    const all = Array.from(this.jobs.values());
+    const jobs = allDomains ? all : all.filter((j) => j.domain === domain);
     const pending = jobs.filter((j) => j.status === "PENDING").length;
     const running = jobs.filter((j) => j.status === "RUNNING").length;
     const completed = jobs.filter((j) => j.status === "COMPLETED").length;
@@ -1863,10 +1864,35 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     };
   }
 
-  async listQueueJobs(domain: ClinicalDomain, allDomains = true): Promise<QueueJobItem[]> {
-    const all = Array.from(this.jobs.values());
-    if (allDomains) return all;
-    return all.filter((j) => j.domain === domain);
+  async listQueueJobs(
+    domain: ClinicalDomain,
+    allDomains = true,
+    options?: { limit?: number; offset?: number; status?: string },
+  ): Promise<QueueJobItem[]> {
+    const statusRank: Record<string, number> = {
+      RUNNING: 0,
+      PENDING: 1,
+      FAILED: 2,
+      COMPLETED: 3,
+      CANCELLED: 4,
+    };
+    let jobs = Array.from(this.jobs.values());
+    if (!allDomains) {
+      jobs = jobs.filter((j) => j.domain === domain);
+    }
+    const statusFilter = options?.status?.trim().toUpperCase();
+    if (statusFilter && statusFilter !== "ALL") {
+      jobs = jobs.filter((j) => j.status.toUpperCase() === statusFilter);
+    }
+    jobs.sort((a, b) => {
+      const rankDiff =
+        (statusRank[a.status.toUpperCase()] ?? 99) - (statusRank[b.status.toUpperCase()] ?? 99);
+      if (rankDiff !== 0) return rankDiff;
+      return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+    });
+    const safeOffset = Math.max(0, Math.floor(options?.offset ?? 0));
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(options?.limit ?? 100)));
+    return jobs.slice(safeOffset, safeOffset + safeLimit);
   }
 
   async retryQueueJob(jobId: string, _domain: ClinicalDomain): Promise<void> {
@@ -1975,7 +2001,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
 
       const reasons: string[] = [];
       if (pinned) reasons.push("Position épinglée manuellement");
-      if (card.priorityLevel === 1) reasons.push("P1 · Fenêtre thérapeutique limitée");
+      if (card.priorityLevel === 1) reasons.push("P1 · Délai thérapeutique contraint");
       else if (card.priorityLevel === 2) reasons.push("P2 · Décision collégiale requise");
       else if (card.priorityLevel === 3) reasons.push("P3 · Validation standard");
       else if (card.priorityLevel === 4) reasons.push("P4 · Pour information");

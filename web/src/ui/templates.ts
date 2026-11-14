@@ -1180,32 +1180,27 @@ export function renderWorklistPage(
       </div>
     </div>
 
-    <!-- 4 M3 KPI Tiles -->
-    <div class="ds-kpi-grid">
+    <!-- 5 Compact M3 KPI Tiles -->
+    <div class="ds-kpi-grid ds-kpi-grid--compact">
       <a class="ds-kpi ds-kpi--success" href="/worklist?domain=${domainParam}" data-testid="kpi-structured">
-        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-folder", "ds-icon--md")}</span> ${esc(t("kpi.structured", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-folder", "ds-icon--sm")}</span> ${esc(t("kpi.structured", lang))}</span>
         <span class="ds-kpi__value">${kpis.structuredCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.structured.meta", lang))}</span>
       </a>
       <a class="ds-kpi ds-kpi--danger" href="/worklist?domain=${domainParam}&priority=1" data-testid="kpi-priority-p1">
-        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-priority-high", "ds-icon--md")}</span> ${esc(t("kpi.priorityP1", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-priority-high", "ds-icon--sm")}</span> ${esc(t("kpi.priorityP1", lang))}</span>
         <span class="ds-kpi__value">${kpis.p1Count}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.priorityP1.meta", lang))}</span>
       </a>
       <a class="ds-kpi" href="/worklist?domain=${domainParam}&priority=9" data-testid="kpi-priority-not-assessed">
-        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-priority-none", "ds-icon--md")}</span> ${esc(t("kpi.priorityNotAssessed", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-priority-none", "ds-icon--sm")}</span> ${esc(t("kpi.priorityNotAssessed", lang))}</span>
         <span class="ds-kpi__value">${kpis.notAssessedCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.priorityNotAssessed.meta", lang))}</span>
       </a>
       <a class="ds-kpi ds-kpi--warning" href="/worklist?domain=${domainParam}&completeness=incomplete" data-testid="kpi-completeness">
-        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--warning" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--md")}</span> ${esc(t("kpi.completeness", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--warning" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--sm")}</span> ${esc(t("kpi.completeness", lang))}</span>
         <span class="ds-kpi__value">${kpis.incompleteCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.completeness.meta", lang))}</span>
       </a>
       <a class="ds-kpi" href="/worklist?domain=${domainParam}&orientation=adapt" data-testid="kpi-orientation">
-        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-compass", "ds-icon--md")}</span> ${esc(t("kpi.orientation", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-compass", "ds-icon--sm")}</span> ${esc(t("kpi.orientation", lang))}</span>
         <span class="ds-kpi__value">${kpis.adaptationSuggestedCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.orientation.meta", lang))}</span>
       </a>
     </div>
 
@@ -3413,7 +3408,11 @@ export function renderFeedbackPage(
 export function renderQueueAdminPage(dashboard: QueueDashboardView, session: UserSession): string {
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
-  const { stats, jobs } = dashboard;
+  const { stats, jobs, page, pageSize, totalItems, totalPages, statusFilter } = dashboard;
+  const startItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endItem = totalItems === 0 ? 0 : Math.min(totalItems, (page - 1) * pageSize + jobs.length);
+  const queueUrl = (targetPage: number) =>
+    `/admin/queue?domain=${domainParam}&page=${targetPage}&pageSize=${pageSize}&status=${encodeURIComponent(statusFilter)}`;
 
   const jobsRows = jobs
     .map((j, idx) => {
@@ -3506,6 +3505,32 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
       <div class="ds-kpi ds-kpi--danger"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-error", "ds-icon--md")}</span> En échec</span><span class="ds-kpi__value">${stats.failed}</span></div>
     </div>
 
+    <form class="ds-toolbar" method="get" action="/admin/queue" data-testid="queue-filter-toolbar">
+      <input type="hidden" name="domain" value="${esc(session.domain)}">
+      <input type="hidden" name="page" value="1">
+      <div class="ds-cluster">
+        <label class="ds-small ds-muted" for="queue-status-filter">Statut</label>
+        <select id="queue-status-filter" name="status" class="ds-select" data-testid="queue-status-select">
+          <option value="ALL"${statusFilter === "ALL" ? " selected" : ""}>Tous (${stats.total})</option>
+          <option value="RUNNING"${statusFilter === "RUNNING" ? " selected" : ""}>En cours (${stats.running})</option>
+          <option value="PENDING"${statusFilter === "PENDING" ? " selected" : ""}>En attente (${stats.pending})</option>
+          <option value="FAILED"${statusFilter === "FAILED" ? " selected" : ""}>En échec (${stats.failed})</option>
+          <option value="COMPLETED"${statusFilter === "COMPLETED" ? " selected" : ""}>Terminés (${stats.completed})</option>
+          <option value="CANCELLED"${statusFilter === "CANCELLED" ? " selected" : ""}>Annulés (${stats.cancelled})</option>
+        </select>
+        <label class="ds-small ds-muted" for="queue-page-size">Par page</label>
+        <select id="queue-page-size" name="pageSize" class="ds-select" data-testid="queue-page-size-select">
+          <option value="25"${pageSize === 25 ? " selected" : ""}>25</option>
+          <option value="50"${pageSize === 50 ? " selected" : ""}>50</option>
+          <option value="100"${pageSize === 100 ? " selected" : ""}>100</option>
+        </select>
+        <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_queue_filter">Appliquer</button>
+      </div>
+      <span class="ds-small ds-muted" data-testid="queue-pagination-summary">
+        ${totalItems === 0 ? "Aucun job" : `Affichage ${startItem}–${endItem} sur ${totalItems}`}
+      </span>
+    </form>
+
     <div class="ds-table-wrap">
       <table class="ds-table ds-table--dense" data-testid="queue-jobs-table">
         <thead>
@@ -3520,10 +3545,25 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
           </tr>
         </thead>
         <tbody>
-          ${jobsRows}
+          ${jobsRows || '<tr><td colspan="7" class="ds-muted">Aucun job dans cette page.</td></tr>'}
         </tbody>
       </table>
     </div>
+    <nav class="ds-toolbar" aria-label="Pagination de la file d'analyse" data-testid="queue-pagination-nav">
+      <span class="ds-small ds-muted">Page ${page} / ${totalPages}</span>
+      <div class="ds-cluster">
+        ${
+          page > 1
+            ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page - 1)}" data-testid="btn_queue_prev">Précédent</a>`
+            : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_prev_disabled">Précédent</span>`
+        }
+        ${
+          page < totalPages
+            ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page + 1)}" data-testid="btn_queue_next">Suivant</a>`
+            : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_next_disabled">Suivant</span>`
+        }
+      </div>
+    </nav>
     ${deleteJobDialogsHtml}
     <dialog class="ds-modal ds-modal--danger" id="release-locks-dialog" aria-labelledby="release-locks-title">
       <div class="ds-modal__header">

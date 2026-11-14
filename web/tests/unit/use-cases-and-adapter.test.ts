@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { MedsyntisApiPort } from "../../src/application/ports/medsyntis-api.port.js";
 import { FeedbackUseCase } from "../../src/application/use-cases/feedback.use-case.js";
 import { GuidelinesUseCase } from "../../src/application/use-cases/guidelines.use-case.js";
 import { IngestUseCase } from "../../src/application/use-cases/ingest.use-case.js";
@@ -137,6 +138,68 @@ describe("Application Use-Cases with InMemoryMedsyntisApiFake", () => {
 
     const released = await useCase.releaseLocks("oncology");
     expect(released.released).toBeGreaterThanOrEqual(0);
+  });
+
+  it("QueueAdminUseCase keeps RUNNING jobs first, filters by status, and paginates", async () => {
+    const baseJob = {
+      jobType: "FULL_EXTRACTION",
+      priority: 10,
+      domain: "oncology",
+      filename: "case.pdf",
+      section: "clinical",
+      progressPct: 0,
+      step: "QUEUED",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+      preserveManualEdits: true,
+    };
+    const fakeJobs = [
+      { ...baseJob, jobId: "j-comp", status: "COMPLETED", createdAt: "2026-11-14T12:00:00Z" },
+      { ...baseJob, jobId: "j-pend", status: "PENDING", createdAt: "2026-11-14T11:30:00Z" },
+      { ...baseJob, jobId: "j-fail", status: "FAILED", createdAt: "2026-11-14T11:15:00Z" },
+      {
+        ...baseJob,
+        jobId: "j-run",
+        status: "RUNNING",
+        progressPct: 50,
+        createdAt: "2026-11-14T09:00:00Z",
+      },
+    ];
+    const listQueueJobs = vi.fn().mockResolvedValue(fakeJobs);
+    const getQueueStats = vi.fn().mockResolvedValue({
+      pending: 1,
+      running: 1,
+      completed: 1,
+      failed: 1,
+      cancelled: 0,
+      total: 35,
+      activeFormFile: "case.pdf",
+      activeStep: "clinical",
+      activeProgressPct: 50,
+      thinkingPreview: null,
+      gpuLocksCount: 0,
+    });
+    const useCase = new QueueAdminUseCase({
+      listQueueJobs,
+      getQueueStats,
+    } as unknown as MedsyntisApiPort);
+
+    const view = await useCase.getDashboard("oncology", true, {
+      page: 2,
+      pageSize: 25,
+      status: "all",
+    });
+
+    expect(listQueueJobs).toHaveBeenCalledWith("oncology", true, {
+      limit: 25,
+      offset: 25,
+      status: undefined,
+    });
+    expect(view.page).toBe(2);
+    expect(view.totalPages).toBe(2);
+    expect(view.totalItems).toBe(35);
+    expect(view.jobs.map((j) => j.jobId)).toEqual(["j-run", "j-pend", "j-fail", "j-comp"]);
   });
 });
 

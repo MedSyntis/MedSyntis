@@ -461,6 +461,16 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/admin/queue/clean",
     });
     expect([200, 302]).toContain(cleanRes.statusCode);
+
+    const filteredRes = await app.inject({
+      method: "GET",
+      url: "/admin/queue?page=1&pageSize=25&status=RUNNING",
+    });
+    expect(filteredRes.statusCode).toBe(200);
+    expect(filteredRes.body).toContain('data-testid="queue-filter-toolbar"');
+    expect(filteredRes.body).toContain('data-testid="queue-pagination-nav"');
+    expect(filteredRes.body).toContain("job-running-1042");
+    expect(filteredRes.body).not.toContain("queue-job-row-job-failed-1039");
     await app.close();
   });
 
@@ -1689,7 +1699,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       headers: nonAdminHeaders,
     });
     expect(queuePageRes.statusCode).toBe(200);
-    expect(listJobsSpy).toHaveBeenCalledWith("oncology", false);
+    expect(listJobsSpy).toHaveBeenCalledWith("oncology", false, {
+      limit: 25,
+      offset: 0,
+      status: undefined,
+    });
     listJobsSpy.mockRestore();
 
     // Spoof-resistant clientIp & concurrent AsyncLocalStorage context isolation

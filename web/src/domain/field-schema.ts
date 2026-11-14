@@ -52,7 +52,7 @@ export const MTD_COMPLETENESS_SELECT_OPTIONS: FieldSelectOption[] = [
 ];
 
 export const CARE_ORIENTATION_PRIORITY_OPTIONS: FieldSelectOption[] = [
-  { value: "1", labelFr: "P1 · Fenêtre thérapeutique limitée", labelEn: "P1 · Time-bound" },
+  { value: "1", labelFr: "P1 · Délai thérapeutique contraint", labelEn: "P1 · Time-bound" },
   { value: "2", labelFr: "P2 · Décision collégiale requise", labelEn: "P2 · Decision needed" },
   { value: "3", labelFr: "P3 · Validation standard", labelEn: "P3 · Standard sign-off" },
   { value: "4", labelFr: "P4 · Pour information", labelEn: "P4 · Information only" },

@@ -1543,6 +1543,12 @@ a.ds-kpi:hover {
 }
 .ds-kpi__value { font-size: var(--ds-text-3xl); font-weight: var(--ds-weight-bold); line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--_fg); }
 .ds-kpi__meta { font-size: var(--ds-text-xs); color: var(--_muted); font-weight: var(--ds-weight-medium); }
+.ds-kpi-grid--compact { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--ds-space-3); }
+.ds-kpi-grid--compact .ds-kpi { padding: var(--ds-space-3) var(--ds-space-4); gap: var(--ds-space-1); }
+.ds-kpi-grid--compact .ds-kpi__label { font-size: var(--ds-text-xs); gap: var(--ds-space-2); }
+.ds-kpi-grid--compact .ds-kpi__label > span:first-child,
+.ds-kpi-grid--compact .ds-kpi__label > .ds-icon-box { width: 1.75rem; height: 1.75rem; border-radius: var(--ds-radius-sm); }
+.ds-kpi-grid--compact .ds-kpi__value { font-size: var(--ds-text-2xl); }
 .ds-kpi--success {
   --_bg: var(--ds-rcp-green-grad);
   --_fg: var(--ds-rcp-green-fg);

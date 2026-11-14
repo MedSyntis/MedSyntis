@@ -31,6 +31,12 @@ export interface ChatReply {
   references: CitationRef[];
 }
 
+export interface QueueJobsQueryOptions {
+  limit?: number;
+  offset?: number;
+  status?: string;
+}
+
 export interface MissingItemsUpdateInput {
   hideMissingItems?: boolean;
   toggleItem?: string;
@@ -150,7 +156,11 @@ export interface MedsyntisApiPort {
 
   // Queue Supervision & Admin
   getQueueStats(domain: ClinicalDomain, allDomains?: boolean): Promise<QueueStats>;
-  listQueueJobs(domain: ClinicalDomain, allDomains?: boolean): Promise<QueueJobItem[]>;
+  listQueueJobs(
+    domain: ClinicalDomain,
+    allDomains?: boolean,
+    options?: QueueJobsQueryOptions,
+  ): Promise<QueueJobItem[]>;
   retryQueueJob(jobId: string, domain: ClinicalDomain): Promise<void>;
   cancelOrDeleteQueueJob(jobId: string, domain: ClinicalDomain): Promise<void>;
   cleanQueue(mode: "completed" | "failed" | "all", domain: ClinicalDomain): Promise<number>;

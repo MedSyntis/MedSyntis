@@ -1430,6 +1430,15 @@ class InMemoryQueueManager:
             "allowed_domains": self.base_config.enabled_domains_list,
         }
 
+    _QUEUE_STATUS_SORT_RANK: dict[str, int] = {
+        "RUNNING": 0,
+        "PROCESSING": 0,
+        "PENDING": 1,
+        "FAILED": 2,
+        "COMPLETED": 3,
+        "CANCELLED": 4,
+    }
+
     def get_queue_jobs(
         self,
         status: str | None = None,
@@ -1437,19 +1446,37 @@ class InMemoryQueueManager:
         limit: int = 100,
         domain: str | None = None,
         filename: str | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         target_domain = domain.strip().lower() if domain else None
+        status_norm = status.strip().upper() if status else None
+        status_targets = (
+            {"RUNNING", "PROCESSING"}
+            if status_norm == "RUNNING"
+            else ({status_norm} if status_norm else None)
+        )
         with self._lock:
             jobs = [
                 self._clone_job(j)
                 for j in self._jobs.values()
                 if (not target_domain or j["domain"] == target_domain)
-                and (not status or j["status"] == status)
+                and (
+                    not status_targets
+                    or str(j.get("status") or "").upper() in status_targets
+                )
                 and (not batch_id or j.get("batch_id") == batch_id)
                 and (not filename or j.get("filename") == filename)
             ]
+        # Stable Timsort: newest first within each status, then RUNNING -> PENDING -> FAILED -> COMPLETED -> CANCELLED
         jobs.sort(key=lambda j: j.get("created_at") or datetime.min, reverse=True)
-        return jobs[:limit]
+        jobs.sort(
+            key=lambda j: self._QUEUE_STATUS_SORT_RANK.get(
+                str(j.get("status") or "").upper(), 9
+            )
+        )
+        safe_offset = max(0, offset)
+        safe_limit = max(1, limit)
+        return jobs[safe_offset : safe_offset + safe_limit]
 
     def cancel_or_delete_job(self, job_id: str) -> bool:
         file_to_stabilize: tuple[str, str] | None = None
@@ -2268,11 +2295,14 @@ class QueueBroker:
         limit: int = 100,
         cross_domain: bool = False,
         filename: str | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         target_domain = None if cross_domain else self.domain
         if self._use_remote_api():
             try:
                 params: dict[str, Any] = {"limit": limit}
+                if offset > 0:
+                    params["offset"] = offset
                 if target_domain:
                     params["domain"] = target_domain
                 if status:
@@ -2297,6 +2327,7 @@ class QueueBroker:
             limit=limit,
             domain=target_domain,
             filename=filename,
+            offset=offset,
         )
 
     def cancel_or_delete_job(self, job_id: str) -> bool:

@@ -578,7 +578,7 @@ export async function buildServer({
     const allDomains = Boolean(isAdmin);
     const [queueStats, queueJobs] = await Promise.all([
       api.getQueueStats(domain, allDomains),
-      api.listQueueJobs(domain, allDomains),
+      api.listQueueJobs(domain, allDomains, { limit: 15, offset: 0 }),
     ]);
     return { queueStats, queueJobs };
   }
@@ -1664,25 +1664,29 @@ export async function buildServer({
   });
 
   // 9. Queue Supervision & SSE Stream
-  app.get("/admin/queue", async (req, reply) => {
-    const session = resolveSession(req);
+  const renderQueueRoute = async (
+    req: { query: unknown; headers: Record<string, unknown> },
+    reply: { type: (t: string) => { send: (body: string) => unknown } },
+  ) => {
+    const session = resolveSession(req as Parameters<typeof resolveSession>[0]);
+    const q = (req.query ?? {}) as { page?: string; pageSize?: string; status?: string };
+    const parsedPage = Number.parseInt(String(q.page ?? "1"), 10);
+    const parsedPageSize = Number.parseInt(String(q.pageSize ?? "25"), 10);
     const dashboard = await queueAdminUseCase.getDashboard(
       session.domain,
       Boolean(session.isAdmin),
+      {
+        page: Number.isFinite(parsedPage) ? parsedPage : 1,
+        pageSize: Number.isFinite(parsedPageSize) ? parsedPageSize : 25,
+        status: typeof q.status === "string" ? q.status : undefined,
+      },
     );
     const html = renderQueueAdminPage(dashboard, session);
     return reply.type("text/html; charset=utf-8").send(html);
-  });
+  };
 
-  app.get("/queue", async (req, reply) => {
-    const session = resolveSession(req);
-    const dashboard = await queueAdminUseCase.getDashboard(
-      session.domain,
-      Boolean(session.isAdmin),
-    );
-    const html = renderQueueAdminPage(dashboard, session);
-    return reply.type("text/html; charset=utf-8").send(html);
-  });
+  app.get("/admin/queue", renderQueueRoute);
+  app.get("/queue", renderQueueRoute);
 
   app.post("/admin/queue/jobs/:jobId/retry", async (req, reply) => {
     const session = resolveSession(req);

@@ -180,6 +180,7 @@ def get_queue_jobs_endpoint(
     batch_id: Annotated[Optional[str], Query()] = None,
     filename: Annotated[Optional[str], Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     """List tasks in the processing queue (filterable by domain, status, batch, or filename)."""
     target_domain = _resolve_queue_domain_filter(
@@ -194,6 +195,7 @@ def get_queue_jobs_endpoint(
         limit=limit,
         domain=target_domain,
         filename=filename,
+        offset=offset,
     )
 
 

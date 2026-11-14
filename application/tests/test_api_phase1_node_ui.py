@@ -402,6 +402,47 @@ def test_queue_jobs_filename_filter_applied_before_limit_and_jobs_state(
     assert state_body["jobs"][0]["filename"] == "target.pdf"
 
 
+def test_queue_jobs_running_first_and_pagination(api_app, client):
+    """Verify RUNNING jobs sort first and offset/limit paginate /api/v1/queue/jobs."""
+    manager = InMemoryQueueManager(auto_start_workers=False)
+    base_time = datetime(2026, 4, 1, 10, 0, 0)
+
+    specs = [
+        ("completed_new.pdf", JobStatus.COMPLETED, 40),
+        ("pending_new.pdf", JobStatus.PENDING, 30),
+        ("failed_mid.pdf", JobStatus.FAILED, 20),
+        ("running_old.pdf", JobStatus.PROCESSING, 0),
+    ]
+    for filename, status, offset_min in specs:
+        job = QueueJob(
+            filename=filename,
+            job_type=JobType.WAVE2_CLINICAL,
+            status=status,
+            priority=10,
+            domain="oncology",
+            created_at=base_time + timedelta(minutes=offset_min),
+        ).model_dump(mode="python")
+        job["job_type"] = JobType.WAVE2_CLINICAL.value
+        job["status"] = status.value
+        manager._jobs[job["job_id"]] = job
+
+    api_app.dependency_overrides[get_queue_manager] = lambda: manager
+
+    page1 = client.get("/api/v1/queue/jobs?limit=2&offset=0")
+    assert page1.status_code == 200
+    assert [j["filename"] for j in page1.json()] == [
+        "running_old.pdf",
+        "pending_new.pdf",
+    ]
+
+    page2 = client.get("/api/v1/queue/jobs?limit=2&offset=2")
+    assert page2.status_code == 200
+    assert [j["filename"] for j in page2.json()] == [
+        "failed_mid.pdf",
+        "completed_new.pdf",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # 7. Optional language on ChatRequest and ResourceChatRequest
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import type {
   ChatReply,
   MedsyntisApiPort,
   MissingItemsUpdateInput,
+  QueueJobsQueryOptions,
   UploadFileInput,
 } from "../../application/ports/medsyntis-api.port.js";
 import {
@@ -1612,10 +1613,25 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
     }
   }
 
-  async listQueueJobs(domain: ClinicalDomain, allDomains = true): Promise<QueueJobItem[]> {
+  async listQueueJobs(
+    domain: ClinicalDomain,
+    allDomains = true,
+    options?: QueueJobsQueryOptions,
+  ): Promise<QueueJobItem[]> {
     try {
+      const safeLimit = Math.max(1, Math.min(500, Math.floor(options?.limit ?? 100)));
+      const safeOffset = Math.max(0, Math.floor(options?.offset ?? 0));
+      const params = new URLSearchParams({
+        domain,
+        all_domains: String(allDomains),
+        limit: String(safeLimit),
+        offset: String(safeOffset),
+      });
+      if (options?.status && options.status.toUpperCase() !== "ALL") {
+        params.set("status", options.status.toUpperCase());
+      }
       const rows = await this.requestJson<Array<Record<string, unknown>>>(
-        `/api/v1/queue/jobs?domain=${encodeURIComponent(domain)}&all_domains=${String(allDomains)}`,
+        `/api/v1/queue/jobs?${params.toString()}`,
         domain,
       );
       return rows.map((rawRow) => {
@@ -1638,7 +1654,7 @@ export class HttpMedsyntisApiAdapter implements MedsyntisApiPort {
         };
       });
     } catch (err) {
-      if (this.fallback) return this.fallback.listQueueJobs(domain, allDomains);
+      if (this.fallback) return this.fallback.listQueueJobs(domain, allDomains, options);
       throw err;
     }
   }
