@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from src.domain.mdt_agenda import MDTAgendaSortStrategy, PriorityLevelLiteral
+from src.domain.mdt_agenda import MDTAgendaSortStrategy
 
 
 class MDTAgendaUpdateRequest(BaseModel):
@@ -108,11 +108,11 @@ class MDTAgendaScheduledItemResponse(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     date_birth: Optional[datetime] = None
-    urgency: str
-    urgency_score: int
-    urgency_reason: str = ""
-    urgency_reasons: list[str] = Field(default_factory=list)
-    priority_level: PriorityLevelLiteral
+    discussion_priority: Literal[1, 2, 3, 4, 9]
+    discussion_priority_code: Literal["P1", "P2", "P3", "P4", "NOT_ASSESSED"]
+    priority_reason: str = ""
+    priority_reasons: list[str] = Field(default_factory=list)
+    priority_source: Literal["rule", "ai", "manual"] = "rule"
     is_complete: bool
     completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int = 0
@@ -152,11 +152,11 @@ class MDTAgendaCandidateResponse(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     date_birth: Optional[datetime] = None
-    urgency: str
-    urgency_score: int
-    urgency_reason: str = ""
-    urgency_reasons: list[str] = Field(default_factory=list)
-    priority_level: PriorityLevelLiteral
+    discussion_priority: Literal[1, 2, 3, 4, 9]
+    discussion_priority_code: Literal["P1", "P2", "P3", "P4", "NOT_ASSESSED"]
+    priority_reason: str = ""
+    priority_reasons: list[str] = Field(default_factory=list)
+    priority_source: Literal["rule", "ai", "manual"] = "rule"
     is_complete: bool
     completeness_status: Optional[Literal["yes", "partial", "no", "pending"]] = None
     missing_count: int = 0

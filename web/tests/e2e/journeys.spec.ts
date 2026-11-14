@@ -6,7 +6,7 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
   }) => {
     await page.goto("/worklist?domain=oncology");
     await expect(page.getByTestId("kpi-structured")).toBeVisible();
-    await expect(page.getByTestId("kpi-priority-high")).toContainText("1");
+    await expect(page.getByTestId("kpi-priority-p1")).toContainText("1");
     await expect(page.getByTestId("worklist-table")).toContainText("FICTIVE Jeanne");
     await expect(page.getByTestId("rail-fab-ingest")).toBeVisible();
 
@@ -101,8 +101,10 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
     await page.getByTestId("section-MTDCompleted").locator("summary").first().click();
     await expect(page.getByTestId("missing-items-panel")).toBeVisible();
     await expect(page.getByTestId("missing-items-list")).toBeVisible();
-    await page.getByTestId("opinion-pancreas expert").locator("summary").first().click();
-    await expect(page.getByTestId("opinion-pancreas expert")).toContainText("TNCD Pancréas §4.2");
+    await page.getByTestId("opinion-digestive surgeon expert").locator("summary").first().click();
+    await expect(page.getByTestId("opinion-digestive surgeon expert")).toContainText(
+      "TNCD Pancréas §4.2",
+    );
 
     // Open M3 AI Co-Pilot Side Sheet via the Floating Extended FAB, test quick prompt menu & ask a question
     await page.getByTestId("btn_fab_ai_chat").click();
@@ -188,7 +190,7 @@ test.describe("MedSyntis Material Design 3 Web UI — End-to-End Clinical & Ergo
 
     // Live client-side specialty focus highlighting via select dropdown
     const focusSelect = page.getByTestId("select-focus-specialty");
-    await focusSelect.selectOption("pancreas expert");
+    await focusSelect.selectOption("digestive surgeon expert");
     await expect(page.getByTestId("agenda-item-A-1042")).toHaveClass(/ds-agenda-item--focused/);
     await expect(page.getByTestId("agenda-item-A-1037")).toHaveClass(/ds-agenda-item--dimmed/);
     await focusSelect.selectOption("");

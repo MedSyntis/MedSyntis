@@ -8,7 +8,7 @@ from pydantic import ValidationError, BaseModel, Field
 from langchain.agents import create_agent
 
 from src.application.config import AppConfig
-from src.domain.common.common_ressources import MarkdownStr
+from src.domain.common.common_ressources import DiscussionPriority, MarkdownStr
 from src.infrastructure.llm.factory import get_llm_client
 from src.infrastructure.observability import get_metrics
 
@@ -143,6 +143,14 @@ class DebateTurn(BaseModel):
     response: MarkdownStr = Field(
         description="Your clinical opinion, arguments, and recommendations based on your specialty."
     )
+    suggested_priority: DiscussionPriority | None = Field(
+        default=None,
+        description=(
+            "Your updated MDT discussion priority (1=P1 Time-bound, 2=P2 Decision needed, "
+            "3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed) after reviewing clinical "
+            "red flags and peer specialist arguments (optional)."
+        ),
+    )
 
 
 class MedSyntisAgent:
@@ -155,7 +163,7 @@ class MedSyntisAgent:
     system_prompt: ClassVar[str] = ""
     question: ClassVar[str] = "Nothing"
     models: list[str] | None = None
-    ressources: ClassVar[list[str]] = []
+    ressources: list[str] = []
     response_language: str = "french"
     output_format: type[BaseModel] | None = None
     agent: Any = None
@@ -275,6 +283,7 @@ class MedSyntisAgent:
         additionnal_readers: list[DocumentReader] | None = None,
         patient_readers: list[DocumentReader] | None = None,
         prefetched_markdown: str | None = None,
+        ressources: list[str] | None = None,
     ):
         """
         Initialize the MedSyntisAgent.
@@ -311,6 +320,8 @@ class MedSyntisAgent:
             self.reasoning_budget = reasoning_budget
 
         self.patient_readers = list(patient_readers) if patient_readers else []
+        if ressources is not None:
+            self.ressources = ressources
         mtd_tool_name = (
             "get_patient_mtds_markdown" if self.patient_readers else "get_mtd_markdown"
         )
@@ -364,6 +375,7 @@ class MedSyntisAgent:
             else ""
         )
 
+        has_resource_readers = bool(self.ressources or additionnal_readers)
         if not has_tools:
             if resolved_prefetched_md is not None:
                 step1_block = """## STEP 1 — Analyze the pre-loaded patient record and provided context
@@ -374,27 +386,35 @@ class MedSyntisAgent:
         - Use strictly the information provided in the user prompt.
         - Do NOT guess, mock, or fabricate any clinical information."""
         elif is_chat_mode:
+            chat_resource_line = (
+                "\n          - Call `search_on_ressources` (at most 1 or 2 targeted searches with `k=2`) ONLY if scientific guideline evidence is needed."
+                if has_resource_readers
+                else ""
+            )
             step1_block = f"""## STEP 1 — Understand the user message and gather information ONLY if needed
         - You are a fresh agent instance with no pre-initialized conversation or document context.
         - If the user message is a greeting, a short connectivity test (e.g. "test", "bonjour"), or does NOT require reading the patient record or scientific guidelines, answer directly in STEP 2 WITHOUT calling any tools.
         - Only when the user asks a clinical or administrative question about the patient record or scientific guidelines:
-          - Call `{mtd_tool_name}` at most ONCE to retrieve the patient record text.{history_tool_instruction}
-          - Call `search_on_ressources` (at most 1 or 2 targeted searches with `k=2`) ONLY if scientific guideline evidence is needed.
+          - Call `{mtd_tool_name}` at most ONCE to retrieve the patient record text.{history_tool_instruction}{chat_resource_line}
         - Do NOT guess, mock, or fabricate any clinical information."""
         elif resolved_prefetched_md is not None:
             resource_search_instruction = (
                 "\n        - Call `search_on_ressources` to search reference guidelines if needed."
-                if (self.ressources or additionnal_readers)
+                if has_resource_readers
                 else ""
             )
             step1_block = f"""## STEP 1 — Analyze the pre-loaded patient record and gather complementary information if needed
         - The full patient record Markdown is already pre-loaded above in `## PATIENT RECORD CONTEXT (PRE-LOADED)`. Use it directly without calling `{mtd_tool_name}` again.{history_tool_instruction}{resource_search_instruction}
         - Do NOT guess, mock, or fabricate any clinical information."""
         else:
+            resource_search_line = (
+                "\n        - Call `search_on_ressources` to search reference guidelines if needed."
+                if has_resource_readers
+                else ""
+            )
             step1_block = f"""## STEP 1 — Gather information (use tools)
         If the required information is NOT already in your context, call the appropriate tools FIRST:
-        - Call `{mtd_tool_name}` to retrieve the relevant patient record text.{history_tool_instruction}
-        - Call `search_on_ressources` to search reference guidelines if needed.
+        - Call `{mtd_tool_name}` to retrieve the relevant patient record text.{history_tool_instruction}{resource_search_line}
         - You MAY call tools multiple times to find all required fields.
         - Do NOT guess, mock, or fabricate any clinical information."""
 
@@ -443,7 +463,7 @@ class MedSyntisAgent:
                 from src.application.agent.tools import search_on_patient_mtds
 
                 tools.append(search_on_patient_mtds)
-            else:
+            elif resolved_prefetched_md is None:
                 tools.append(get_patient_mtds_markdown)
             tools.append(get_patient_ai_history)
         elif mtd is not None:
@@ -451,7 +471,7 @@ class MedSyntisAgent:
                 from src.application.agent.tools import search_on_mtd
 
                 tools.append(search_on_mtd)
-            else:
+            elif resolved_prefetched_md is None:
                 tools.append(get_mtd_markdown)
 
         self.additionnal_readers = [
@@ -502,7 +522,15 @@ class MedSyntisAgent:
             reasoning,
             self.reasoning_budget,
         )
-        self.logger.debug("Agent system prompt:\n%s", system_prompt)
+        redacted_prompt = re.sub(
+            r"<untrusted_patient_record>.*?</untrusted_patient_record>",
+            lambda m: (
+                f"<untrusted_patient_record>[REDACTED_PATIENT_RECORD len={len(m.group(0))} chars]</untrusted_patient_record>"
+            ),
+            system_prompt,
+            flags=re.DOTALL,
+        )
+        self.logger.debug("Agent system prompt:\n%s", redacted_prompt)
         self.latest_thinking = ""
 
     def extract_thinking(self, messages: list) -> str:

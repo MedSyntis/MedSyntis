@@ -17,7 +17,7 @@ from pymilvus import MilvusException
 
 from src.application.reader import DocumentReader
 from src.application.use_cases import PatientRecordService
-from src.domain.common.common_ressources import PatientPriority
+from src.domain.common.common_ressources import DiscussionPriority
 from src.domain.mdt_agenda import MDTAgenda, MDTAgendaEntry
 from src.domain.patient import Patient
 from src.domain.patient_mdt_form import PatientMDTOncologicForm
@@ -280,6 +280,38 @@ def test_document_reader_docling_pymupdf_and_splitter_branches(tmp_path: Path):
             conv_out, chunk_out = DocumentReader.get_docling_components("cpu")
             assert conv_out is fake_converter
             assert chunk_out is None
+
+        # Verify BaseSettings docling_artifacts_path passes artifacts_path and local tokenizer dir
+        artifacts_dir = tmp_path / "docling_models"
+        tok_dir = artifacts_dir / "intfloat--multilingual-e5-base"
+        tok_dir.mkdir(parents=True)
+        DocumentReader._docling_converter = None
+        DocumentReader._docling_chunker = None
+        with (
+            patch(
+                "docling.document_converter.DocumentConverter",
+                return_value=fake_converter,
+            ),
+            patch("docling.document_converter.PdfFormatOption"),
+            patch(
+                "docling.datamodel.pipeline_options.PdfPipelineOptions"
+            ) as mock_pdf_opts,
+            patch("docling.datamodel.pipeline_options.RapidOcrOptions"),
+            patch("docling.datamodel.accelerator_options.AcceleratorOptions"),
+            patch("docling.chunking.HybridChunker", return_value=fake_chunker),
+            patch(
+                "docling_core.transforms.chunker.tokenizer.huggingface.HuggingFaceTokenizer.from_pretrained",
+            ) as mock_tok_from_pretrained,
+        ):
+            conv_out, chunk_out = DocumentReader.get_docling_components(
+                "cpu", artifacts_path=artifacts_dir
+            )
+            assert conv_out is fake_converter
+            assert chunk_out is fake_chunker
+            assert mock_pdf_opts.call_args.kwargs["artifacts_path"] == artifacts_dir
+            assert mock_tok_from_pretrained.call_args.kwargs["model_name"] == str(
+                tok_dir
+            )
     finally:
         DocumentReader._docling_converter = orig_conv
         DocumentReader._docling_chunker = orig_chunk
@@ -445,7 +477,7 @@ def test_memory_queue_eviction_and_poll_thinking_step():
         "filename": "case.pdf",
         "status": JobStatus.PROCESSING.value,
         "current_step": "TumorBiology",
-        "active_agent": "pancreas expert",
+        "active_agent": "medical oncologist expert",
         "current_thinking": "Analyzing biomarkers...",
         "thinking_seq": 1,
     }
@@ -666,17 +698,17 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
         assert vecs == [[0.3, 0.4], [0.1, 0.2]]
 
     # Manual CareOrientationProposal priority overrides in PatientMDTForm.extract_card_metrics
-    for prio_val, expected_score in (
-        (PatientPriority.medium.value, 1),
-        (PatientPriority.low.value, 0),
-        (PatientPriority.not_given.value, 0),
+    for prio_val, expected_prio in (
+        (int(DiscussionPriority.DECISION_NEEDED), 2),
+        (int(DiscussionPriority.STANDARD_SIGN_OFF), 3),
+        (int(DiscussionPriority.NOT_ASSESSED), 9),
     ):
         metrics = PatientMDTOncologicForm.extract_card_metrics(
             {
                 "ExpertAnswer": {
-                    "pancreas expert": {
+                    "medical oncologist expert": {
                         "expert_relevant": True,
-                        "patient_priority": PatientPriority.urgent.value,
+                        "discussion_priority": int(DiscussionPriority.TIME_BOUND),
                     }
                 },
                 "CareOrientationProposal": {
@@ -691,15 +723,16 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
                 },
             }
         )
-        assert metrics["urgency_score"] == expected_score
+        assert metrics["discussion_priority"] == expected_prio
+        assert metrics["priority_source"] == "manual"
 
     # Manual CareOrientationProposal with care_adaptation_suggested=False and no suggested_priority
     metrics_no_adapt = PatientMDTOncologicForm.extract_card_metrics(
         {
             "ExpertAnswer": {
-                "pancreas expert": {
+                "medical oncologist expert": {
                     "expert_relevant": True,
-                    "patient_priority": PatientPriority.urgent.value,
+                    "discussion_priority": int(DiscussionPriority.TIME_BOUND),
                 }
             },
             "CareOrientationProposal": {
@@ -711,4 +744,6 @@ def test_embeddings_len_safe_batching_and_domain_manual_priority_overrides():
             },
         }
     )
-    assert metrics_no_adapt["urgency_score"] == 0
+    assert metrics_no_adapt["discussion_priority"] == int(
+        DiscussionPriority.STANDARD_SIGN_OFF
+    )

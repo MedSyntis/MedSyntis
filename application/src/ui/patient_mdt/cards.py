@@ -147,8 +147,8 @@ def display_as_list(
 ):
     """Display records as a sortable list/table."""
     if "list_sort_by" not in st.session_state:
-        st.session_state.list_sort_by = "urgency_score"
-        st.session_state.list_sort_ascending = False
+        st.session_state.list_sort_by = "discussion_priority"
+        st.session_state.list_sort_ascending = True
 
     sort_by = st.session_state.list_sort_by
     ascending = st.session_state.list_sort_ascending
@@ -156,7 +156,7 @@ def display_as_list(
     default_value_map = {
         "date": datetime.min,
         "patient": "",
-        "urgency_score": -1,
+        "discussion_priority": 9,
     }
     default_val = default_value_map.get(sort_by, "")
 
@@ -198,11 +198,11 @@ def display_as_list(
 
     with header_cols[2]:
         if st.button(
-            f"Urgence{get_sort_indicator('urgency_score')}",
-            key=f"sort_urgency_{section_prefix}",
+            f"Priorité{get_sort_indicator('discussion_priority')}",
+            key=f"sort_priority_{section_prefix}",
             width="stretch",
         ):
-            set_sort_order("urgency_score")
+            set_sort_order("discussion_priority")
             st.rerun()
 
     header_cols[3].markdown("**Statut du dossier**")
@@ -549,10 +549,10 @@ def _filter_items(
 def _sort_cards(items: list[dict], sort_option: str | None) -> list[dict]:
     """Sort a list of card items according to the selected sort option."""
     result = list(items)
-    if sort_option == "Urgence (Haute > Basse)":
-        result.sort(key=lambda x: x["urgency_score"], reverse=True)
-    elif sort_option == "Urgence (Basse > Haute)":
-        result.sort(key=lambda x: x["urgency_score"], reverse=False)
+    if sort_option == "Priorité (P1 > P4)":
+        result.sort(key=lambda x: x.get("discussion_priority", 9))
+    elif sort_option == "Priorité (P4 > P1)":
+        result.sort(key=lambda x: x.get("discussion_priority", 9), reverse=True)
     elif sort_option == "Date (Récent > Ancien)":
         result.sort(key=lambda x: x.get("date") or datetime.min, reverse=True)
     elif sort_option == "Date (Ancien > Récent)":
@@ -564,7 +564,7 @@ def render_kpi_summary(patient_data: list[dict], rcp_data: list[dict]):
     """Render clinical triage KPI metrics at the top of the dashboard."""
     source = patient_data if patient_data else rcp_data
     total_patients = len(patient_data)
-    urgent_count = sum(1 for item in source if item.get("urgency") == "Urgent")
+    p1_count = sum(1 for item in source if item.get("discussion_priority") == 1)
     incomplete_count = sum(1 for item in source if len(item.get("missing", [])) > 0)
     total_rcps = len(rcp_data)
 
@@ -577,10 +577,10 @@ def render_kpi_summary(patient_data: list[dict], rcp_data: list[dict]):
         height="stretch",
     )
     k2.metric(
-        "🚨 Priorité haute (RCP)",
-        urgent_count,
-        delta="Passage prioritaire" if urgent_count > 0 else "Aucune urgence critique",
-        delta_color="inverse" if urgent_count > 0 else "off",
+        "⏱️ P1 · Échéance proche",
+        p1_count,
+        delta="Passage prioritaire" if p1_count > 0 else "Aucun dossier P1",
+        delta_color="inverse" if p1_count > 0 else "off",
         border=True,
         height="stretch",
     )
@@ -678,8 +678,8 @@ def cards_view():
             sort_option = st.selectbox(
                 "Ordonnancement de séance",
                 [
-                    "Urgence (Haute > Basse)",
-                    "Urgence (Basse > Haute)",
+                    "Priorité (P1 > P4)",
+                    "Priorité (P4 > P1)",
                     "Date (Récent > Ancien)",
                     "Date (Ancien > Récent)",
                 ],

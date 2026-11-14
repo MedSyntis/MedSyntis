@@ -31,7 +31,9 @@ COMPOSE_MILVUS := dist/docker/compose/milvus-standalone-docker-compose.yml
 COMPOSE_DEV := dist/docker/compose/docker-compose.yml
 COMPOSE_PROD := dist/docker/compose/docker-compose.prod.yml
 DEV_VOLUME_DIR ?= $(CURDIR)/dist/docker/compose/volumes
-DOCKER_VOLUME_DIRECTORY ?= $(shell grep -E '^DOCKER_VOLUME_DIRECTORY=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2 || echo /data/medsyntis/common)
+DOCKER_VOLUME_DIRECTORY ?= $(or $(shell grep -E '^DOCKER_VOLUME_DIRECTORY=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2),/data/medsyntis/common)
+HOST_ONCOLOGIC_DIR ?= $(or $(shell grep -E '^HOST_ONCOLOGIC_DIR=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2),/data/medsyntis/oncologic)
+HOST_SMA_DIR ?= $(or $(shell grep -E '^HOST_SMA_DIR=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2),/data/medsyntis/sma)
 MODELS_DIR ?= $(DOCKER_VOLUME_DIRECTORY)/models
 BACKUP_DIR ?= /data/medsyntis/backups
 CHAT_MODEL_URL := https://huggingface.co/bartowski/Ornith-1.5-35B-A3B-GGUF/resolve/main/Ornith-1.5-35B-A3B-IQ4_XS.gguf
@@ -48,7 +50,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-web-grafana start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st start-prod-grafana stop-prod restart-prod restart-prod-grafana prod-update prod-update-all status-prod logs-prod backup-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-web-grafana start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs migrate patient-id-migrate api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st start-prod-grafana stop-prod restart-prod restart-prod-grafana prod-update prod-update-all clean-prod status-prod logs-prod backup-prod up-prod down-prod prod pprod
 
 ## Show available Makefile targets
 help:
@@ -84,6 +86,7 @@ help:
 	@echo -e "  $(YELLOW)make restart-prod-grafana$(RESET) Restart Web M3, API, and local Grafana OTel LGTM stack without unloading GPU VRAM"
 	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + update Milvus & app images + hot-recreate containers while keeping LLM in VRAM"
 	@echo -e "  $(YELLOW)make prod-update-all$(RESET)     Full update of the entire production Docker stack (including LLM & infra)"
+	@echo -e "  $(YELLOW)make clean-prod$(RESET)          Purge unused Docker images, build caches, stopped containers, and disk relics (keeps volumes)"
 	@echo -e "  $(YELLOW)make backup-prod$(RESET)         Create encrypted-ready compressed backup of MongoDB (mongodump) and Milvus/domain volumes"
 	@echo -e "  $(YELLOW)make status-prod$(RESET)         Display production service health, LLM readiness, and NVIDIA L4 VRAM usage"
 	@echo -e "  $(YELLOW)make logs-prod$(RESET)           Stream real-time logs from the production stack"
@@ -570,11 +573,13 @@ init-prod:
 	fi
 	@echo -e "$(CYAN)--> Creating persistent volume and clinical domain directories (least-privilege permissions)...$(RESET)"
 	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana,caddy_data,caddy_config} 2>/dev/null || true
-	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
+	@mkdir -p "$(HOST_ONCOLOGIC_DIR)"/{mtd,documents} "$(HOST_SMA_DIR)"/{mtd,documents} 2>/dev/null || true
 	@mkdir -p application/ressources/PatientMDTForm/{oncology,sma} application/ressources/documents/{oncology,sma}
 	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana} 2>/dev/null || true
 	@chmod 700 "$(DOCKER_VOLUME_DIRECTORY)"/{caddy_data,caddy_config} 2>/dev/null || true
-	@chmod 750 /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
+	@chmod 750 "$(HOST_ONCOLOGIC_DIR)"/{mtd,documents} "$(HOST_SMA_DIR)"/{mtd,documents} 2>/dev/null || true
+	@cp -n application/ressources/documents/oncology/*.pdf "$(HOST_ONCOLOGIC_DIR)/documents/" 2>/dev/null || true
+	@cp -n application/ressources/documents/sma/*.pdf "$(HOST_SMA_DIR)/documents/" 2>/dev/null || true
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "$(CYAN)--> Generating $(ENV_PROD) from .env.prod.example with randomized secrets (mode 0600)...$(RESET)"; \
 		umask 077 && cp .env.prod.example "$(ENV_PROD)" && chmod 0600 "$(ENV_PROD)"; \
@@ -701,7 +706,9 @@ docker-up-prod:
 		exit 1; \
 	fi
 	@mkdir -p "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana,caddy_data,caddy_config} 2>/dev/null || true
-	@mkdir -p /data/medsyntis/oncologic/{mtd,documents} /data/medsyntis/sma/{mtd,documents} 2>/dev/null || true
+	@mkdir -p "$(HOST_ONCOLOGIC_DIR)"/{mtd,documents} "$(HOST_SMA_DIR)"/{mtd,documents} 2>/dev/null || true
+	@cp -n application/ressources/documents/oncology/*.pdf "$(HOST_ONCOLOGIC_DIR)/documents/" 2>/dev/null || true
+	@cp -n application/ressources/documents/sma/*.pdf "$(HOST_SMA_DIR)/documents/" 2>/dev/null || true
 	@chmod 750 "$(DOCKER_VOLUME_DIRECTORY)"/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,grafana} 2>/dev/null || true
 	@chmod 700 "$(DOCKER_VOLUME_DIRECTORY)"/{caddy_data,caddy_config} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Starting Milvus Standalone...$(RESET)"
@@ -823,6 +830,9 @@ restart-prod-grafana:
 prod-update:
 	@echo -e "$(CYAN)--> [1/5] Pulling fast-forward Git updates (git pull --ff-only)...$(RESET)"
 	git pull --ff-only
+	@mkdir -p "$(HOST_ONCOLOGIC_DIR)/documents" "$(HOST_SMA_DIR)/documents" 2>/dev/null || true
+	@cp -n application/ressources/documents/oncology/*.pdf "$(HOST_ONCOLOGIC_DIR)/documents/" 2>/dev/null || true
+	@cp -n application/ressources/documents/sma/*.pdf "$(HOST_SMA_DIR)/documents/" 2>/dev/null || true
 	@echo -e "$(CYAN)--> [2/5] Updating Milvus Standalone (v3.0)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
@@ -844,6 +854,9 @@ prod-update:
 prod-update-all:
 	@echo -e "$(CYAN)--> Performing full production stack update (infra + LLM + Web M3)...$(RESET)"
 	git pull --ff-only
+	@mkdir -p "$(HOST_ONCOLOGIC_DIR)/documents" "$(HOST_SMA_DIR)/documents" 2>/dev/null || true
+	@cp -n application/ressources/documents/oncology/*.pdf "$(HOST_ONCOLOGIC_DIR)/documents/" 2>/dev/null || true
+	@cp -n application/ressources/documents/sma/*.pdf "$(HOST_SMA_DIR)/documents/" 2>/dev/null || true
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	@if docker ps --format '{{.Names}}' | grep -q '^medsyntis-ui-'; then \
 		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit pull; \
@@ -859,6 +872,17 @@ prod-update-all:
 	@docker exec medsyntis-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
+
+## Purge unused Docker/Podman images, build caches, stopped containers, and temporary disk relics (preserving persistent volumes)
+clean-prod: clean
+	@echo -e "$(YELLOW)--> Purging stopped containers, unused images, build caches, and disk relics (persistent volumes preserved)...$(RESET)"
+	@docker container prune -f 2>/dev/null || true
+	@docker image prune -af 2>/dev/null || true
+	@docker builder prune -af 2>/dev/null || true
+	@docker network prune -f 2>/dev/null || true
+	@rm -f "$(MODELS_DIR)"/*.part /tmp/medsyntis-*.log 2>/dev/null || true
+	@df -h / 2>/dev/null || true
+	@echo -e "$(GREEN)--> Production disk cleanup complete.$(RESET)"
 
 ## Create timestamped production backup (mongodump archive + Milvus/domain PDF tar archive + SHA-256 checksums)
 backup-prod:

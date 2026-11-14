@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import Enum, IntEnum
 from datetime import date, datetime
 import re
 
 from typing import Annotated, Any, ClassVar, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, PastDate, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PastDate, field_validator
 
 MarkdownStr = Annotated[
     str,
@@ -137,6 +137,15 @@ class PrimaryOrganEnum(str, Enum):
     intra_hepatic_bile_duct = "Intra-hepatic bile duct"
     extra_hepatic_bile_duct = "Extra-hepatic bile duct"
     unknown = "unknown"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Optional["PrimaryOrganEnum"]:
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            for member in cls:
+                if cleaned in (member.value.lower(), member.name.lower()):
+                    return member
+        return None
 
 
 class TNCDCancerTypesEnum(str, Enum):
@@ -359,52 +368,239 @@ class RadiologicalExaminations(BaseModel):
     )
 
 
-class PatientPriority(str, Enum):
-    urgent = "High-priority pre-MDT review suggested"
-    medium = "Semi-urgent pre-MDT review suggested"
-    low = "Patient is not urgent"
-    not_given = "no answer"
+class DiscussionPriority(IntEnum):
+    """4-level MDT discussion priority scale plus NOT_ASSESSED (smaller int = higher priority)."""
+
+    TIME_BOUND = 1
+    DECISION_NEEDED = 2
+    STANDARD_SIGN_OFF = 3
+    INFORMATION = 4
+    NOT_ASSESSED = 9
+
+    @property
+    def sort_rank(self) -> int:
+        """Sort order within an attendance tier: P1 -> P2 -> NOT_ASSESSED -> P3 -> P4."""
+        return {
+            DiscussionPriority.TIME_BOUND: 1,
+            DiscussionPriority.DECISION_NEEDED: 2,
+            DiscussionPriority.NOT_ASSESSED: 3,
+            DiscussionPriority.STANDARD_SIGN_OFF: 4,
+            DiscussionPriority.INFORMATION: 5,
+        }[self]
+
+    @property
+    def code(self) -> str:
+        """Short machine/badge code (P1..P4 or NOT_ASSESSED)."""
+        return {
+            DiscussionPriority.TIME_BOUND: "P1",
+            DiscussionPriority.DECISION_NEEDED: "P2",
+            DiscussionPriority.STANDARD_SIGN_OFF: "P3",
+            DiscussionPriority.INFORMATION: "P4",
+            DiscussionPriority.NOT_ASSESSED: "NOT_ASSESSED",
+        }[self]
+
+    @property
+    def label_fr(self) -> str:
+        """Concise French label (<= 24 chars)."""
+        return {
+            DiscussionPriority.TIME_BOUND: "P1 · Échéance proche",
+            DiscussionPriority.DECISION_NEEDED: "P2 · Décision à prendre",
+            DiscussionPriority.STANDARD_SIGN_OFF: "P3 · Validation standard",
+            DiscussionPriority.INFORMATION: "P4 · Information",
+            DiscussionPriority.NOT_ASSESSED: "Non évaluée",
+        }[self]
+
+    @property
+    def label_en(self) -> str:
+        """Concise English label (<= 24 chars)."""
+        return {
+            DiscussionPriority.TIME_BOUND: "P1 · Time-bound",
+            DiscussionPriority.DECISION_NEEDED: "P2 · Decision needed",
+            DiscussionPriority.STANDARD_SIGN_OFF: "P3 · Standard sign-off",
+            DiscussionPriority.INFORMATION: "P4 · Information",
+            DiscussionPriority.NOT_ASSESSED: "Not assessed",
+        }[self]
 
     @classmethod
-    def _missing_(cls, value: object) -> Optional["PatientPriority"]:
-        """Support legacy persisted priority values and enum names seamlessly."""
-        if not isinstance(value, str):
+    def from_any(cls, value: Any) -> Optional["DiscussionPriority"]:
+        """Parse canonical int, code (P1..P4), or enum member name into DiscussionPriority."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, bool):
             return None
-        norm = value.strip().lower()
-        legacy_aliases = {
-            "patient must be treated urgently": cls.urgent,
-            "urgent, a treatment is needed quickly": cls.urgent,
-            "urgent": cls.urgent,
-            "high": cls.urgent,
-            "patient must be treated as soon as possible": cls.medium,
-            "medium, a treatment is needed but not urgent": cls.medium,
-            "semi-urgent": cls.medium,
-            "medium": cls.medium,
-            "patient is not urgent": cls.low,
-            "low, no urgent treatment needed": cls.low,
-            "low": cls.low,
-            "no answer": cls.not_given,
-            "not_given": cls.not_given,
-        }
-        return legacy_aliases.get(norm)
+        if isinstance(value, int):
+            try:
+                return cls(value)
+            except ValueError:
+                return None
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return None
+            if raw.isdigit():
+                try:
+                    return cls(int(raw))
+                except ValueError:
+                    return None
+            upper = raw.upper()
+            code_map = {
+                "P1": cls.TIME_BOUND,
+                "TIME_BOUND": cls.TIME_BOUND,
+                "P1 · TIME-BOUND": cls.TIME_BOUND,
+                "P1 · ÉCHÉANCE PROCHE": cls.TIME_BOUND,
+                "P2": cls.DECISION_NEEDED,
+                "DECISION_NEEDED": cls.DECISION_NEEDED,
+                "P2 · DECISION NEEDED": cls.DECISION_NEEDED,
+                "P2 · DÉCISION À PRENDRE": cls.DECISION_NEEDED,
+                "P3": cls.STANDARD_SIGN_OFF,
+                "STANDARD_SIGN_OFF": cls.STANDARD_SIGN_OFF,
+                "P3 · STANDARD SIGN-OFF": cls.STANDARD_SIGN_OFF,
+                "P3 · VALIDATION STANDARD": cls.STANDARD_SIGN_OFF,
+                "P4": cls.INFORMATION,
+                "INFORMATION": cls.INFORMATION,
+                "P4 · INFORMATION": cls.INFORMATION,
+                "NOT_ASSESSED": cls.NOT_ASSESSED,
+                "NON ÉVALUÉE": cls.NOT_ASSESSED,
+                "NOT ASSESSED": cls.NOT_ASSESSED,
+            }
+            if upper in code_map:
+                return code_map[upper]
+            for prefix, member in (
+                ("P1", cls.TIME_BOUND),
+                ("P2", cls.DECISION_NEEDED),
+                ("P3", cls.STANDARD_SIGN_OFF),
+                ("P4", cls.INFORMATION),
+            ):
+                if upper.startswith(f"{prefix} ") or upper.startswith(f"{prefix}·"):
+                    return member
+        return None
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> Any:
         from pydantic_core import core_schema
 
         def _coerce_priority(val: Any) -> Any:
-            if isinstance(val, cls):
-                return val
-            if isinstance(val, str):
-                mapped = cls._missing_(val)
-                if mapped is not None:
-                    return mapped.value
-            return val
+            parsed = cls.from_any(val)
+            return parsed.value if parsed is not None else val
 
         return core_schema.no_info_before_validator_function(
             _coerce_priority,
             handler(source_type),
         )
+
+
+class PriorityAssessment(BaseModel):
+    """Immutable value object capturing MDT discussion priority, rationale, and provenance."""
+
+    model_config = ConfigDict(frozen=True)
+
+    level: DiscussionPriority
+    reason: str = ""
+    source: Literal["rule", "ai", "manual"] = "rule"
+
+
+def _as_section_dict(val: Any) -> dict[str, Any]:
+    if isinstance(val, BaseModel):
+        return val.model_dump(mode="json")
+    return val if isinstance(val, dict) else {}
+
+
+def suggest_priority(sections: dict[str, Any] | None) -> PriorityAssessment:
+    """Deterministically suggest a baseline DiscussionPriority from extracted clinical sections."""
+    if not isinstance(sections, dict) or not sections:
+        return PriorityAssessment(
+            level=DiscussionPriority.NOT_ASSESSED,
+            reason="Dossier incomplet pour qualifier la priorité de passage",
+            source="rule",
+        )
+
+    planned_surg = _as_section_dict(sections.get("PlannedCurativeSurgery"))
+    if planned_surg.get("planned_curative_surgery") is True:
+        return PriorityAssessment(
+            level=DiscussionPriority.TIME_BOUND,
+            reason="Chirurgie curative programmée en attente de validation RCP",
+            source="rule",
+        )
+
+    cancer_desc = _as_section_dict(sections.get("CancerDescription"))
+    recist = str(cancer_desc.get("recist_response") or "").strip().lower()
+    if any(tok in recist for tok in ("pd", "progress", "évolut", "evolut")):
+        return PriorityAssessment(
+            level=DiscussionPriority.TIME_BOUND,
+            reason="Progression tumorale sous traitement actif (RECIST PD)",
+            source="rule",
+        )
+
+    hepatic = _as_section_dict(sections.get("HepaticStatus"))
+    bili_raw = hepatic.get("bilirubin_umol_l")
+    try:
+        if bili_raw is not None and float(bili_raw) >= 50.0:
+            return PriorityAssessment(
+                level=DiscussionPriority.TIME_BOUND,
+                reason="Hyperbilirubinémie marquée nécessitant une évaluation rapide pré-RCP",
+                source="rule",
+            )
+    except (TypeError, ValueError):
+        pass
+
+    chemo = _as_section_dict(sections.get("ChemotherapyTreament"))
+    prev_surg = _as_section_dict(sections.get("PreviousCurativeSurgery"))
+    tumor_loc = _as_section_dict(sections.get("TumorLocation"))
+    organ = str(tumor_loc.get("tumor_location") or "").strip().lower()
+    has_onco_core = bool(organ and organ != "unknown") or bool(
+        cancer_desc.get("type_of_cancer")
+    )
+    has_sma_core = bool(
+        sections.get("MotorFunctionStatus")
+        or sections.get("RespiratoryFunction")
+        or sections.get("BulbarAndNutritionalStatus")
+        or sections.get("GeneticDiagnosis")
+    )
+
+    if has_onco_core or has_sma_core:
+        if prev_surg.get("previous_curative_surgery") is True and not chemo.get(
+            "chemotherapy"
+        ):
+            return PriorityAssessment(
+                level=DiscussionPriority.STANDARD_SIGN_OFF,
+                reason="Validation standard post-opératoire conforme aux référentiels",
+                source="rule",
+            )
+        return PriorityAssessment(
+            level=DiscussionPriority.DECISION_NEEDED,
+            reason="Décision diagnostique ou thérapeutique à statuer en RCP",
+            source="rule",
+        )
+
+    return PriorityAssessment(
+        level=DiscussionPriority.NOT_ASSESSED,
+        reason="Éléments cliniques insuffisants pour qualifier la priorité de passage",
+        source="rule",
+    )
+
+
+def merge_priority(
+    rule: PriorityAssessment,
+    ai: PriorityAssessment | None,
+    manual: PriorityAssessment | None,
+) -> PriorityAssessment:
+    """Merge deterministic rule, AI consensus, and manual override (manual wins; AI never downgrades rule)."""
+    if manual is not None:
+        return PriorityAssessment(
+            level=manual.level,
+            reason=manual.reason,
+            source="manual",
+        )
+    if ai is not None and ai.level != DiscussionPriority.NOT_ASSESSED:
+        if rule.level == DiscussionPriority.NOT_ASSESSED or int(ai.level) <= int(
+            rule.level
+        ):
+            return PriorityAssessment(
+                level=ai.level,
+                reason=ai.reason or rule.reason,
+                source="ai",
+            )
+    return rule
 
 
 class Reference(BaseModel):

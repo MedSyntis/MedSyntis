@@ -145,7 +145,7 @@ class TestManualSectionEditing:
             section_name="CareOrientationProposal",
             section_data={
                 "care_adaptation_suggested": True,
-                "suggested_priority": "Urgent, a treatment is needed quickly",
+                "suggested_priority": 1,
                 "proposed_care_type": "Chirurgie DPC d'emblée",
                 "clinical_rationale": "Validation collégiale RCP.",
             },
@@ -157,7 +157,7 @@ class TestManualSectionEditing:
             service.update_patient_mdt_form_section(
                 filename=filename,
                 section_name="ExpertAnswer",
-                section_data={"pancreas expert": {"expert_relevant": True}},
+                section_data={"medical oncologist expert": {"expert_relevant": True}},
             )
 
         # 5. Update MTDCompleted and verify card metrics reflect manual completeness override

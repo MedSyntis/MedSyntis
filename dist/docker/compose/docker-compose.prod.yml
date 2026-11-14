@@ -16,6 +16,8 @@ x-telemetry-off: &telemetry-off
 x-ui-env: &ui-env
   <<: *telemetry-off
   STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+  XDG_CACHE_HOME: "/tmp/.cache"
+  APP_RCP_DOCLING_ARTIFACTS_PATH: "/app/.cache/docling/models"
   APP_DEV_MODE: "false"
   APP_AUTH_MODE: "oauth_proxy"
   APP_LANGUAGE: ${APP_LANGUAGE:-french}
@@ -179,7 +181,7 @@ services:
       - "--host"
       - "0.0.0.0"
       - "-c"
-      - "${LLM_CTX_SIZE:-64000}"
+      - "${LLM_CTX_SIZE:-40960}"
       - "-n"
       - "8192"
       - "-ngl"
@@ -195,7 +197,7 @@ services:
       - "-t"
       - "6"
       - "-np"
-      - "1"
+      - "${LLM_PARALLEL_SLOTS:-2}"
       - "--temp"
       - "0.6"
       - "--top-p"
@@ -212,7 +214,7 @@ services:
       - "--reasoning-format"
       - "deepseek"
       - "--reasoning-budget"
-      - "6144"
+      - "${LLM_REASONING_BUDGET:-6144}"
       - "--reasoning-budget-message"
       - "\nOkay, I have enough information to answer."
       - "--no-context-shift"

@@ -15,12 +15,17 @@ import {
   buildPatientDashboardFromForms,
   synthesizePatientSummaryFromForms,
 } from "../../domain/patient-dashboard.js";
-import { normalizePriorityLevel } from "../../domain/triage.js";
+import {
+  discussionPriorityCode,
+  normalizePriorityLevel,
+  priorityRank,
+} from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
   BatchStatus,
   BugReportItem,
   ClinicalDomain,
+  DiscussionPriorityLevel,
   DomainFormSchema,
   Language,
   MdtAgendaCandidate,
@@ -36,7 +41,7 @@ import type {
   PatientDashboardView,
   PatientListItem,
   PatientRecordSummaryView,
-  PriorityLevel,
+  PrioritySource,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -171,11 +176,26 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
 
   private seed(): void {
     // 1. Oncology: Mme Jeanne FICTIVE (#A-1042) — 3 longitudinal sessions
-    const jeanne1: MdtFormDetail = {
-      file: "jeanne_fictive_2026_06_03.pdf",
+    const buildJeanneSeedForm = (opts: {
+      file: string;
+      mdtDate: string;
+      performanceStatus: number;
+      ca19_9: string;
+      examName: string;
+      examDate: string;
+      examResult: string;
+      chemoName: string;
+      chemoTolerance: string;
+      priority: DiscussionPriorityLevel;
+      proposedCare: string;
+      rationale: string;
+      executionTimes: Record<string, number>;
+      markdownText: string;
+    }): MdtFormDetail => ({
+      file: opts.file,
       patientId: "A-1042",
       domain: "oncology",
-      mdtDate: "2026-06-03",
+      mdtDate: opts.mdtDate,
       processingStatus: "COMPLETED",
       processingStep: null,
       processingProgressPct: 100,
@@ -184,106 +204,85 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           first_name: "Jeanne",
           last_name: "FICTIVE",
           date_birth: "1958-03-02",
-          date_rcp: "2026-06-03",
+          date_rcp: opts.mdtDate,
           gender: "Female",
         },
-        PatientPerformanceStatus: { performance_status: 0 },
+        PatientPerformanceStatus: { performance_status: opts.performanceStatus },
         TumorLocation: { tumor_location: "Pancreas" },
-        TumorBiology: { msi_state: "MSS", ca19_9: "180 U/mL" },
+        TumorBiology: { msi_state: "MSS", ca19_9: opts.ca19_9 },
         RadiologicExams: {
           exams_list: [
             {
-              exam_name: "TDM TAP initial",
-              exam_date: "2026-05-25",
+              exam_name: opts.examName,
+              exam_date: opts.examDate,
               exam_type: "CT",
-              exam_result: "Masse céphalique pancréatique 26 mm, cT2 N0 M0.",
+              exam_result: opts.examResult,
             },
           ],
         },
         ChemotherapyTreament: {
           chemotherapy: true,
-          chemotherapy_name: "FOLFIRINOX néo-adjuvant (initiation)",
+          chemotherapy_name: opts.chemoName,
           chemotherapy_start_date: "2026-06-10",
-          chemotherapy_tolerance: "Good",
+          chemotherapy_tolerance: opts.chemoTolerance,
         },
         MTDCompleted: { is_mtd_complete: true, what_missing: [] },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "low",
-          proposed_care_type: "Poursuite FOLFIRINOX",
-          clinical_rationale: "Bilan complet, induction par FOLFIRINOX selon TNCD Pancréas.",
+          suggested_priority: opts.priority,
+          proposed_care_type: opts.proposedCare,
+          clinical_rationale: opts.rationale,
         },
       },
       manualEdits: {},
-      executionTimes: { TumorLocation: 6.2, ChemotherapyTreament: 8.1 },
+      executionTimes: opts.executionTimes,
       metrics: {
-        priority_level: "low",
+        discussion_priority: opts.priority,
+        discussion_priority_code: discussionPriorityCode(opts.priority),
+        priority_source: "ai",
         is_complete: true,
         missing_count: 0,
         missing_items: [],
         care_adaptation_suggested: false,
-        proposed_care_type: "Poursuite FOLFIRINOX",
-        specialties: ["pancreas expert"],
+        proposed_care_type: opts.proposedCare,
+        specialties: ["digestive surgeon expert", "medical oncologist expert"],
       },
-      markdownText: "# Compte rendu RCP du 03/06/2026\nPatient : Mme Jeanne FICTIVE...",
-    };
+      markdownText: opts.markdownText,
+    });
 
-    const jeanne2: MdtFormDetail = {
+    const jeanne1 = buildJeanneSeedForm({
+      file: "jeanne_fictive_2026_06_03.pdf",
+      mdtDate: "2026-06-03",
+      performanceStatus: 0,
+      ca19_9: "180 U/mL",
+      examName: "TDM TAP initial",
+      examDate: "2026-05-25",
+      examResult: "Masse céphalique pancréatique 26 mm, cT2 N0 M0.",
+      chemoName: "FOLFIRINOX néo-adjuvant (initiation)",
+      chemoTolerance: "Good",
+      priority: 3,
+      proposedCare: "Poursuite FOLFIRINOX",
+      rationale: "Bilan complet, induction par FOLFIRINOX selon TNCD Pancréas.",
+      executionTimes: { TumorLocation: 6.2, ChemotherapyTreament: 8.1 },
+      markdownText: "# Compte rendu RCP du 03/06/2026\nPatient : Mme Jeanne FICTIVE...",
+    });
+
+    const jeanne2 = buildJeanneSeedForm({
       file: "jeanne_fictive_2026_10_14.pdf",
-      patientId: "A-1042",
-      domain: "oncology",
       mdtDate: "2026-10-14",
-      processingStatus: "COMPLETED",
-      processingStep: null,
-      processingProgressPct: 100,
-      sections: {
-        PatientAdministrative: {
-          first_name: "Jeanne",
-          last_name: "FICTIVE",
-          date_birth: "1958-03-02",
-          date_rcp: "2026-10-14",
-          gender: "Female",
-        },
-        PatientPerformanceStatus: { performance_status: 1 },
-        TumorLocation: { tumor_location: "Pancreas" },
-        TumorBiology: { msi_state: "MSS", ca19_9: "298 U/mL" },
-        RadiologicExams: {
-          exams_list: [
-            {
-              exam_name: "TDM TAP réévaluation",
-              exam_date: "2026-10-02",
-              exam_type: "CT",
-              exam_result: "Stabilité lésionnelle céphalique, contact VMS < 180°.",
-            },
-          ],
-        },
-        ChemotherapyTreament: {
-          chemotherapy: true,
-          chemotherapy_name: "FOLFIRINOX (4 cures)",
-          chemotherapy_start_date: "2026-06-10",
-          chemotherapy_tolerance: "Medium",
-        },
-        MTDCompleted: { is_mtd_complete: true, what_missing: [] },
-        CareOrientationProposal: {
-          care_adaptation_suggested: false,
-          suggested_priority: "medium",
-          proposed_care_type: "Réévaluation après 6 cures",
-          clinical_rationale: "Élévation modérée du CA 19-9 à 298 U/mL.",
-        },
-      },
-      manualEdits: {},
+      performanceStatus: 1,
+      ca19_9: "298 U/mL",
+      examName: "TDM TAP réévaluation",
+      examDate: "2026-10-02",
+      examResult: "Stabilité lésionnelle céphalique, contact VMS < 180°.",
+      chemoName: "FOLFIRINOX (4 cures)",
+      chemoTolerance: "Medium",
+      priority: 2,
+      proposedCare: "Réévaluation après 6 cures",
+      rationale: "Élévation modérée du CA 19-9 à 298 U/mL.",
       executionTimes: { TumorLocation: 7.4, ChemotherapyTreament: 9.0 },
-      metrics: {
-        priority_level: "medium",
-        is_complete: true,
-        missing_count: 0,
-        missing_items: [],
-        care_adaptation_suggested: false,
-        proposed_care_type: "Réévaluation après 6 cures",
-        specialties: ["pancreas expert"],
-      },
       markdownText: "# Compte rendu RCP du 14/10/2026\nPatient : Mme Jeanne FICTIVE...",
-    };
+    });
 
     const jeanne3: MdtFormDetail = {
       file: "jeanne_fictive_2026_11_06.pdf",
@@ -370,13 +369,13 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             "Confrontation des pièces présentes aux prérequis du référentiel TNCD Pancréas : 2 pièces complémentaires sont recommandées avant discussion d'exérèse.",
         },
         ExpertAnswer: {
-          "pancreas expert": {
+          "digestive surgeon expert": {
             expert_relevant: true,
-            patient_priority: "Patient must be treated urgently",
+            discussion_priority: 1,
             why_relevant:
               "Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
             reasoning_thinking:
-              "Analyse par l'agent expert Pancréas : l'ascension rapide du CA 19-9 (+38 % en 3 semaines) malgré 6 cures de FOLFIRINOX justifie une discussion prioritaire de changement de ligne (gemcitabine + nab-paclitaxel selon TNCD §4.2) et un TEP-TDM pour exclure des micrométastases.",
+              "Analyse par l'agent Chirurgie digestive : l'ascension rapide du CA 19-9 (+38 % en 3 semaines) malgré 6 cures de FOLFIRINOX justifie une discussion prioritaire de changement de ligne (gemcitabine + nab-paclitaxel selon TNCD §4.2) et un TEP-TDM pour exclure des micrométastases.",
             suggestions: [
               {
                 suggestion:
@@ -412,9 +411,9 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
               },
             ],
           },
-          Radiotherapy: {
+          "radiation oncologist expert": {
             expert_relevant: true,
-            patient_priority: "Patient is not urgent",
+            discussion_priority: 3,
             why_relevant: "Évaluation d'une chimioradiothérapie de clôture éventuelle.",
             suggestions: [
               {
@@ -429,7 +428,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         },
         CareOrientationProposal: {
           care_adaptation_suggested: true,
-          suggested_priority: "high",
+          suggested_priority: 1,
           proposed_care_type: "Chimiothérapie 2e ligne (gemcitabine + nab-paclitaxel)",
           clinical_rationale:
             "Progression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
@@ -443,11 +442,13 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ExpertAnswer: 18.5,
       },
       metrics: {
-        priority_level: "high",
-        urgency_reason:
-          "**Pancréas** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.\n\nProgression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
-        urgency_reasons: [
-          "**Pancréas** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
+        discussion_priority: 1,
+        discussion_priority_code: "P1",
+        priority_source: "ai",
+        priority_reason:
+          "**Chirurgie digestive** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.\n\nProgression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
+        priority_reasons: [
+          "**Chirurgie digestive** : Progression biologique sous FOLFIRINOX (CA 19-9 à 412 U/mL) d'un adénocarcinome céphalique borderline.",
           "Progression biologique sous FOLFIRINOX (CA 19-9 +38 %) chez une patiente OMS 1 ; discussion collégiale d'un relais de 2e ligne et compléments d'imagerie (TEP-TDM).",
         ],
         is_complete: false,
@@ -458,7 +459,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ],
         care_adaptation_suggested: true,
         proposed_care_type: "Chimiothérapie 2e ligne (gemcitabine + nab-paclitaxel)",
-        specialties: ["pancreas expert", "Radiotherapy"],
+        specialties: ["digestive surgeon expert", "radiation oncologist expert"],
       },
       markdownText:
         "# Synthèse RCP du 06/11/2026 — Mme Jeanne FICTIVE (#A-1042)\n\n- **Diagnostic** : Adénocarcinome canalaire céphalique pancréatique cT3 N1 M0\n- **Biologie** : CA 19-9 à 412 U/mL (+38 %)\n- **Traitement reçu** : FOLFIRINOX 6 cures\n",
@@ -510,7 +511,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         MTDCompleted: { is_mtd_complete: true, what_missing: [] },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "medium",
+          suggested_priority: 2,
           proposed_care_type: "Protocole FLOT péri-opératoire",
           clinical_rationale: "Bilan d'extension complet et conforme au référentiel TNCD Œsophage.",
         },
@@ -518,15 +519,17 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       manualEdits: {},
       executionTimes: { TumorLocation: 8.2 },
       metrics: {
-        priority_level: "medium",
-        urgency_reason: "Bilan d'extension complet et conforme au référentiel TNCD Œsophage.",
-        urgency_reasons: ["Bilan d'extension complet et conforme au référentiel TNCD Œsophage."],
+        discussion_priority: 2,
+        discussion_priority_code: "P2",
+        priority_source: "ai",
+        priority_reason: "Bilan d'extension complet et conforme au référentiel TNCD Œsophage.",
+        priority_reasons: ["Bilan d'extension complet et conforme au référentiel TNCD Œsophage."],
         is_complete: true,
         missing_count: 0,
         missing_items: [],
         care_adaptation_suggested: false,
         proposed_care_type: "Protocole FLOT péri-opératoire",
-        specialties: ["oesophagus expert"],
+        specialties: ["gastroenterologist expert"],
       },
       markdownText:
         "# Synthèse RCP — M. Paul MODÈLE (#A-1037)\nAdénocarcinome bas œsophage cT2N0M0.",
@@ -580,7 +583,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         MTDCompleted: { is_mtd_complete: true, what_missing: [] },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "low",
+          suggested_priority: 3,
           proposed_care_type: "Poursuite nusinersen intrathécal",
           clinical_rationale: "Stabilité motrice et respiratoire sous nusinersen.",
         },
@@ -588,7 +591,9 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       manualEdits: {},
       executionTimes: { GeneticDiagnosis: 5.1, MotorFunctionStatus: 7.3 },
       metrics: {
-        priority_level: "low",
+        discussion_priority: 3,
+        discussion_priority_code: "P3",
+        priority_source: "ai",
         is_complete: true,
         missing_count: 0,
         missing_items: [],
@@ -633,7 +638,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ExpertAnswer: {
           "neurologist expert": {
             expert_relevant: true,
-            patient_priority: "Patient is not urgent",
+            discussion_priority: 3,
             why_relevant: "Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
             suggestions: [
               {
@@ -653,7 +658,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           },
           "pulmonologist expert": {
             expert_relevant: true,
-            patient_priority: "Patient is not urgent",
+            discussion_priority: 3,
             why_relevant: "Surveillance de la capacité vitale forcée (CVF à 72 %).",
             suggestions: [
               {
@@ -668,7 +673,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         },
         CareOrientationProposal: {
           care_adaptation_suggested: false,
-          suggested_priority: "low",
+          suggested_priority: 3,
           proposed_care_type: "Suivi habituel sous nusinersen + kinésithérapie",
           clinical_rationale:
             "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
@@ -681,10 +686,12 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         ExpertAnswer: 14.1,
       },
       metrics: {
-        priority_level: "low",
-        urgency_reason:
+        discussion_priority: 3,
+        discussion_priority_code: "P3",
+        priority_source: "ai",
+        priority_reason:
           "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).\n\n**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).\n\nÉvolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
-        urgency_reasons: [
+        priority_reasons: [
           "**Neurologie** : Suivi longitudinal SMA Type 2 sous nusinersen (+3.1 % MFM-32).",
           "**Pneumologie** : Surveillance de la capacité vitale forcée (CVF à 72 %).",
           "Évolution motrice favorable (+3.1 % MFM-32) et stabilité respiratoire (CVF 72 %) conformes au PNDS SMA.",
@@ -816,7 +823,14 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       sessionDate: "2026-11-13",
       sortStrategy: "hybrid",
       deferIncompleteFiles: false,
-      attendingExperts: ["pancreas expert", "oesophagus expert", "hepatocellular expert"],
+      attendingExperts: [
+        "digestive surgeon expert",
+        "medical oncologist expert",
+        "radiation oncologist expert",
+        "radiologist expert",
+        "gastroenterologist expert",
+        "pathologist expert",
+      ],
       enrolledPatientIds: ["A-1042", "A-1037"],
       pinnedMap: new Map(),
       updatedAt: "2026-11-01T18:00:00Z",
@@ -907,14 +921,23 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
                 : "no";
     const isComplete = completenessStatus === "yes";
 
-    const priorityLevel = normalizePriorityLevel(form.metrics.priority_level);
-    const priorityReasons = Array.isArray(form.metrics.urgency_reasons)
-      ? form.metrics.urgency_reasons.map((r) => String(r).trim()).filter(Boolean)
+    const priorityLevel = normalizePriorityLevel(
+      form.metrics.discussion_priority ?? form.metrics.discussion_priority_code,
+    );
+    const priorityCode = discussionPriorityCode(priorityLevel);
+    const priorityReasons = Array.isArray(form.metrics.priority_reasons)
+      ? form.metrics.priority_reasons.map((r) => String(r).trim()).filter(Boolean)
       : [];
-    const priorityReason = form.metrics.urgency_reason
-      ? String(form.metrics.urgency_reason).trim()
+    const priorityReason = form.metrics.priority_reason
+      ? String(form.metrics.priority_reason).trim()
       : priorityReasons.length > 0
         ? priorityReasons.join("\n\n")
+        : null;
+    const prioritySource =
+      form.metrics.priority_source === "rule" ||
+      form.metrics.priority_source === "ai" ||
+      form.metrics.priority_source === "manual"
+        ? (form.metrics.priority_source as PrioritySource)
         : null;
 
     return {
@@ -930,8 +953,10 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       domain: form.domain,
       mdtDate: form.mdtDate,
       priorityLevel,
+      priorityCode,
       priorityReason,
       priorityReasons,
+      prioritySource,
       isComplete,
       completenessStatus,
       missingCount,
@@ -1086,8 +1111,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             ? coerced.proposed_care_type.trim()
             : null;
       }
-      if (typeof coerced.suggested_priority === "string" && coerced.suggested_priority) {
-        form.metrics.priority_level = coerced.suggested_priority as PriorityLevel;
+      if (coerced.suggested_priority !== undefined) {
+        const nextPrio = normalizePriorityLevel(coerced.suggested_priority);
+        form.metrics.discussion_priority = nextPrio as DiscussionPriorityLevel;
+        form.metrics.discussion_priority_code = discussionPriorityCode(nextPrio);
+        form.metrics.priority_source = "manual";
       }
     }
     if (section === "MTDCompleted") {
@@ -1248,8 +1276,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             ? String(restored.proposed_care_type)
             : null;
         }
-        if (typeof restored.suggested_priority === "string" && restored.suggested_priority) {
-          form.metrics.priority_level = restored.suggested_priority as PriorityLevel;
+        if (restored.suggested_priority !== undefined) {
+          const restoredPrio = normalizePriorityLevel(restored.suggested_priority);
+          form.metrics.discussion_priority = restoredPrio as DiscussionPriorityLevel;
+          form.metrics.discussion_priority_code = discussionPriorityCode(restoredPrio);
+          form.metrics.priority_source = "ai";
         }
       }
       if (canonical === "MTDCompleted") {
@@ -1471,7 +1502,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           MTDCompleted: { is_mtd_complete: true, what_missing: [] },
           CareOrientationProposal: {
             care_adaptation_suggested: false,
-            suggested_priority: "medium",
+            suggested_priority: 2,
             proposed_care_type: "Analyse initiale terminée",
             clinical_rationale: "Document importé et structuré automatiquement.",
           },
@@ -1479,13 +1510,15 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         manualEdits: {},
         executionTimes: { DocumentParser: 2.1 },
         metrics: {
-          priority_level: "medium",
+          discussion_priority: 2,
+          discussion_priority_code: "P2",
+          priority_source: "ai",
           is_complete: true,
           missing_count: 0,
           missing_items: [],
           care_adaptation_suggested: false,
           proposed_care_type: "Analyse initiale terminée",
-          specialties: domain === "sma" ? ["neurologist expert"] : ["pancreas expert"],
+          specialties: domain === "sma" ? ["neurologist expert"] : ["digestive surgeon expert"],
         },
       };
       this.forms.set(f.filename, newForm);
@@ -1594,91 +1627,124 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
   }
 
   async listAgents(domain: ClinicalDomain, language: Language): Promise<AgentModuleInfo[]> {
+    const smaDynamicGuidelines = Array.from(this.resources.keys()).filter(
+      (name) => !name.toLowerCase().startsWith("tncd"),
+    );
+    const oncologyGuidelinesByOrgan: Record<string, string[]> = {
+      Oesophagus: ["TNCD_Oesophage_Estomac_2026.pdf"],
+      Stomach: ["TNCD_Oesophage_Estomac_2026.pdf"],
+      Pancreas: ["TNCD_Pancreas_2026.pdf"],
+    };
+
+    const buildSpecialist = (
+      name: string,
+      role: string,
+      systemPrompt: string,
+      guidelines: string[] | Record<string, string[]>,
+      models: string[],
+    ) => ({ name, role, guidelines, models, systemPrompt });
+
+    const smaExperts: Array<readonly [string, string, string, string[]]> = [
+      [
+        "neurologist expert",
+        "Évaluation motrice (HFMSE, RULM, CHOP-INTEND) et traitements modificateurs (nusinersen, risdiplam, thérapie génique).",
+        "Tu es neuropédiatre / neurologue référent en centre de référence maladies neuromusculaires (FILNEMUS). Analyse l'évolution des scores moteurs (HFMSE, RULM, CHOP-INTEND) et propose des pistes de discussion conformes au PNDS Amyotrophie Spinale.",
+        ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
+      ],
+      [
+        "geneticist expert",
+        "Confirmation moléculaire SMN1 et corrélation génotype-phénotype (copies SMN2).",
+        "Tu es médecin généticien moléculaire. Vérifie la confirmation de la délétion homozygote de l'exon 7 de SMN1, le nombre de copies de SMN2 et les éventuels variants modificateurs.",
+        ["mistral-nemo (temp=0.1)"],
+      ],
+      [
+        "pulmonologist expert",
+        "Surveillance de la capacité vitale forcée (CVF), VNI nocturne et désencombrement mécanique (Cough Assist).",
+        "Tu es pneumologue référent SMA. Évalue la fonction respiratoire (CVF %, oxymétrie nocturne, besoin de VNI BiPAP et d'aide mécanique à la toux) selon le PNDS.",
+        ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
+      ],
+      [
+        "physiotherapy expert",
+        "Rééducation fonctionnelle neuromusculaire, prévention des rétractions et aides techniques.",
+        "Tu es médecin de médecine physique et de réadaptation (MPR). Analyse le bilan articulaire, la kinésithérapie motrice/respiratoire et l'appareillage selon le PNDS SMA.",
+        ["mistral-nemo (temp=0.1)"],
+      ],
+      [
+        "orthopedist expert",
+        "Suivi rachidien (angle de Cobb, corset, arthrodèse) et rétractions articulaires.",
+        "Tu es chirurgien orthopédiste pédiatrique / MPR. Surveille l'évolution de la scoliose (angle de Cobb), le port de corset et les indications d'arthrodèse vertébrale.",
+        ["mistral-nemo (temp=0.1)"],
+      ],
+    ];
+
+    const oncologyExperts: Array<readonly [string, string, string]> = [
+      [
+        "digestive surgeon expert",
+        "Résécabilité chirurgicale, rapports vasculaires, marges R0/R1 et stratégie péri-opératoire en chirurgie digestive.",
+        "Tu es chirurgien digestif et viscéral. Évalue la résécabilité technique, les contacts vasculaires et les options d'exérèse selon les référentiels TNCD applicables à l'organe primitif.",
+      ],
+      [
+        "medical oncologist expert",
+        "Traitements systémiques (chimiothérapie, thérapies ciblées, immunothérapie), biomarqueurs et tolérance OMS/DPD.",
+        "Tu es oncologue médical digestif. Confronte les lignes systémiques, biomarqueurs (MSI/MMR, RAS/BRAF, HER2) et l'état général aux référentiels TNCD.",
+      ],
+      [
+        "radiation oncologist expert",
+        "Radiochimiothérapie néoadjuvante ou exclusive, radiothérapie stéréotaxique (SBRT) et indications palliatives.",
+        "Tu es oncologue radiothérapeute. Évalue les indications de radiochimiothérapie concomitante, de TNT ou de radiothérapie stéréotaxique selon le TNCD.",
+      ],
+      [
+        "radiologist expert",
+        "Bilan d'extension TDM/IRM/TEP-TDM, critères RECIST 1.1, rapports vasculaires et caractérisation hépatique.",
+        "Tu es radiologue spécialisé en imagerie oncologique digestive. Analyse l'extension locorégionale, la réponse RECIST 1.1 et les examens d'imagerie manquants.",
+      ],
+      [
+        "gastroenterologist expert",
+        "Endoscopie diagnostique et interventionnelle, écho-endoscopie avec biopsie, drainage biliaire et support nutritionnel.",
+        "Tu es hépato-gastro-entérologue et endoscopiste interventionnel. Évalue le drainage biliaire, l'écho-endoscopie, la fonction hépatique Child-Pugh et le support nutritionnel.",
+      ],
+      [
+        "pathologist expert",
+        "Typage et grade histologique, stade pTNM, marges d'exérèse, immunohistochimie MMR/MSI et adéquation biopsique.",
+        "Tu es médecin anatomopathologiste digestif. Vérifie la preuve histologique, le grade, le statut MMR/MSI/HER2 et l'exhaustivité du compte rendu anatomopathologique.",
+      ],
+    ];
+
     const rawAgents =
       domain === "sma"
         ? [
-            {
-              name: "Administrative",
-              role: "Extraction structurée de l'identité patient, du génotype SMN1/SMN2 et des scores fonctionnels neuromusculaires.",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
-              models: ["mistral-nemo (temp=0.0)"],
-              systemPrompt:
-                "Tu es un assistant médical spécialisé en maladies neuromusculaires rares (Amyotrophie Spinale SMA). Extrais fidèlement chaque champ clinique à partir du dossier sans jamais inventer de valeur absente.",
-            },
-            {
-              name: "neurologist expert",
-              role: "Évaluation motrice (HFMSE, RULM, CHOP-INTEND) et traitements modificateurs (nusinersen, risdiplam, thérapie génique).",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
-              systemPrompt:
-                "Tu es neuropédiatre / neurologue référent en centre de référence maladies neuromusculaires (FILNEMUS). Analyse l'évolution des scores moteurs (HFMSE, RULM, CHOP-INTEND) et propose des pistes de discussion conformes au PNDS Amyotrophie Spinale.",
-            },
-            {
-              name: "geneticist expert",
-              role: "Confirmation moléculaire SMN1 et corrélation génotype-phénotype (copies SMN2).",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
-              models: ["mistral-nemo (temp=0.1)"],
-              systemPrompt:
-                "Tu es médecin généticien moléculaire. Vérifie la confirmation de la délétion homozygote de l'exon 7 de SMN1, le nombre de copies de SMN2 et les éventuels variants modificateurs.",
-            },
-            {
-              name: "pulmonologist expert",
-              role: "Surveillance de la capacité vitale forcée (CVF), VNI nocturne et désencombrement mécanique (Cough Assist).",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG)"],
-              systemPrompt:
-                "Tu es pneumologue référent SMA. Évalue la fonction respiratoire (CVF %, oxymétrie nocturne, besoin de VNI BiPAP et d'aide mécanique à la toux) selon le PNDS.",
-            },
-            {
-              name: "orthopedist expert",
-              role: "Suivi rachidien (angle de Cobb, corset, arthrodèse) et rétractions articulaires.",
-              guidelines: ["PNDS_Amyotrophie_Spinale_SMA_2025.pdf"],
-              models: ["mistral-nemo (temp=0.1)"],
-              systemPrompt:
-                "Tu es chirurgien orthopédiste pédiatrique / MPR. Surveille l'évolution de la scoliose (angle de Cobb), le port de corset et les indications d'arthrodèse vertébrale.",
-            },
+            buildSpecialist(
+              "Administrative",
+              "Extraction structurée de l'identité patient, du génotype SMN1/SMN2 et des scores fonctionnels neuromusculaires.",
+              "Tu es un assistant médical spécialisé en maladies neuromusculaires rares (Amyotrophie Spinale SMA). Extrais fidèlement chaque champ clinique à partir du dossier sans jamais inventer de valeur absente.",
+              [],
+              ["mistral-nemo (temp=0.0)"],
+            ),
+            ...smaExperts.map(([name, role, prompt, models]) =>
+              buildSpecialist(name, role, prompt, smaDynamicGuidelines, models),
+            ),
           ]
         : [
-            {
-              name: "Administrative",
-              role: "Extraction structurée des données administratives, du statut OMS, de l'anatomopathologie, de l'imagerie et des lignes de chimiothérapie.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
-              models: ["mistral-nemo (temp=0.0)", "granite3.2-vision (OCR)"],
-              systemPrompt:
-                "Tu es un assistant d'extraction clinique en oncologie digestive. Extrais chaque rubrique du dossier patient avec ancrage strict dans les pièces sources, sans extrapoler.",
-            },
-            {
-              name: "pancreas expert",
-              role: "Stratégie médico-chirurgicale des adénocarcinomes pancréatiques résécables, borderline et localement avancés.",
-              guidelines: ["TNCD_Pancreas_2026.pdf"],
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es oncologue digestif et chirurgien hépato-bilio-pancréatique. Confronte le dossier aux recommandations du TNCD Pancréas en citant systématiquement les chapitres et les pièces du dossier.",
-            },
-            {
-              name: "oesophagus expert",
-              role: "Prise en charge des cancers œso-gastriques (FLOT péri-opératoire, radiochimiothérapie, immunothérapie).",
-              guidelines: ["TNCD_Oesophage_Estomac_2026.pdf"],
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es spécialiste des cancers œso-gastriques. Formule des propositions pré-RCP argumentées selon le référentiel TNCD Œsophage / Estomac.",
-            },
-            {
-              name: "hepatocellular expert",
-              role: "Carcinome hépatocellulaire (classification BCLC, transplantation, TACE, traitements systémiques).",
-              guidelines: ["TNCD_Pancreas_2026.pdf"],
-              models: ["mistral-nemo (temp=0.1)", "bge-m3 (RAG Milvus)"],
-              systemPrompt:
-                "Tu es hépatologue et oncologue digestif spécialisé dans le carcinome hépatocellulaire (CHC). Évalue le score Child-Pugh, le stade BCLC et les options médico-chirurgicales selon le TNCD.",
-            },
-            {
-              name: "MDT Coordinator",
-              role: "Synthèse pré-RCP non prescriptive, contrôle de complétude et priorisation collégiale des dossiers.",
-              guidelines: ["TNCD_Pancreas_2026.pdf", "TNCD_Oesophage_Estomac_2026.pdf"],
-              models: ["mistral-nemo (temp=0.0)"],
-              systemPrompt:
-                "Tu es le coordinateur médical de la RCP. Vérifie la complétude du dossier, synthétise les avis d'experts et propose un niveau de priorité de passage non prescriptif.",
-            },
+            buildSpecialist(
+              "Administrative",
+              "Extraction structurée des données administratives, du statut OMS, de l'anatomopathologie, de l'imagerie et des lignes de chimiothérapie.",
+              "Tu es un assistant d'extraction clinique en oncologie digestive. Extrais chaque rubrique du dossier patient avec ancrage strict dans les pièces sources, sans extrapoler.",
+              [],
+              ["mistral-nemo (temp=0.0)", "granite3.2-vision (OCR)"],
+            ),
+            ...oncologyExperts.map(([name, role, prompt]) =>
+              buildSpecialist(name, role, prompt, oncologyGuidelinesByOrgan, [
+                "mistral-nemo (temp=0.1)",
+                "bge-m3 (RAG Milvus)",
+              ]),
+            ),
+            buildSpecialist(
+              "MDT Coordinator",
+              "Synthèse pré-RCP non prescriptive, contrôle de complétude et priorisation collégiale des dossiers.",
+              "Tu es le coordinateur médical de la RCP. Vérifie la complétude du dossier, synthétise les avis d'experts et propose un niveau de priorité de passage non prescriptif.",
+              [],
+              ["mistral-nemo (temp=0.0)"],
+            ),
           ];
 
     return rawAgents.map((a) => {
@@ -1772,7 +1838,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
   }
 
   async getQueueStats(domain: ClinicalDomain, allDomains = true): Promise<QueueStats> {
-    const jobs = await this.listQueueJobs(domain, allDomains);
+    const all = Array.from(this.jobs.values());
+    const jobs = allDomains ? all : all.filter((j) => j.domain === domain);
     const pending = jobs.filter((j) => j.status === "PENDING").length;
     const running = jobs.filter((j) => j.status === "RUNNING").length;
     const completed = jobs.filter((j) => j.status === "COMPLETED").length;
@@ -1797,10 +1864,35 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     };
   }
 
-  async listQueueJobs(domain: ClinicalDomain, allDomains = true): Promise<QueueJobItem[]> {
-    const all = Array.from(this.jobs.values());
-    if (allDomains) return all;
-    return all.filter((j) => j.domain === domain);
+  async listQueueJobs(
+    domain: ClinicalDomain,
+    allDomains = true,
+    options?: { limit?: number; offset?: number; status?: string },
+  ): Promise<QueueJobItem[]> {
+    const statusRank: Record<string, number> = {
+      RUNNING: 0,
+      PENDING: 1,
+      FAILED: 2,
+      COMPLETED: 3,
+      CANCELLED: 4,
+    };
+    let jobs = Array.from(this.jobs.values());
+    if (!allDomains) {
+      jobs = jobs.filter((j) => j.domain === domain);
+    }
+    const statusFilter = options?.status?.trim().toUpperCase();
+    if (statusFilter && statusFilter !== "ALL") {
+      jobs = jobs.filter((j) => j.status.toUpperCase() === statusFilter);
+    }
+    jobs.sort((a, b) => {
+      const rankDiff =
+        (statusRank[a.status.toUpperCase()] ?? 99) - (statusRank[b.status.toUpperCase()] ?? 99);
+      if (rankDiff !== 0) return rankDiff;
+      return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+    });
+    const safeOffset = Math.max(0, Math.floor(options?.offset ?? 0));
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(options?.limit ?? 100)));
+    return jobs.slice(safeOffset, safeOffset + safeLimit);
   }
 
   async retryQueueJob(jobId: string, _domain: ClinicalDomain): Promise<void> {
@@ -1847,7 +1939,14 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           "physiotherapy expert",
           "orthopedist expert",
         ]
-      : ["pancreas expert", "oesophagus expert", "hepatocellular expert"];
+      : [
+          "digestive surgeon expert",
+          "medical oncologist expert",
+          "radiation oncologist expert",
+          "radiologist expert",
+          "gastroenterologist expert",
+          "pathologist expert",
+        ];
   }
 
   private ensureAgendaState(domain: ClinicalDomain) {
@@ -1898,21 +1997,15 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       const quorumMet = absentReq.length === 0;
       const coverage = effectiveReq.length > 0 ? presentReq.length / effectiveReq.length : 1.0;
       const clusterKey = presentReq[0] ?? effectiveReq[0] ?? "general";
-      const urgencyScore =
-        card.priorityLevel === "high" ? 2 : card.priorityLevel === "medium" ? 1 : 0;
-      const urgencyLabel =
-        card.priorityLevel === "high"
-          ? "Urgent"
-          : card.priorityLevel === "medium"
-            ? "Semi-urgent"
-            : "Standard";
       const pinned = Boolean(st.pinnedMap.get(pid));
 
       const reasons: string[] = [];
       if (pinned) reasons.push("Position épinglée manuellement");
-      if (card.priorityLevel === "high") reasons.push("Priorité haute");
-      else if (card.priorityLevel === "medium") reasons.push("Priorité modérée");
-      else reasons.push("Priorité standard");
+      if (card.priorityLevel === 1) reasons.push("P1 · Délai thérapeutique contraint");
+      else if (card.priorityLevel === 2) reasons.push("P2 · Décision collégiale requise");
+      else if (card.priorityLevel === 3) reasons.push("P3 · Validation standard");
+      else if (card.priorityLevel === 4) reasons.push("P4 · Pour information");
+      else reasons.push("Priorité non évaluée");
 
       if (effectiveReq.length > 0) {
         if (quorumMet) {
@@ -1935,11 +2028,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         firstName: card.firstName,
         lastName: card.lastName,
         dateBirth: card.dateBirth ?? null,
-        urgency: urgencyLabel,
-        urgencyScore,
         priorityLevel: card.priorityLevel,
+        priorityCode: card.priorityCode,
         priorityReason: card.priorityReason ?? null,
         priorityReasons: card.priorityReasons ?? [],
+        prioritySource: card.prioritySource ?? null,
         isComplete: card.isComplete,
         completenessStatus: card.completenessStatus,
         missingCount: card.missingCount,
@@ -1962,7 +2055,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
     for (const item of rawItems) {
       const cur = clusterStats.get(item.clusterKey) ?? { urgent: 0, total: 0 };
       cur.total += 1;
-      if (item.priorityLevel === "high") cur.urgent += 1;
+      if (item.priorityLevel === 1) cur.urgent += 1;
       clusterStats.set(item.clusterKey, cur);
     }
 
@@ -1976,7 +2069,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           return a.isComplete ? -1 : 1;
         }
         if (st.sortStrategy === "urgency_first") {
-          if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+          const prioDiff = priorityRank(a.priorityLevel) - priorityRank(b.priorityLevel);
+          if (prioDiff !== 0) return prioDiff;
           if (b.expertCoverageRatio !== a.expertCoverageRatio) {
             return b.expertCoverageRatio - a.expertCoverageRatio;
           }
@@ -1997,11 +2091,12 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
             if (cb.total !== ca.total) return cb.total - ca.total;
             return a.clusterKey.localeCompare(b.clusterKey);
           }
-          if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+          const prioDiff = priorityRank(a.priorityLevel) - priorityRank(b.priorityLevel);
+          if (prioDiff !== 0) return prioDiff;
           return a.patientName.localeCompare(b.patientName, "fr");
         }
-        const aTopUrgent = a.priorityLevel === "high" && a.quorumMet;
-        const bTopUrgent = b.priorityLevel === "high" && b.quorumMet;
+        const aTopUrgent = a.priorityLevel === 1 && a.quorumMet;
+        const bTopUrgent = b.priorityLevel === 1 && b.quorumMet;
         if (aTopUrgent !== bTopUrgent) return aTopUrgent ? -1 : 1;
         if (a.quorumMet !== b.quorumMet) return a.quorumMet ? -1 : 1;
         if (a.clusterKey !== b.clusterKey) {
@@ -2010,7 +2105,8 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           if (cb.urgent !== ca.urgent) return cb.urgent - ca.urgent;
           if (cb.total !== ca.total) return cb.total - ca.total;
         }
-        if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+        const prioDiff = priorityRank(a.priorityLevel) - priorityRank(b.priorityLevel);
+        if (prioDiff !== 0) return prioDiff;
         return a.patientName.localeCompare(b.patientName, "fr");
       });
 
@@ -2043,7 +2139,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
         expertName: exp,
         isAttending: attendingSet.has(exp),
         caseCount: matching.length,
-        urgentCaseCount: matching.filter((it) => it.priorityLevel === "high").length,
+        urgentCaseCount: matching.filter((it) => it.priorityLevel === 1).length,
         firstPosition: firstPos,
         lastPosition: lastPos,
         isContiguous,
@@ -2055,13 +2151,6 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       .filter((c) => !enrolledSet.has(c.patientId ?? c.id))
       .map((c) => {
         const pid = c.patientId ?? c.id;
-        const urgencyScore = c.priorityLevel === "high" ? 2 : c.priorityLevel === "medium" ? 1 : 0;
-        const urgencyLabel =
-          c.priorityLevel === "high"
-            ? "Urgent"
-            : c.priorityLevel === "medium"
-              ? "Semi-urgent"
-              : "Standard";
         return {
           patientId: pid,
           filename: c.file,
@@ -2069,11 +2158,11 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
           firstName: c.firstName,
           lastName: c.lastName,
           dateBirth: c.dateBirth ?? null,
-          urgency: urgencyLabel,
-          urgencyScore,
           priorityLevel: c.priorityLevel,
+          priorityCode: c.priorityCode,
           priorityReason: c.priorityReason ?? null,
           priorityReasons: c.priorityReasons ?? [],
+          prioritySource: c.prioritySource ?? null,
           isComplete: c.isComplete,
           completenessStatus: c.completenessStatus,
           missingCount: c.missingCount,
@@ -2094,7 +2183,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       availableExperts,
       attendingExperts: st.attendingExperts,
       totalEnrolled: ordered.length,
-      urgentCount: ordered.filter((i) => i.priorityLevel === "high").length,
+      urgentCount: ordered.filter((i) => i.priorityLevel === 1).length,
       incompleteCount: ordered.filter((i) => !i.isComplete).length,
       quorumWarningCount: ordered.filter((i) => !i.quorumMet).length,
       items: ordered,
@@ -2152,7 +2241,7 @@ export class InMemoryMedsyntisApiFake implements MedsyntisApiPort {
       for (const c of cards) {
         const pid = c.patientId ?? c.id;
         if (input.filterMode === "complete" && !c.isComplete) continue;
-        if (input.filterMode === "urgent" && c.priorityLevel !== "high") continue;
+        if (input.filterMode === "urgent" && c.priorityLevel !== 1) continue;
         toAdd.push(pid);
       }
     }

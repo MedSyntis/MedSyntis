@@ -88,7 +88,9 @@ export const PreferencesBodySchema = z.object({
 export const WorklistQuerySchema = z.object({
   q: optionalTrimmedString,
   completeness: z.enum(["all", "complete", "partial", "incomplete"]).catch("all"),
-  priority: z.enum(["all", "high", "medium", "low"]).catch("all"),
+  priority: z
+    .enum(["all", "1", "2", "3", "4", "9", "P1", "P2", "P3", "P4", "NOT_ASSESSED"])
+    .catch("all"),
   orientation: z.enum(["all", "adapt", "standard", "pending"]).catch("all"),
   viewMode: z.enum(["patients", "rcp"]).catch("patients"),
   display: z.enum(["cards", "table"]).optional().catch(undefined),

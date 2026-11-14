@@ -55,7 +55,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(res.body).toContain('data-testid="btn_theme_light"');
     expect(res.body).toContain('data-testid="btn_theme_dark"');
     expect(res.body).toContain('data-testid="kpi-structured"');
-    expect(res.body).toContain('data-testid="kpi-priority-high"');
+    expect(res.body).toContain('data-testid="kpi-priority-p1"');
+    expect(res.body).toContain('data-testid="kpi-priority-not-assessed"');
     expect(res.body).toContain('data-testid="worklist-table"');
     expect(res.body).toContain("FICTIVE Jeanne");
     // Medico-legal check: never use "Intervention requise"
@@ -371,8 +372,17 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(agentsRes.body).toContain('data-testid="agents-list"');
     expect(agentsRes.body).toContain('data-testid="agents-group-coordination"');
     expect(agentsRes.body).toContain('data-testid="agents-group-experts"');
+    expect(agentsRes.body).toContain(
+      'data-testid="agent-organ-resources-digestive surgeon expert-Pancreas"',
+    );
+    expect(agentsRes.body).toContain("Pancréas");
     expect(agentsRes.body).toContain("Prompts utilisateurs d'extraction");
     expect(agentsRes.body).toContain("Instructions système de l'agent");
+
+    const smaAgentsRes = await app.inject({ method: "GET", url: "/agents?domain=sma" });
+    expect(smaAgentsRes.statusCode).toBe(200);
+    expect(smaAgentsRes.body).toContain('data-testid="agent-resources-neurologist expert"');
+    expect(smaAgentsRes.body).toContain("PNDS_Amyotrophie_Spinale_SMA_2025.pdf");
 
     const chatRes = await app.inject({
       method: "POST",
@@ -451,6 +461,16 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/admin/queue/clean",
     });
     expect([200, 302]).toContain(cleanRes.statusCode);
+
+    const filteredRes = await app.inject({
+      method: "GET",
+      url: "/admin/queue?page=1&pageSize=25&status=RUNNING",
+    });
+    expect(filteredRes.statusCode).toBe(200);
+    expect(filteredRes.body).toContain('data-testid="queue-filter-toolbar"');
+    expect(filteredRes.body).toContain('data-testid="queue-pagination-nav"');
+    expect(filteredRes.body).toContain("job-running-1042");
+    expect(filteredRes.body).not.toContain("queue-job-row-job-failed-1039");
     await app.close();
   });
 
@@ -1145,6 +1165,15 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/guidelines/TNCD_Pancreas_2026.pdf/reindex?domain=oncology",
     });
     expect(reindexOk.statusCode).toBe(302);
+    expect(reindexOk.headers.location).toContain("/guidelines?file=TNCD_Pancreas_2026.pdf");
+
+    const reindexFromAgents = await app.inject({
+      method: "POST",
+      url: "/guidelines/TNCD_Pancreas_2026.pdf/reindex?domain=oncology",
+      headers: { referer: "http://localhost:3000/agents?domain=oncology" },
+    });
+    expect(reindexFromAgents.statusCode).toBe(302);
+    expect(reindexFromAgents.headers.location).toBe("/agents?domain=oncology");
 
     const deleteGuidelineBad = await app.inject({
       method: "POST",
@@ -1670,7 +1699,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       headers: nonAdminHeaders,
     });
     expect(queuePageRes.statusCode).toBe(200);
-    expect(listJobsSpy).toHaveBeenCalledWith("oncology", false);
+    expect(listJobsSpy).toHaveBeenCalledWith("oncology", false, {
+      limit: 25,
+      offset: 0,
+      status: undefined,
+    });
     listJobsSpy.mockRestore();
 
     // Spoof-resistant clientIp & concurrent AsyncLocalStorage context isolation

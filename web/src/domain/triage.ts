@@ -2,121 +2,171 @@ import { formatFieldLabel } from "./catalog.js";
 import { t, translateValue } from "./i18n.js";
 import type {
   CompletenessStatus,
+  DiscussionPriorityCode,
+  DiscussionPriorityLevel,
   Language,
   LongitudinalDelta,
   MdtFormCard,
   MdtFormDetail,
   OrientationStatus,
-  PriorityLevel,
   WorklistFilter,
   WorklistKpis,
 } from "./types.js";
 
-export function normalizePriorityLevel(raw: unknown): PriorityLevel {
-  if (!raw) return "none";
-  const str = String(raw).trim().toLowerCase();
+export function normalizePriorityLevel(raw: unknown): DiscussionPriorityLevel {
+  if (raw === null || raw === undefined || raw === "") return 9;
+  if (typeof raw === "number") {
+    if (raw === 1 || raw === 2 || raw === 3 || raw === 4 || raw === 9) return raw;
+    return 9;
+  }
+  const str = String(raw).trim().toUpperCase();
   if (
-    str === "low" ||
-    str.includes("not urgent") ||
-    str.includes("pas d'urgence") ||
-    str.includes("standard") ||
-    str.includes("faible") ||
-    str.includes("basse")
+    str === "1" ||
+    str === "P1" ||
+    str.startsWith("P1 ") ||
+    str.startsWith("P1:") ||
+    str.startsWith("P1·")
   ) {
-    return "low";
+    return 1;
   }
   if (
-    str === "medium" ||
-    str === "moderate" ||
-    str.includes("semi-urgent") ||
-    str.includes("semi urgent") ||
-    str.includes("soon as possible") ||
-    str.includes("modérée") ||
-    str.includes("moyen")
+    str === "2" ||
+    str === "P2" ||
+    str.startsWith("P2 ") ||
+    str.startsWith("P2:") ||
+    str.startsWith("P2·")
   ) {
-    return "medium";
+    return 2;
   }
   if (
-    str === "high" ||
-    str === "urgent" ||
-    str.includes("high-priority") ||
-    str.includes("urgent") ||
-    str.includes("haute") ||
-    str.includes("quickly")
+    str === "3" ||
+    str === "P3" ||
+    str.startsWith("P3 ") ||
+    str.startsWith("P3:") ||
+    str.startsWith("P3·")
   ) {
-    return "high";
+    return 3;
   }
-  return "none";
+  if (
+    str === "4" ||
+    str === "P4" ||
+    str.startsWith("P4 ") ||
+    str.startsWith("P4:") ||
+    str.startsWith("P4·")
+  ) {
+    return 4;
+  }
+  if (str === "9" || str === "NOT_ASSESSED" || str === "NON ÉVALUÉE" || str === "NOT ASSESSED") {
+    return 9;
+  }
+  return 9;
 }
 
-export function priorityRank(level: PriorityLevel): number {
+export function discussionPriorityCode(level: DiscussionPriorityLevel): DiscussionPriorityCode {
   switch (level) {
-    case "high":
-      return 1;
-    case "medium":
-      return 2;
-    case "low":
-      return 3;
+    case 1:
+      return "P1";
+    case 2:
+      return "P2";
+    case 3:
+      return "P3";
+    case 4:
+      return "P4";
     default:
+      return "NOT_ASSESSED";
+  }
+}
+
+export function priorityRank(level: DiscussionPriorityLevel): number {
+  switch (level) {
+    case 1:
+      return 1;
+    case 2:
+      return 2;
+    case 9:
+      return 3;
+    case 3:
       return 4;
+    case 4:
+      return 5;
+    default:
+      return 3;
   }
 }
 
 export function derivePriorityBadgeInfo(
-  level: PriorityLevel,
+  level: DiscussionPriorityLevel,
   lang: Language = "fr",
   short = false,
   reasonInput?: {
-    urgency_reason?: string | null;
-    urgency_reasons?: string[];
+    priority_reason?: string | null;
+    priority_reasons?: string[];
   },
 ): {
-  level: PriorityLevel;
+  level: DiscussionPriorityLevel;
+  code: DiscussionPriorityCode;
   icon: string;
   badgeClass: string;
   label: string;
   reason: string | null;
   reasons: string[];
 } {
-  const key = short ? `priority.${level}.short` : `priority.${level}`;
-  const rawReasons = Array.isArray(reasonInput?.urgency_reasons)
-    ? reasonInput.urgency_reasons.map((r) => String(r).trim()).filter(Boolean)
+  const code = discussionPriorityCode(level);
+  const key = short ? `priority.${code}.short` : `priority.${code}`;
+  const rawReasons = Array.isArray(reasonInput?.priority_reasons)
+    ? reasonInput.priority_reasons.map((r) => String(r).trim()).filter(Boolean)
     : [];
-  const rawSingle = reasonInput?.urgency_reason ? String(reasonInput.urgency_reason).trim() : null;
+  const rawSingle = reasonInput?.priority_reason
+    ? String(reasonInput.priority_reason).trim()
+    : null;
   const reasons = rawReasons.length > 0 ? rawReasons : rawSingle ? [rawSingle] : [];
   const reason = rawSingle || (reasons.length > 0 ? reasons.join("\n\n") : null);
 
   switch (level) {
-    case "high":
+    case 1:
       return {
         level,
+        code,
         icon: "ic-priority-high",
         badgeClass: "ds-badge--urgency-high",
         label: t(key, lang),
         reason,
         reasons,
       };
-    case "medium":
+    case 2:
       return {
         level,
+        code,
         icon: "ic-priority-medium",
         badgeClass: "ds-badge--urgency-medium",
         label: t(key, lang),
         reason,
         reasons,
       };
-    case "low":
+    case 3:
       return {
         level,
+        code,
         icon: "ic-priority-low",
-        badgeClass: "ds-badge--urgency-low",
+        badgeClass: "ds-badge--info",
+        label: t(key, lang),
+        reason,
+        reasons,
+      };
+    case 4:
+      return {
+        level,
+        code,
+        icon: "ic-info",
+        badgeClass: "ds-badge--neutral",
         label: t(key, lang),
         reason,
         reasons,
       };
     default:
       return {
-        level: "none",
+        level: 9,
+        code: "NOT_ASSESSED",
         icon: "ic-priority-none",
         badgeClass: "ds-badge--urgency-none",
         label: t(key, lang),
@@ -288,7 +338,8 @@ export function deriveCompletenessInfo(
 
 export function computeWorklistKpis(cards: MdtFormCard[]): WorklistKpis {
   let structuredCount = 0;
-  let highPriorityCount = 0;
+  let p1Count = 0;
+  let notAssessedCount = 0;
   let incompleteCount = 0;
   let adaptationSuggestedCount = 0;
 
@@ -300,8 +351,11 @@ export function computeWorklistKpis(cards: MdtFormCard[]): WorklistKpis {
     if (isAiCompleted) {
       structuredCount += 1;
     }
-    if (card.priorityLevel === "high") {
-      highPriorityCount += 1;
+    if (card.priorityLevel === 1) {
+      p1Count += 1;
+    }
+    if (card.priorityLevel === 9) {
+      notAssessedCount += 1;
     }
     if (!isAiCompleted || !card.isComplete) {
       incompleteCount += 1;
@@ -313,7 +367,8 @@ export function computeWorklistKpis(cards: MdtFormCard[]): WorklistKpis {
 
   return {
     structuredCount,
-    highPriorityCount,
+    p1Count,
+    notAssessedCount,
     incompleteCount,
     adaptationSuggestedCount,
   };
@@ -341,7 +396,7 @@ export function filterAndSortCards(
     if (completeness === "complete" && !isCardComplete) return false;
     if (completeness === "partial" && card.completenessStatus !== "partial") return false;
     if (completeness === "incomplete" && isCardComplete) return false;
-    if (priority !== "all" && card.priorityLevel !== priority) return false;
+    if (priority !== "all" && card.priorityLevel !== normalizePriorityLevel(priority)) return false;
     if (orientation === "adapt" && card.careAdaptationSuggested !== true) return false;
     if (orientation === "standard" && card.careAdaptationSuggested !== false) return false;
     if (orientation === "pending" && card.careAdaptationSuggested !== null) return false;

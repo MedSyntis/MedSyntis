@@ -9,14 +9,18 @@ This skill ensures medical safety, compliance with French national digest-cancer
 
 ## Clinical Safety Principles
 
-### 1. Guideline Compliance (TNCD)
-Clinical decisions and scientific evidence suggested by expert agents must align with the **Thésaurus National de Cancérologie Digestive (TNCD)**.
-- For pancreatic diseases: Ground all evidence on `TNCDPANCREAS.pdf`.
-- For esophageal diseases: Ground all evidence on `TNCDOESOPHAGE.pdf`.
-- For hepatocellular carcinoma: Ground all evidence on `TNCDCHC.pdf`.
+### 1. Guideline Compliance & Organ-Scoped TNCD Grounding
+Clinical proposals and scientific evidence suggested by the **6 Digestive Oncology practice-specialty agents** (`digestive surgeon expert`, `medical oncologist expert`, `radiation oncologist expert`, `radiologist expert`, `gastroenterologist expert`, `pathologist expert`) must align with the **Thésaurus National de Cancérologie Digestive (TNCD)** (`resolve_oncology_resources` in `src/domain/oncology/agents.py`):
+- **Oesophagus & GEJ (`PrimaryOrganEnum.oesophagus`)**: Ground exclusively on `TNCDOESOPHAGE.pdf` (Chapter 1).
+- **Stomach (`PrimaryOrganEnum.stomach`)**: Ground exclusively on `TNCDESTOMAC.pdf` (Chapter 2).
+- **Colon (`PrimaryOrganEnum.colon`)**: Ground exclusively on `TNCDCOLON.pdf` (Chapter 3 — localized) and `TNCDCOLORECTALMETA.pdf` (Chapter 4 — metastatic).
+- **Rectum (`PrimaryOrganEnum.rectum`)**: Ground exclusively on `TNCDRECTUM.pdf` (Chapter 5 — rectum) and `TNCDCOLORECTALMETA.pdf` (Chapter 4 — metastatic).
+- **Liver / HCC (`PrimaryOrganEnum.liver`)**: Ground exclusively on `TNCDCHC.pdf` (Chapter 7).
+- **Biliary Tract (`PrimaryOrganEnum.intra_hepatic_bile_duct`, `PrimaryOrganEnum.extra_hepatic_bile_duct`)**: Ground exclusively on `TNCDVOIESBILIAIRES.pdf` (Chapter 8).
+- **Pancreas (`PrimaryOrganEnum.pancreas`)**: Ground exclusively on `TNCDPANCREAS.pdf` (Chapter 9).
+- **Unknown or Unrecognized Primary Organ (`PrimaryOrganEnum.unknown` / `None`)**: `DEFAULT_TNCD_RESOURCES` is empty (`()`), attaching **zero** TNCD PDFs (`ressources=[]`) so `search_on_ressources` is physically detached and `Reference` citations are never fabricated from another organ's chapter.
 
 ### 2. Patient Record Grounding
-- **Strict Adherence**: The patient record (MTD) is the absolute source of truth.
-- **No Interpretation**: Administrative and initial diagnostic extractions must not assume missing details or infer unlisted clinical symptoms.
-- **Missing Data Flagging**: If standard clinical indicators (e.g. TNM staging, WHO performance status, histological type) are missing, the agent must systematically record them under `what_missing`.
-- **Expert Relevance**: Expert agents must explicitly verify if the patient's case belongs to their cancer specialty (e.g. `expert_relevant: True`).
+- **Strict Adherence**: The `PatientMDTForm` record is the absolute source of truth.
+- **No Interpretation**: Administrative and diagnostic extractions must not assume missing details or infer unlisted clinical symptoms.
+- **Missing Data**: Missing staging/biomarkers are recorded under `what_missing` in `MTDCompleted`. Legacy organ-agent records are migrated directly via `make migrate`.

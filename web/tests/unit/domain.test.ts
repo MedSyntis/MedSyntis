@@ -63,19 +63,23 @@ import {
 } from "../../src/ui/views/html.js";
 
 describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
-  it("normalizes priority strings and ranks high > medium > low > none", () => {
-    expect(normalizePriorityLevel("high")).toBe("high");
-    expect(normalizePriorityLevel("Urgent, a treatment is needed quickly")).toBe("high");
-    expect(normalizePriorityLevel("Patient must be treated urgently")).toBe("high");
-    expect(normalizePriorityLevel("medium")).toBe("medium");
-    expect(normalizePriorityLevel("Patient must be treated as soon as possible")).toBe("medium");
-    expect(normalizePriorityLevel("low")).toBe("low");
-    expect(normalizePriorityLevel("Patient is not urgent")).toBe("low");
-    expect(normalizePriorityLevel(null)).toBe("none");
+  it("normalizes P1-P4/NOT_ASSESSED priorities and ranks P1 > P2 > NOT_ASSESSED > P3 > P4", () => {
+    expect(normalizePriorityLevel(1)).toBe(1);
+    expect(normalizePriorityLevel("P1")).toBe(1);
+    expect(normalizePriorityLevel(2)).toBe(2);
+    expect(normalizePriorityLevel("P2")).toBe(2);
+    expect(normalizePriorityLevel(3)).toBe(3);
+    expect(normalizePriorityLevel("P3")).toBe(3);
+    expect(normalizePriorityLevel(4)).toBe(4);
+    expect(normalizePriorityLevel("P4")).toBe(4);
+    expect(normalizePriorityLevel(9)).toBe(9);
+    expect(normalizePriorityLevel("NOT_ASSESSED")).toBe(9);
+    expect(normalizePriorityLevel(null)).toBe(9);
 
-    expect(priorityRank("high")).toBeLessThan(priorityRank("medium"));
-    expect(priorityRank("medium")).toBeLessThan(priorityRank("low"));
-    expect(priorityRank("low")).toBeLessThan(priorityRank("none"));
+    expect(priorityRank(1)).toBeLessThan(priorityRank(2));
+    expect(priorityRank(2)).toBeLessThan(priorityRank(9));
+    expect(priorityRank(9)).toBeLessThan(priorityRank(3));
+    expect(priorityRank(3)).toBeLessThan(priorityRank(4));
   });
 
   it("derives non-prescriptive orientation badge info (ML-1, ML-2)", () => {
@@ -114,9 +118,9 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(pending.icon).toBe("ic-clock");
     expect(pending.label).toBe("À discuter en RCP");
 
-    const prioWithReasons = derivePriorityBadgeInfo("high", "fr", false, {
-      urgency_reason: "**Pancréas** : Progression sous FOLFIRINOX",
-      urgency_reasons: ["**Pancréas** : Progression sous FOLFIRINOX"],
+    const prioWithReasons = derivePriorityBadgeInfo(1, "fr", false, {
+      priority_reason: "**Pancréas** : Progression sous FOLFIRINOX",
+      priority_reasons: ["**Pancréas** : Progression sous FOLFIRINOX"],
     });
     expect(prioWithReasons.reason).toBe("**Pancréas** : Progression sous FOLFIRINOX");
     expect(prioWithReasons.reasons).toEqual(["**Pancréas** : Progression sous FOLFIRINOX"]);
@@ -227,7 +231,8 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
         lastName: "EXEMPLE",
         domain: "sma",
         mdtDate: "2026-11-12",
-        priorityLevel: "low",
+        priorityLevel: 3,
+        priorityCode: "P3",
         isComplete: true,
         missingCount: 0,
         missingItems: [],
@@ -249,13 +254,14 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
         lastName: "FICTIVE",
         domain: "oncology",
         mdtDate: "2026-11-06",
-        priorityLevel: "high",
+        priorityLevel: 1,
+        priorityCode: "P1",
         isComplete: false,
         missingCount: 2,
         missingItems: ["TEP-TDM", "CR anatomopathologique"],
         careAdaptationSuggested: true,
         proposedCareType: "Chimiothérapie 2e ligne",
-        specialties: ["pancreas expert", "Radiotherapy"],
+        specialties: ["digestive surgeon expert", "radiation oncologist expert"],
         processingStatus: "COMPLETED",
         processingStep: null,
         processingProgressPct: 100,
@@ -267,7 +273,8 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     const kpis = computeWorklistKpis(cards);
     expect(kpis).toEqual({
       structuredCount: 2,
-      highPriorityCount: 1,
+      p1Count: 1,
+      notAssessedCount: 0,
       incompleteCount: 1,
       adaptationSuggestedCount: 1,
     });
@@ -367,9 +374,30 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(gen.icon).toBe("ic-dna");
     expect(gen.title).toContain("Diagnostic génétique");
 
-    const agent = getAgentPresentation("pancreas expert", "fr");
-    expect(agent.icon).toBe("ic-stethoscope");
-    expect(agent.label).toBe("Oncologie digestive — Pancréas");
+    const oncologySpecialties = [
+      "digestive surgeon expert",
+      "medical oncologist expert",
+      "radiation oncologist expert",
+      "radiologist expert",
+      "gastroenterologist expert",
+      "pathologist expert",
+    ];
+    const seenIcons = new Set<string>();
+    for (const spec of oncologySpecialties) {
+      const frPres = getAgentPresentation(spec, "fr");
+      const enPres = getAgentPresentation(spec, "en");
+      expect(frPres.shortLabel.length).toBeLessThanOrEqual(24);
+      expect(enPres.shortLabel.length).toBeLessThanOrEqual(24);
+      expect(frPres.shortLabel.toLowerCase()).not.toContain("expert");
+      expect(enPres.shortLabel.toLowerCase()).not.toContain("expert");
+      seenIcons.add(frPres.icon);
+    }
+    expect(seenIcons.size).toBe(6);
+
+    const agent = getAgentPresentation("digestive surgeon expert", "fr");
+    expect(agent.icon).toBe("ic-scalpel");
+    expect(agent.label).toBe("Chirurgie digestive");
+    expect(agent.shortLabel).toBe("Chirurgie digestive");
 
     const adminAgent = getAgentPresentation("Administrative", "fr");
     expect(adminAgent.icon).toBe("ic-folder");
@@ -662,14 +690,14 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(getSectionPresentation("CareOrientationProposal", "oncology", "fr").editable).toBe(true);
     const careCoerced = coerceSectionUpdatePayload("CareOrientationProposal", {
       care_adaptation_suggested: "true",
-      suggested_priority: "High-priority pre-MDT review suggested",
+      suggested_priority: 1,
       priority_reason: "Progression ganglionnaire rapide",
       proposed_care_type: "Chimiothérapie néoadjuvante FOLFIRINOX",
       orientation_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
     });
     expect(careCoerced).toEqual({
       care_adaptation_suggested: true,
-      suggested_priority: "high",
+      suggested_priority: 1,
       priority_reason: "Progression ganglionnaire rapide",
       proposed_care_type: "Chimiothérapie néoadjuvante FOLFIRINOX",
       orientation_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
@@ -695,12 +723,7 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
               properties: {
                 care_adaptation_suggested: { type: "boolean" },
                 suggested_priority: {
-                  enum: [
-                    "High-priority pre-MDT review suggested",
-                    "Semi-urgent pre-MDT review suggested",
-                    "Patient is not urgent",
-                    "no answer",
-                  ],
+                  enum: [1, 2, 3, 4, 9],
                 },
                 proposed_care_type: { anyOf: [{ type: "string" }, { type: "null" }] },
                 clinical_rationale: { type: "string" },
@@ -711,35 +734,15 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       }),
     ).toEqual({
       care_adaptation_suggested: true,
-      suggested_priority: "High-priority pre-MDT review suggested",
+      suggested_priority: 1,
       proposed_care_type: "Chimiothérapie néoadjuvante FOLFIRINOX",
       clinical_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
     });
 
-    // Priority select aliases & CareOrientationProposal priority branches
-    const priorityOptions = [
-      { value: "high", labelFr: "Priorité haute", labelEn: "High" },
-      { value: "medium", labelFr: "Priorité modérée", labelEn: "Medium" },
-      { value: "low", labelFr: "Priorité standard", labelEn: "Low" },
-      { value: "none", labelFr: "Non renseigné", labelEn: "None" },
-    ];
-    expect(coerceSelectValue("Patient must be treated urgently", priorityOptions, "none")).toBe(
-      "high",
-    );
-    expect(coerceSelectValue("High-priority pre-MDT review", priorityOptions, "none")).toBe("high");
-    expect(coerceSelectValue("urgent case", priorityOptions, "none")).toBe("high");
-    expect(coerceSelectValue("semi-urgent review", priorityOptions, "none")).toBe("medium");
-    expect(coerceSelectValue("as soon as possible", priorityOptions, "none")).toBe("medium");
-    expect(coerceSelectValue("priorité modérée", priorityOptions, "none")).toBe("medium");
-    expect(coerceSelectValue("Patient is not urgent", priorityOptions, "none")).toBe("low");
-    expect(coerceSelectValue("standard", priorityOptions, "none")).toBe("low");
-    expect(coerceSelectValue("not_given", priorityOptions, "high")).toBe("none");
-    expect(coerceSelectValue("no answer", priorityOptions, "high")).toBe("none");
-
     const careMedium = coerceSectionUpdatePayload(
       "CareOrientationProposal",
       {
-        suggested_priority: "semi-urgent",
+        suggested_priority: "P2",
         priority_reason: "Non renseigné",
         proposed_care_type: "Non renseigné",
         clinical_rationale: "Surveillance rapprochée",
@@ -748,7 +751,7 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     );
     expect(careMedium).toEqual({
       care_adaptation_suggested: true,
-      suggested_priority: "medium",
+      suggested_priority: 2,
       priority_reason: null,
       proposed_care_type: null,
       orientation_rationale: "Surveillance rapprochée",
@@ -759,7 +762,7 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       {},
       {
         care_adaptation_suggested: false,
-        suggested_priority: "Priorité standard",
+        suggested_priority: 3,
         priority_reason: "Stable",
         proposed_care_type: "Suivi",
         clinical_rationale: "Rationnel existant",
@@ -767,7 +770,7 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     );
     expect(careLowFromExisting).toEqual({
       care_adaptation_suggested: false,
-      suggested_priority: "low",
+      suggested_priority: 3,
       priority_reason: "Stable",
       proposed_care_type: "Suivi",
       orientation_rationale: "Rationnel existant",
@@ -777,7 +780,7 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       suggested_priority: "unknown",
       orientation_rationale: "Non renseigné",
     });
-    expect(careNone.suggested_priority).toBe("none");
+    expect(careNone.suggested_priority).toBe(9);
     expect(careNone.orientation_rationale).toBeNull();
 
     const preMdtSchema = {
@@ -797,12 +800,7 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
             properties: {
               care_adaptation_suggested: { type: "boolean" },
               suggested_priority: {
-                enum: [
-                  "High-priority pre-MDT review suggested",
-                  "Semi-urgent pre-MDT review suggested",
-                  "Patient is not urgent",
-                  "no answer",
-                ],
+                enum: [1, 2, 3, 4, 9],
               },
               priority_reason: { type: "string" },
               proposed_care_type: { type: "string" },
@@ -816,7 +814,7 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(
       buildStrictBackendSectionPayload("CareOrientationProposal", careMedium, preMdtSchema),
     ).toMatchObject({
-      suggested_priority: "Semi-urgent pre-MDT review suggested",
+      suggested_priority: 2,
     });
     expect(
       buildStrictBackendSectionPayload(
@@ -825,15 +823,15 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
         preMdtSchema,
       ),
     ).toMatchObject({
-      suggested_priority: "Patient is not urgent",
+      suggested_priority: 3,
     });
     expect(
       buildStrictBackendSectionPayload("CareOrientationProposal", careNone, preMdtSchema),
     ).toMatchObject({
-      suggested_priority: "no answer",
+      suggested_priority: 9,
     });
 
-    const legacyUrgentSchema = {
+    const pydanticV2DefsSchema = {
       domain: "oncology" as const,
       enums: {},
       sections: [
@@ -847,36 +845,51 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
           editable: true,
           json_schema: {
             type: "object",
-            properties: {
-              suggested_priority: {
-                enum: [
-                  "Patient must be treated urgently",
-                  "Patient must be treated as soon as possible",
-                  "Patient is not urgent",
-                  "no answer",
-                ],
+            $defs: {
+              DiscussionPriority: {
+                type: "integer",
+                enum: [1, 2, 3, 4, 9],
               },
+            },
+            properties: {
+              suggested_priority: { $ref: "#/$defs/DiscussionPriority" },
+              clinical_rationale: { type: "string", format: "markdown" },
             },
           },
         },
       ],
     };
     expect(
-      buildStrictBackendSectionPayload("CareOrientationProposal", careCoerced, legacyUrgentSchema),
-    ).toEqual({ suggested_priority: "Patient must be treated urgently" });
+      buildStrictBackendSectionPayload(
+        "CareOrientationProposal",
+        careCoerced,
+        pydanticV2DefsSchema,
+      ),
+    ).toMatchObject({
+      suggested_priority: 1,
+      clinical_rationale: "Consensus oncologie et chirurgie hépatobiliaire.",
+    });
     expect(
-      buildStrictBackendSectionPayload("CareOrientationProposal", careMedium, legacyUrgentSchema),
-    ).toEqual({ suggested_priority: "Patient must be treated as soon as possible" });
+      buildStrictBackendSectionPayload("CareOrientationProposal", careMedium, pydanticV2DefsSchema),
+    ).toMatchObject({ suggested_priority: 2 });
     expect(
       buildStrictBackendSectionPayload(
         "CareOrientationProposal",
         careLowFromExisting,
-        legacyUrgentSchema,
+        pydanticV2DefsSchema,
       ),
-    ).toEqual({ suggested_priority: "Patient is not urgent" });
+    ).toMatchObject({ suggested_priority: 3 });
     expect(
-      buildStrictBackendSectionPayload("CareOrientationProposal", careNone, legacyUrgentSchema),
-    ).toEqual({ suggested_priority: "no answer" });
+      buildStrictBackendSectionPayload("CareOrientationProposal", careNone, pydanticV2DefsSchema),
+    ).toMatchObject({ suggested_priority: 9 });
+
+    const liveFieldSchemas = getSectionFieldSchemas(
+      "CareOrientationProposal",
+      pydanticV2DefsSchema,
+    );
+    expect(liveFieldSchemas.find((f) => f.key === "clinical_rationale")?.inputType).toBe(
+      "textarea",
+    );
 
     // Deleting all dynamic radiology/chemotherapy rows saves [] instead of resurrecting stale rows
     const clearedExams = coerceSectionUpdatePayload(

@@ -65,7 +65,7 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             "ExpertAnswer": {
                 "pancreas": {
                     "expert_relevant": True,
-                    "patient_priority": "Patient must be treated as soon as possible",
+                    "discussion_priority": 2,
                 }
             },
         }
@@ -80,7 +80,7 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             "ExpertAnswer": {
                 "pancreas": {
                     "expert_relevant": True,
-                    "patient_priority": "Patient must be treated urgently",
+                    "discussion_priority": 1,
                 }
             },
         }
@@ -96,8 +96,8 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         self.assertEqual(selected["file"], "rcp_2026_03.pdf")
 
         card = PatientMDTForm.extract_card_metrics(selected)
-        self.assertEqual(card["urgency"], "Urgent")
-        self.assertEqual(card["urgency_score"], 2)
+        self.assertEqual(card["discussion_priority_code"], "P1")
+        self.assertEqual(card["discussion_priority"], 1)
 
     def test_process_patient_association_manual_overrides_identity_keeps_date_rcp(
         self,
@@ -194,7 +194,7 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             "ExpertAnswer": {
                 "pancreas": {
                     "expert_relevant": True,
-                    "patient_priority": "Patient must be treated urgently",
+                    "discussion_priority": 1,
                 }
             },
         }

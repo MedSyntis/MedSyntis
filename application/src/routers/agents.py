@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from src.application.config import AppConfig
+from src.application.ressources import Ressources
 from src.domain.agents import get_domain_agents
 from src.models.agents import AgentDetailResponse
 from src.routers.dependencies import DomainConfigDep
@@ -10,7 +11,12 @@ from src.routers.dependencies import DomainConfigDep
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
-def _extract_agent_metadata(name: str, a_cls: type, config: AppConfig) -> dict:
+def _extract_agent_metadata(
+    name: str,
+    a_cls: type,
+    config: AppConfig,
+    available_files: list[str] | None = None,
+) -> dict:
     system_prompt = (
         a_cls.get_system_prompt()
         if hasattr(a_cls, "get_system_prompt")
@@ -24,7 +30,11 @@ def _extract_agent_metadata(name: str, a_cls: type, config: AppConfig) -> dict:
             or [m.strip() for m in config.llm.models.split(",") if m.strip()]
         )
     )
-    ressources = getattr(a_cls, "ressources", [])
+    ressources = (
+        a_cls.get_catalog_resources(available_files)
+        if hasattr(a_cls, "get_catalog_resources")
+        else list(getattr(a_cls, "ressources", []))
+    )
 
     return {
         "name": name,
@@ -38,8 +48,9 @@ def _extract_agent_metadata(name: str, a_cls: type, config: AppConfig) -> dict:
 def list_agents(config: DomainConfigDep):
     """List all configured specialist agents and their metadata for the requested medical domain."""
     agents = get_domain_agents(config.domain)
+    available_files = Ressources.list_from_config(config)
     return [
-        _extract_agent_metadata(name, a_cls, config)
+        _extract_agent_metadata(name, a_cls, config, available_files)
         for name, a_cls in agents.list.items()
     ]
 
@@ -57,4 +68,5 @@ def get_agent_detail(agent_name: str, config: DomainConfigDep):
         )
 
     a_cls = available_agents[agent_name]
-    return _extract_agent_metadata(agent_name, a_cls, config)
+    available_files = Ressources.list_from_config(config)
+    return _extract_agent_metadata(agent_name, a_cls, config, available_files)

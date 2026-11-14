@@ -8,7 +8,7 @@ import type {
 import type { QueueDashboardView } from "../application/use-cases/queue-admin.use-case.js";
 import type { WorklistViewResult } from "../application/use-cases/worklist.use-case.js";
 import { getAgentPresentation, getDomainQuickPrompts } from "../domain/catalog.js";
-import { t, tr } from "../domain/i18n.js";
+import { t, tr, translateValue } from "../domain/i18n.js";
 import {
   deriveCompletenessInfo,
   deriveOrientationInfo,
@@ -663,7 +663,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
 
 function renderPriorityBadgeHtml(
   prio: {
-    level: string;
+    level: number | string;
+    code?: string;
     icon: string;
     badgeClass: string;
     label: string;
@@ -681,7 +682,7 @@ function renderPriorityBadgeHtml(
 ): string {
   const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
   const jumpAttrs = options?.jumpSection
-    ? ` role="button" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
+    ? ` role="button" aria-label="${esc(prio.label)}" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
     : "";
   const interactiveCls = options?.jumpSection ? " ds-badge--interactive" : "";
   const rawReasons =
@@ -718,7 +719,7 @@ function renderCompletenessBadgeHtml(
 ): string {
   const testIdAttr = options?.testId ? ` data-testid="${esc(options.testId)}"` : "";
   const jumpAttrs = options?.jumpSection
-    ? ` role="button" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
+    ? ` role="button" aria-label="${esc(compl.label)}" data-jump-section="${esc(options.jumpSection)}" data-jump-tab="${esc(options.jumpTab ?? "opinions")}"`
     : "";
   const interactiveCls = options?.jumpSection ? " ds-badge--interactive" : "";
   const hasItems = compl.missingItems.length > 0;
@@ -847,7 +848,15 @@ export function renderWorklistPage(
                   </span>`;
 
             const prioSortVal =
-              c.priorityLevel === "high" ? "1" : c.priorityLevel === "medium" ? "2" : "3";
+              c.priorityLevel === 1
+                ? "1"
+                : c.priorityLevel === 2
+                  ? "2"
+                  : c.priorityLevel === 9
+                    ? "3"
+                    : c.priorityLevel === 3
+                      ? "4"
+                      : "5";
             const complSortVal =
               compl.status === "incomplete"
                 ? String(100 - Math.min(99, c.missingCount))
@@ -858,7 +867,7 @@ export function renderWorklistPage(
                     : "400";
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
             const rowCls = [
-              c.priorityLevel === "high" ? "is-urgent" : "",
+              c.priorityLevel === 1 ? "is-urgent" : "",
               proc.isProcessing ? "is-processing" : "",
             ]
               .filter(Boolean)
@@ -867,8 +876,8 @@ export function renderWorklistPage(
               ? ` data-processing-active="true" data-processing-file="${esc(c.file)}"`
               : "";
 
-            return `<tr class="${rowCls}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
-              <td data-label="Priorité" data-sort-value="${prioSortVal}">
+            return `<tr class="${rowCls}" data-href="${dossierHref}" title="${esc(lang === "fr" ? `Cliquer pour ouvrir le dossier de ${c.patientName}` : `Click to open ${c.patientName}'s record`)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
+              <td data-label="${esc(lang === "fr" ? "Priorité" : "Priority")}" data-sort-value="${prioSortVal}">
                 ${renderPriorityBadgeHtml(prio, {
                   reason: c.priorityReason,
                   reasons: c.priorityReasons,
@@ -1109,7 +1118,7 @@ export function renderWorklistPage(
               <tr>
                 ${(
                   [
-                    { key: "priority", label: "Priorité", col: 0 },
+                    { key: "priority", label: lang === "fr" ? "Priorité" : "Priority", col: 0 },
                     { key: "patient", label: "Patient", col: 1 },
                     { key: "completeness", label: "Complétude", col: 2 },
                     {
@@ -1171,27 +1180,27 @@ export function renderWorklistPage(
       </div>
     </div>
 
-    <!-- 4 M3 KPI Tiles -->
-    <div class="ds-kpi-grid">
+    <!-- 5 Compact M3 KPI Tiles -->
+    <div class="ds-kpi-grid ds-kpi-grid--compact">
       <a class="ds-kpi ds-kpi--success" href="/worklist?domain=${domainParam}" data-testid="kpi-structured">
-        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-folder", "ds-icon--md")}</span> ${esc(t("kpi.structured", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-folder", "ds-icon--sm")}</span> ${esc(t("kpi.structured", lang))}</span>
         <span class="ds-kpi__value">${kpis.structuredCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.structured.meta", lang))}</span>
       </a>
-      <a class="ds-kpi ds-kpi--danger" href="/worklist?domain=${domainParam}&priority=high" data-testid="kpi-priority-high">
-        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-priority-high", "ds-icon--md")}</span> ${esc(t("kpi.priorityHigh", lang))}</span>
-        <span class="ds-kpi__value">${kpis.highPriorityCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.priorityHigh.meta", lang))}</span>
+      <a class="ds-kpi ds-kpi--danger" href="/worklist?domain=${domainParam}&priority=1" data-testid="kpi-priority-p1">
+        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-priority-high", "ds-icon--sm")}</span> ${esc(t("kpi.priorityP1", lang))}</span>
+        <span class="ds-kpi__value">${kpis.p1Count}</span>
+      </a>
+      <a class="ds-kpi" href="/worklist?domain=${domainParam}&priority=9" data-testid="kpi-priority-not-assessed">
+        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-priority-none", "ds-icon--sm")}</span> ${esc(t("kpi.priorityNotAssessed", lang))}</span>
+        <span class="ds-kpi__value">${kpis.notAssessedCount}</span>
       </a>
       <a class="ds-kpi ds-kpi--warning" href="/worklist?domain=${domainParam}&completeness=incomplete" data-testid="kpi-completeness">
-        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--warning" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--md")}</span> ${esc(t("kpi.completeness", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--warning" aria-hidden="true">${iconSvg("ic-warning", "ds-icon--sm")}</span> ${esc(t("kpi.completeness", lang))}</span>
         <span class="ds-kpi__value">${kpis.incompleteCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.completeness.meta", lang))}</span>
       </a>
       <a class="ds-kpi" href="/worklist?domain=${domainParam}&orientation=adapt" data-testid="kpi-orientation">
-        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-compass", "ds-icon--md")}</span> ${esc(t("kpi.orientation", lang))}</span>
+        <span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-compass", "ds-icon--sm")}</span> ${esc(t("kpi.orientation", lang))}</span>
         <span class="ds-kpi__value">${kpis.adaptationSuggestedCount}</span>
-        <span class="ds-kpi__meta">${esc(t("kpi.orientation.meta", lang))}</span>
       </a>
     </div>
 
@@ -1220,12 +1229,14 @@ export function renderWorklistPage(
           </select>
         </div>
         <div class="ds-field">
-          <label class="ds-label" for="f-prio">Priorité</label>
+          <label class="ds-label" for="f-prio">${lang === "fr" ? "Priorité" : "Priority"}</label>
           <select id="f-prio" name="priority" class="ds-select" data-autosubmit="true" data-testid="select-priority">
-            <option value="all" ${(filter.priority ?? "all") === "all" ? "selected" : ""}>Toutes priorités</option>
-            <option value="high" ${filter.priority === "high" ? "selected" : ""}>Priorité haute</option>
-            <option value="medium" ${filter.priority === "medium" ? "selected" : ""}>Priorité modérée</option>
-            <option value="low" ${filter.priority === "low" ? "selected" : ""}>Priorité standard</option>
+            <option value="all" ${(filter.priority ?? "all") === "all" ? "selected" : ""}>${lang === "fr" ? "Toutes priorités" : "All priorities"}</option>
+            <option value="1" ${filter.priority === "1" || filter.priority === "P1" ? "selected" : ""}>${esc(t("priority.P1", lang))}</option>
+            <option value="2" ${filter.priority === "2" || filter.priority === "P2" ? "selected" : ""}>${esc(t("priority.P2", lang))}</option>
+            <option value="9" ${filter.priority === "9" || filter.priority === "NOT_ASSESSED" ? "selected" : ""}>${esc(t("priority.NOT_ASSESSED", lang))}</option>
+            <option value="3" ${filter.priority === "3" || filter.priority === "P3" ? "selected" : ""}>${esc(t("priority.P3", lang))}</option>
+            <option value="4" ${filter.priority === "4" || filter.priority === "P4" ? "selected" : ""}>${esc(t("priority.P4", lang))}</option>
           </select>
         </div>
         <div class="ds-field">
@@ -1870,15 +1881,15 @@ export function renderDossierPage(
   const timelineHtml = `${dossier.timeline
     .map((step) => {
       const markerCls =
-        step.priorityLevel === "high" || step.completenessStatus === "incomplete"
+        step.priorityLevel === 1 || step.completenessStatus === "incomplete"
           ? "ds-timeline__marker--high"
-          : step.priorityLevel === "medium" || step.completenessStatus === "partial"
+          : step.priorityLevel === 2 || step.completenessStatus === "partial"
             ? "ds-timeline__marker--medium"
             : "ds-timeline__marker--low";
       const markerIcon =
-        step.priorityLevel === "high"
+        step.priorityLevel === 1
           ? "ic-priority-high"
-          : step.priorityLevel === "medium"
+          : step.priorityLevel === 2
             ? "ic-trend-up"
             : step.completenessStatus === "incomplete"
               ? "ic-error"
@@ -1888,9 +1899,9 @@ export function renderDossierPage(
                   ? "ic-clock"
                   : "ic-check";
       const stepTone =
-        step.priorityLevel === "high" || step.completenessStatus === "incomplete"
+        step.priorityLevel === 1 || step.completenessStatus === "incomplete"
           ? "red"
-          : step.priorityLevel === "medium" || step.completenessStatus === "partial"
+          : step.priorityLevel === 2 || step.completenessStatus === "partial"
             ? "orange"
             : step.completenessStatus === "pending"
               ? "neutral"
@@ -2816,6 +2827,40 @@ export function renderIngestPage(
   });
 }
 
+function getIndexingResourceSet(queueJobs: QueueJobItem[]): Set<string> {
+  return new Set(
+    queueJobs
+      .filter(
+        (j) =>
+          j.jobType === "RESOURCE_INDEX" &&
+          typeof j.filename === "string" &&
+          (j.status === "PENDING" || j.status === "RUNNING" || j.status === "PROCESSING"),
+      )
+      .map((j) => j.filename as string),
+  );
+}
+
+function renderResourceStatusBadge(isIndexed: boolean, isIndexing: boolean): string {
+  if (isIndexing) {
+    return `<span class="ds-badge ds-badge--info ds-badge--sm">${iconSvg("ic-refresh")} Indexation en cours</span>`;
+  }
+  return `<span class="ds-badge ${isIndexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">${iconSvg(isIndexed ? "ic-check-circle" : "ic-warning")} ${isIndexed ? "Indexé" : "À indexer"}</span>`;
+}
+
+function renderReindexButtonForm(
+  filename: string,
+  domainParam: string,
+  isIndexing: boolean,
+  includeTestId = false,
+): string {
+  const testIdAttr = includeTestId ? ` data-testid="btn_reindex_${esc(filename)}"` : "";
+  return `<form method="post" action="/guidelines/${encodeURIComponent(filename)}/reindex?domain=${domainParam}" style="display:inline-flex">
+    <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm"${testIdAttr}${isIndexing ? " disabled" : ""}>
+      ${iconSvg("ic-refresh")} ${isIndexing ? "Indexation en cours…" : "Ré-indexer"}
+    </button>
+  </form>`;
+}
+
 export function renderGuidelinesPage(
   overview: GuidelinesOverview,
   session: UserSession,
@@ -2928,21 +2973,18 @@ export function renderGuidelinesPage(
       <div class="ds-guidelines-preview">
         ${
           activeRes
-            ? `<div class="ds-card ds-guidelines-preview__card" data-pdf-pane>
+            ? (
+                () => {
+                  const indexingFiles = getIndexingResourceSet(queueJobs);
+                  const isActiveIndexing = indexingFiles.has(activeRes.filename);
+                  return `<div class="ds-card ds-guidelines-preview__card" data-pdf-pane>
                 <div class="ds-guidelines-preview__toolbar">
                   <div class="ds-cluster" style="gap:var(--ds-space-2)">
                     <span class="ds-label">${iconSvg("ic-file-pdf")} Aperçu : <code class="ds-mono">${esc(activeRes.filename)}</code></span>
-                    <span class="ds-badge ${activeRes.indexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">
-                      ${iconSvg(activeRes.indexed ? "ic-check-circle" : "ic-warning")}
-                      ${activeRes.indexed ? "Indexé" : "Non indexé"}
-                    </span>
+                    ${renderResourceStatusBadge(activeRes.indexed, isActiveIndexing)}
                   </div>
                   <div class="ds-cluster" style="gap:var(--ds-space-2)">
-                    <form method="post" action="/guidelines/${encodeURIComponent(activeRes.filename)}/reindex?domain=${domainParam}" style="display:inline-flex">
-                      <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_reindex_${esc(activeRes.filename)}">
-                        ${iconSvg("ic-refresh")} Ré-indexer
-                      </button>
-                    </form>
+                    ${renderReindexButtonForm(activeRes.filename, domainParam, isActiveIndexing, true)}
                     <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}" download="${esc(activeRes.filename)}">
                       ${iconSvg("ic-download")} Télécharger PDF
                     </a>
@@ -2960,7 +3002,9 @@ export function renderGuidelinesPage(
                   <iframe class="ds-pdf-frame" style="height:46rem" src="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Aperçu du référentiel ${esc(activeRes.filename)}"></iframe>
                   <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}" data-pdf-filename="${esc(activeRes.filename)}"></div>
                 </div>
-              </div>`
+              </div>`;
+                }
+              )()
             : `<div class="ds-empty"><span class="ds-empty__title">Aucun référentiel PDF sélectionné</span></div>`
         }
       </div>
@@ -3011,6 +3055,26 @@ export function renderAgentsPage(
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
   const resourceMap = new Map(resources.map((r) => [r.filename, r]));
+  const indexingFiles = getIndexingResourceSet(queueJobs);
+
+  const renderResourceListItem = (g: string) => {
+    const resDoc = resourceMap.get(g);
+    const isIndexed = resDoc ? resDoc.indexed : resources.length === 0;
+    const isIndexing = indexingFiles.has(g);
+    return `<li class="ds-file-list__item">
+      <div class="ds-file-list__title">
+        ${iconSvg("ic-book")}
+        <a class="ds-file-list__name" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}" title="${esc(g)}">${esc(g)}</a>
+      </div>
+      <div class="ds-file-list__actions">
+        ${renderResourceStatusBadge(isIndexed, isIndexing)}
+        <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">
+          ${iconSvg("ic-eye")} Consulter
+        </a>
+        ${renderReindexButtonForm(g, domainParam, isIndexing)}
+      </div>
+    </li>`;
+  };
 
   const renderSingleAgentCard = (a: AgentModuleInfo) => {
     const modelsHtml =
@@ -3023,33 +3087,48 @@ export function renderAgentsPage(
             .join("")
         : "";
 
-    const attachedResourcesHtml =
-      a.guidelines.length === 0
+    const isGroupedGuidelines = !Array.isArray(a.guidelines);
+    const groupedEntries = isGroupedGuidelines
+      ? Object.entries(a.guidelines as Record<string, string[]>)
+      : [];
+    const flatGuidelines = Array.isArray(a.guidelines)
+      ? a.guidelines
+      : Array.from(new Set(groupedEntries.flatMap(([, pdfs]) => pdfs)));
+
+    const attachedResourcesLabel = isGroupedGuidelines
+      ? `Référentiels TNCD sélectionnés automatiquement par organe primitif (${flatGuidelines.length} PDF · ${groupedEntries.length} localisations) :`
+      : `Référentiels du domaine rattachés automatiquement (${flatGuidelines.length}) :`;
+
+    const attachedResourcesHtml = isGroupedGuidelines
+      ? `<div class="ds-subcards" aria-label="Référentiels rattachés par organe" data-testid="agent-resources-${esc(a.name)}">
+          ${groupedEntries
+            .map(
+              ([
+                organ,
+                pdfs,
+              ]) => `<div class="ds-subcard" data-testid="agent-organ-resources-${esc(a.name)}-${esc(organ)}">
+                <div class="ds-subcard__header">
+                  <span class="ds-subcard__title">${esc(translateValue(organ, lang))}</span>
+                  <span class="ds-badge ds-badge--neutral ds-badge--sm">${pdfs.length} PDF</span>
+                </div>
+                <ul class="ds-file-list">
+                  ${pdfs.map(renderResourceListItem).join("")}
+                </ul>
+              </div>`,
+            )
+            .join("")}
+        </div>`
+      : flatGuidelines.length === 0
         ? `<p class="ds-small ds-muted">Aucune ressource PDF rattachée (agent transversal d'extraction ou de coordination).</p>`
         : `<ul class="ds-file-list" aria-label="Ressources documentaires rattachées" data-testid="agent-resources-${esc(a.name)}">
-            ${a.guidelines
-              .map((g) => {
-                const resDoc = resourceMap.get(g);
-                const isIndexed = resDoc ? resDoc.indexed : true;
-                return `<li class="ds-file-list__item">
-                  ${iconSvg("ic-book")}
-                  <a class="ds-file-list__name" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">${esc(g)}</a>
-                  <span class="ds-badge ${isIndexed ? "ds-badge--success" : "ds-badge--warning"} ds-badge--sm">
-                    ${iconSvg(isIndexed ? "ic-check-circle" : "ic-warning")}
-                    ${isIndexed ? "Indexé" : "À indexer"}
-                  </span>
-                  <a class="ds-btn ds-btn--secondary ds-btn--sm" href="/guidelines?domain=${domainParam}&file=${encodeURIComponent(g)}">
-                    ${iconSvg("ic-eye")} Consulter
-                  </a>
-                  <form method="post" action="/guidelines/${encodeURIComponent(g)}/reindex?domain=${domainParam}" style="display:inline-flex">
-                    <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm">
-                      ${iconSvg("ic-refresh")} Ré-indexer
-                    </button>
-                  </form>
-                </li>`;
-              })
-              .join("")}
+            ${flatGuidelines.map(renderResourceListItem).join("")}
           </ul>`;
+
+    const summaryGuidelinesText = isGroupedGuidelines
+      ? `Par organe (${groupedEntries.map(([org]) => translateValue(org, lang)).join(", ")})`
+      : flatGuidelines.length > 0
+        ? flatGuidelines.join(", ")
+        : a.role;
 
     const userPromptsHtml =
       a.userPrompts && a.userPrompts.length > 0
@@ -3084,13 +3163,13 @@ export function renderAgentsPage(
         <span class="ds-section__title">${iconSvg(a.icon)} ${esc(a.label)}</span>
         <code class="ds-small ds-muted ds-mono">${esc(a.name)}</code>
         ${modelsHtml}
-        <span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-book", "ds-icon--xs")} ${a.guidelines.length} référentiel(s)</span>
-        <span class="ds-section__summary">${a.guidelines.length > 0 ? esc(a.guidelines.join(", ")) : esc(a.role)}</span>
+        <span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-book", "ds-icon--xs")} ${isGroupedGuidelines ? `${flatGuidelines.length} référentiel(s) · par organe` : `${flatGuidelines.length} référentiel(s)`}</span>
+        <span class="ds-section__summary">${esc(summaryGuidelinesText)}</span>
       </summary>
       <div class="ds-section__body">
         ${a.role ? `<p class="ds-small ds-muted" style="margin:0">${esc(a.role)}</p>` : ""}
         <div class="ds-stack ds-stack--sm">
-          <span class="ds-label">${iconSvg("ic-book", "ds-icon--xs")} Ressources documentaires rattachées (${a.guidelines.length}) :</span>
+          <span class="ds-label">${iconSvg("ic-book", "ds-icon--xs")} ${esc(attachedResourcesLabel)}</span>
           ${attachedResourcesHtml}
         </div>
         ${userPromptsHtml}
@@ -3326,164 +3405,413 @@ export function renderFeedbackPage(
   });
 }
 
-export function renderQueueAdminPage(dashboard: QueueDashboardView, session: UserSession): string {
+function formatQueueStatusLabel(status: string, lang: Language): string {
+  switch (status.toUpperCase()) {
+    case "RUNNING":
+    case "PROCESSING":
+      return tr(lang, "En cours", "Running");
+    case "PENDING":
+      return tr(lang, "En attente", "Pending");
+    case "FAILED":
+      return tr(lang, "En échec", "Failed");
+    case "COMPLETED":
+      return tr(lang, "Terminé", "Completed");
+    case "CANCELLED":
+      return tr(lang, "Annulé", "Cancelled");
+    default:
+      return status;
+  }
+}
+
+function formatQueueDomainLabel(domain: string, lang: Language): string {
+  const norm = domain.trim().toLowerCase();
+  if (norm === "sma") return "SMA";
+  if (norm === "oncology") return tr(lang, "Oncologie", "Oncology");
+  return domain;
+}
+
+function formatQueueCreatedAndDuration(
+  j: QueueJobItem,
+  lang: Language,
+): {
+  createdLabel: string;
+  durationLabel: string;
+} {
+  let createdLabel = "—";
+  if (j.createdAt) {
+    const d = new Date(j.createdAt);
+    if (!Number.isNaN(d.getTime())) {
+      createdLabel = new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : "en-US", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(d);
+    }
+  }
+  let durationLabel = "";
+  if (j.startedAt) {
+    const startMs = Date.parse(j.startedAt);
+    const endMs = j.completedAt ? Date.parse(j.completedAt) : Date.now();
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs >= startMs) {
+      const sec = Math.max(0, Math.round((endMs - startMs) / 1000));
+      durationLabel = formatDurationMinSec(sec);
+    }
+  }
+  return { createdLabel, durationLabel };
+}
+
+function formatQueueJobTypeLabel(jobType: string, lang: Language): string {
+  switch (jobType.toUpperCase()) {
+    case "WAVE1_ADMIN":
+      return tr(lang, "Administration (Vague 1)", "Admin (Wave 1)");
+    case "WAVE2_CLINICAL":
+      return tr(lang, "Clinique (Vague 2)", "Clinical (Wave 2)");
+    case "WAVE3_EXPERTS":
+      return tr(lang, "Concertation experts", "Expert consultation");
+    case "FULL_EXTRACTION":
+      return tr(lang, "Extraction complète", "Full extraction");
+    case "PATIENT_SUMMARY":
+      return tr(lang, "Synthèse patient", "Patient summary");
+    default:
+      return translateValue(jobType, lang);
+  }
+}
+
+export function renderQueueAdminPage(
+  dashboard: QueueDashboardView,
+  session: UserSession,
+  drawerQueueJobs?: QueueJobItem[],
+): string {
   const lang = session.language;
+  const isAdmin = Boolean(session.isAdmin);
   const domainParam = encodeURIComponent(session.domain);
-  const { stats, jobs } = dashboard;
+  const { stats, jobs, page, pageSize, totalItems, totalPages, statusFilter } = dashboard;
+  const startItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endItem = totalItems === 0 ? 0 : Math.min(totalItems, (page - 1) * pageSize + jobs.length);
+  const queueUrl = (targetPage: number, targetStatus = statusFilter) =>
+    `/admin/queue?domain=${domainParam}&page=${targetPage}&pageSize=${pageSize}&status=${encodeURIComponent(targetStatus)}`;
+  const processingActive = stats.running > 0 || stats.pending > 0;
+  const colSpan = isAdmin ? 7 : 6;
 
   const jobsRows = jobs
     .map((j, idx) => {
       const jobHref = resolveQueueJobHref(j, session.domain);
       const rowDataAttr = jobHref
-        ? ` data-href="${jobHref}" title="Cliquer pour ouvrir ${esc(j.filename ?? j.jobId)}"`
+        ? ` data-href="${jobHref}" title="${esc(tr(lang, `Ouvrir ${j.filename ?? j.jobId}`, `Open ${j.filename ?? j.jobId}`))}"`
         : "";
       const fileCellHtml =
         j.filename && jobHref
           ? `<a class="ds-table__primary-link" href="${jobHref}">${esc(j.filename)}</a>`
           : esc(j.filename ?? "—");
+      const shortJobId = j.jobId.length > 12 ? `${j.jobId.slice(0, 8)}…` : j.jobId;
+      const stepPrimary = j.section
+        ? translateValue(j.section, lang)
+        : formatQueueJobTypeLabel(j.jobType, lang);
+      const stepSecondary = j.step ? `<div class="ds-small ds-muted">${esc(j.step)}</div>` : "";
+      const errorHtml =
+        j.status === "FAILED" && j.error
+          ? `<span class="ds-queue-error-snippet" title="${esc(j.error)}">${esc(j.error)}</span>`
+          : "";
+      const { createdLabel, durationLabel } = formatQueueCreatedAndDuration(j, lang);
+      const pct = Math.round(j.progressPct);
+      const progressClass =
+        j.status === "FAILED"
+          ? "ds-progress ds-progress--danger"
+          : j.status === "COMPLETED"
+            ? "ds-progress ds-progress--success"
+            : "ds-progress";
+      const statusBadgeClass =
+        j.status === "RUNNING"
+          ? "ds-badge--info"
+          : j.status === "FAILED"
+            ? "ds-badge--danger"
+            : j.status === "COMPLETED"
+              ? "ds-badge--success"
+              : "ds-badge--neutral";
+      const statusIcon =
+        j.status === "RUNNING"
+          ? '<span class="ds-spinner" aria-hidden="true"></span>'
+          : iconSvg(
+              j.status === "FAILED"
+                ? "ic-error"
+                : j.status === "COMPLETED"
+                  ? "ic-check-circle"
+                  : "ic-clock",
+            );
+
       return `<tr${rowDataAttr} data-testid="queue-job-row-${esc(j.jobId)}">
-        <td data-label="ID Job" class="ds-mono">${esc(j.jobId)}</td>
-        <td data-label="Domaine"><span class="ds-badge ${j.domain === "sma" ? "ds-badge--domain-sma" : "ds-badge--domain-onco"} ds-badge--sm">${iconSvg(j.domain === "sma" ? "ic-dna" : "ic-ribbon")} ${esc(j.domain)}</span></td>
-        <td data-label="Fichier" class="ds-mono ds-table__primary-cell">${fileCellHtml}</td>
-        <td data-label="Étape">${esc(j.section ?? j.jobType)}</td>
-        <td data-label="Statut">
-          <span class="ds-badge ${j.status === "RUNNING" ? "ds-badge--info" : j.status === "FAILED" ? "ds-badge--danger" : j.status === "COMPLETED" ? "ds-badge--success" : "ds-badge--neutral"} ds-badge--sm">
-            ${j.status === "RUNNING" ? '<span class="ds-spinner" aria-hidden="true"></span>' : iconSvg(j.status === "FAILED" ? "ic-error" : j.status === "COMPLETED" ? "ic-check-circle" : "ic-clock")}
-            ${esc(j.status)}
+        <td data-label="${esc(tr(lang, "Fichier", "File"))}" class="ds-table__primary-cell">
+          ${fileCellHtml}
+          ${session.expertMode ? `<div class="ds-small ds-muted ds-mono" title="${esc(j.jobId)}">${esc(shortJobId)}</div>` : ""}
+        </td>
+        <td data-label="${esc(tr(lang, "Domaine", "Domain"))}"><span class="ds-badge ${j.domain === "sma" ? "ds-badge--domain-sma" : "ds-badge--domain-onco"} ds-badge--sm">${iconSvg(j.domain === "sma" ? "ic-dna" : "ic-ribbon")} ${esc(formatQueueDomainLabel(j.domain, lang))}</span></td>
+        <td data-label="${esc(tr(lang, "Étape / Détail", "Step / Detail"))}">
+          <span>${esc(stepPrimary)}</span>
+          ${stepSecondary}
+          ${errorHtml}
+        </td>
+        <td data-label="${esc(tr(lang, "Créé / Durée", "Created / Duration"))}">
+          <span class="ds-small">${esc(createdLabel)}</span>
+          ${durationLabel ? `<div class="ds-small ds-muted ds-mono">${esc(durationLabel)}</div>` : ""}
+        </td>
+        <td data-label="${esc(tr(lang, "Statut", "Status"))}">
+          <span class="ds-badge ${statusBadgeClass} ds-badge--sm">
+            ${statusIcon}
+            ${esc(formatQueueStatusLabel(j.status, lang))}
           </span>
         </td>
-        <td data-label="Progression">
-          <progress class="ds-progress" max="100" value="${Math.round(j.progressPct)}" style="width:6rem"></progress>
-          <span class="ds-small ds-muted">${Math.round(j.progressPct)} %</span>
+        <td data-label="${esc(tr(lang, "Progression", "Progress"))}">
+          <progress class="${progressClass}" max="100" value="${pct}" aria-label="${esc(tr(lang, `Progression ${pct} %`, `Progress ${pct}%`))}" style="width:5.5rem"></progress>
+          <span class="ds-small ds-muted">${pct} %</span>
         </td>
-        <td class="ds-table__actions">
+        ${
+          isAdmin
+            ? `<td class="ds-table__actions">
           <div class="ds-cluster" style="justify-content:flex-end">
             ${
               j.status === "FAILED"
-                ? `<form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/retry?domain=${domainParam}"><button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_retry_${esc(j.jobId)}">${iconSvg("ic-refresh")} Relancer</button></form>`
+                ? `<form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/retry?domain=${domainParam}"><button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_retry_${esc(j.jobId)}">${iconSvg("ic-refresh")} ${esc(tr(lang, "Relancer", "Retry"))}</button></form>`
                 : ""
             }
-            <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" data-open="del-job-dialog-${idx}" aria-label="Supprimer le job ${esc(j.jobId)}" data-testid="btn_del_job_${esc(j.jobId)}">${iconSvg("ic-delete")}</button>
+            <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" data-open="del-job-dialog-${idx}" aria-label="${esc(tr(lang, `Supprimer le job ${j.jobId}`, `Delete job ${j.jobId}`))}" data-testid="btn_del_job_${esc(j.jobId)}">${iconSvg("ic-delete")}</button>
           </div>
-        </td>
+        </td>`
+            : ""
+        }
       </tr>`;
     })
     .join("");
 
-  const deleteJobDialogsHtml = jobs
-    .map(
-      (
-        j,
-        idx,
-      ) => `<dialog class="ds-modal ds-modal--danger" id="del-job-dialog-${idx}" aria-labelledby="del-job-title-${idx}">
+  const deleteJobDialogsHtml = isAdmin
+    ? jobs
+        .map(
+          (
+            j,
+            idx,
+          ) => `<dialog class="ds-modal ds-modal--danger" id="del-job-dialog-${idx}" aria-labelledby="del-job-title-${idx}">
         <div class="ds-modal__header">
           <span>${iconSvg("ic-delete")}</span>
-          <h2 id="del-job-title-${idx}">Supprimer le job ${esc(j.jobId)} ?</h2>
+          <h2 id="del-job-title-${idx}">${esc(tr(lang, `Supprimer le job ${j.filename ?? j.jobId} ?`, `Delete job ${j.filename ?? j.jobId}?`))}</h2>
         </div>
         <div class="ds-modal__body">
           <div class="ds-alert ds-alert--danger" role="alert">
             <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
             <div class="ds-alert__content">
-              <span class="ds-alert__title">Suppression d'un traitement de la file</span>
-              <span>Le job <strong>${esc(j.jobId)}</strong> (${esc(j.filename ?? j.jobType)}) sera retiré de la file d'attente.</span>
+              <span class="ds-alert__title">${esc(tr(lang, "Suppression d'un traitement de la file", "Remove job from queue"))}</span>
+              <span>${tr(lang, `Le job <strong>${esc(j.jobId)}</strong> (${esc(j.filename ?? j.jobType)}) sera retiré de la file d'attente.`, `Job <strong>${esc(j.jobId)}</strong> (${esc(j.filename ?? j.jobType)}) will be removed from the queue.`)}</span>
             </div>
           </div>
         </div>
         <div class="ds-modal__footer">
-          <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+          <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>${esc(tr(lang, "Annuler", "Cancel"))}</button></form>
           <form method="post" action="/admin/queue/jobs/${encodeURIComponent(j.jobId)}/delete?domain=${domainParam}">
-            <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_job_${esc(j.jobId)}">${iconSvg("ic-delete")} Confirmer la suppression</button>
+            <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_job_${esc(j.jobId)}">${iconSvg("ic-delete")} ${esc(tr(lang, "Confirmer la suppression", "Confirm deletion"))}</button>
           </form>
         </div>
       </dialog>`,
-    )
+        )
+        .join("")
+    : "";
+
+  const activeBannerHtml =
+    stats.running > 0 && stats.activeFormFile
+      ? `<div class="ds-processing-banner" role="status" data-testid="queue-active-banner">
+          <span class="ds-spinner" aria-hidden="true"></span>
+          <div class="ds-cluster" style="gap:var(--ds-space-2); flex:1; min-width:0">
+            <strong>${esc(stats.activeFormFile)}</strong>
+            ${stats.activeStep ? `<span class="ds-badge ds-badge--info ds-badge--sm">${esc(stats.activeStep)}</span>` : ""}
+            <span class="ds-small ds-muted">${Math.round(stats.activeProgressPct)} %</span>
+          </div>
+        </div>`
+      : "";
+
+  const statusChips = [
+    { key: "ALL", label: tr(lang, "Tous", "All"), count: stats.total },
+    { key: "RUNNING", label: tr(lang, "En cours", "Running"), count: stats.running },
+    { key: "PENDING", label: tr(lang, "En attente", "Pending"), count: stats.pending },
+    { key: "FAILED", label: tr(lang, "En échec", "Failed"), count: stats.failed },
+    { key: "COMPLETED", label: tr(lang, "Terminés", "Completed"), count: stats.completed },
+    { key: "CANCELLED", label: tr(lang, "Annulés", "Cancelled"), count: stats.cancelled },
+  ];
+
+  const chipsHtml = statusChips
+    .map((chip) => {
+      const isActive = statusFilter === chip.key;
+      return `<a class="ds-chip ${isActive ? "is-active" : ""}" href="${queueUrl(1, chip.key)}" ${isActive ? 'aria-current="true"' : ""} data-testid="queue-chip-${chip.key.toLowerCase()}">${esc(chip.label)} (${chip.count})</a>`;
+    })
     .join("");
 
+  const emptyStateHtml = `<tr><td colspan="${colSpan}">
+    <div class="ds-empty" style="padding:var(--ds-space-6)">
+      <span class="ds-empty__icon" aria-hidden="true">${iconSvg("ic-check-circle", "ds-icon--lg")}</span>
+      <p class="ds-empty__title">${esc(tr(lang, "Aucun job à afficher", "No jobs to display"))}</p>
+      <p class="ds-empty__desc">${esc(
+        statusFilter !== "ALL"
+          ? tr(
+              lang,
+              "Aucun traitement ne correspond au filtre sélectionné.",
+              "No jobs match the selected filter.",
+            )
+          : tr(
+              lang,
+              "La file d'analyse est actuellement vide.",
+              "The analysis queue is currently empty.",
+            ),
+      )}</p>
+      ${
+        statusFilter !== "ALL"
+          ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(1, "ALL")}" data-testid="btn_queue_reset_filter">${esc(tr(lang, "Réinitialiser les filtres", "Reset filters"))}</a>`
+          : ""
+      }
+    </div>
+  </td></tr>`;
+
   const bodyHtml = `
-    <div class="ds-page-header">
-      <div class="ds-page-header__text">
-        <h1>Supervision de la file d'analyse &amp; verrous GPU</h1>
-        <p class="ds-muted">Suivi temps réel Cross-Domains (Oncologie &amp; SMA) de la file PriorityQueue et de l'inférence LLM locale.</p>
+    <div class="ds-stack--lg" data-processing-active="${processingActive ? "true" : "false"}">
+      <div class="ds-page-header">
+        <div class="ds-page-header__text">
+          <h1>${esc(tr(lang, "Supervision de la file d'analyse & verrous GPU", "Analysis Queue & GPU Locks Supervision"))}</h1>
+          <p class="ds-muted">${esc(tr(lang, "Suivi temps réel Cross-Domains (Oncologie & SMA) de la file PriorityQueue et de l'inférence LLM locale.", "Real-time cross-domain monitoring (Oncology & SMA) of the PriorityQueue and local LLM inference."))}</p>
+        </div>
+        ${
+          isAdmin
+            ? `<div class="ds-page-header__actions">
+          <button type="button" class="ds-btn ds-btn--secondary" data-open="release-locks-dialog" data-testid="btn_release_locks">
+            ${iconSvg("ic-refresh")} ${esc(tr(lang, `Libérer les verrous GPU (${stats.gpuLocksCount})`, `Release GPU locks (${stats.gpuLocksCount})`))}
+          </button>
+          <button type="button" class="ds-btn ds-btn--tonal" data-open="clean-completed-dialog" data-testid="btn_clean_completed">
+            ${iconSvg("ic-check")} ${esc(tr(lang, "Purger les terminés", "Purge completed"))}
+          </button>
+        </div>`
+            : ""
+        }
       </div>
-      <div class="ds-page-header__actions">
-        <button type="button" class="ds-btn ds-btn--secondary" data-open="release-locks-dialog" data-testid="btn_release_locks">
-          ${iconSvg("ic-refresh")} Libérer les verrous GPU (${stats.gpuLocksCount})
-        </button>
-        <button type="button" class="ds-btn ds-btn--tonal" data-open="clean-completed-dialog" data-testid="btn_clean_completed">
-          ${iconSvg("ic-check")} Purger les terminés
-        </button>
+
+      ${activeBannerHtml}
+
+      <div class="ds-kpi-grid ds-kpi-grid--compact">
+        <a class="ds-kpi ds-kpi--info" href="${queueUrl(1, "RUNNING")}"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--info" aria-hidden="true">${iconSvg("ic-play", "ds-icon--sm")}</span> ${esc(tr(lang, "En cours", "Running"))}</span><span class="ds-kpi__value">${stats.running}</span></a>
+        <a class="ds-kpi" href="${queueUrl(1, "PENDING")}"><span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-clock", "ds-icon--sm")}</span> ${esc(tr(lang, "En attente", "Pending"))}</span><span class="ds-kpi__value">${stats.pending}</span></a>
+        <a class="ds-kpi ds-kpi--success" href="${queueUrl(1, "COMPLETED")}"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-check-circle", "ds-icon--sm")}</span> ${esc(tr(lang, "Terminés", "Completed"))}</span><span class="ds-kpi__value">${stats.completed}</span></a>
+        <a class="ds-kpi ds-kpi--danger" href="${queueUrl(1, "FAILED")}"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-error", "ds-icon--sm")}</span> ${esc(tr(lang, "En échec", "Failed"))}</span><span class="ds-kpi__value">${stats.failed}</span></a>
       </div>
-    </div>
 
-    <div class="ds-kpi-grid">
-      <div class="ds-kpi ds-kpi--info"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--info" aria-hidden="true">${iconSvg("ic-play", "ds-icon--md")}</span> En cours</span><span class="ds-kpi__value">${stats.running}</span></div>
-      <div class="ds-kpi"><span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true">${iconSvg("ic-clock", "ds-icon--md")}</span> En attente</span><span class="ds-kpi__value">${stats.pending}</span></div>
-      <div class="ds-kpi ds-kpi--success"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true">${iconSvg("ic-check-circle", "ds-icon--md")}</span> Terminés</span><span class="ds-kpi__value">${stats.completed}</span></div>
-      <div class="ds-kpi ds-kpi--danger"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true">${iconSvg("ic-error", "ds-icon--md")}</span> En échec</span><span class="ds-kpi__value">${stats.failed}</span></div>
-    </div>
+      <form class="ds-toolbar ds-queue-toolbar" method="get" action="/admin/queue" data-testid="queue-filter-toolbar">
+        <input type="hidden" name="domain" value="${esc(session.domain)}">
+        <input type="hidden" name="page" value="1">
+        <input type="hidden" name="status" value="${esc(statusFilter)}">
+        <div class="ds-queue-toolbar__chips" role="group" aria-label="${esc(tr(lang, "Filtrer par statut", "Filter by status"))}">
+          ${chipsHtml}
+        </div>
+        <div class="ds-queue-toolbar__controls">
+          <div class="ds-queue-toolbar__page-size">
+            <label class="ds-small ds-muted" for="queue-page-size">${esc(tr(lang, "Par page", "Per page"))}</label>
+            <select id="queue-page-size" name="pageSize" class="ds-select" data-autosubmit="true" data-testid="queue-page-size-select">
+              <option value="25"${pageSize === 25 ? " selected" : ""}>25</option>
+              <option value="50"${pageSize === 50 ? " selected" : ""}>50</option>
+              <option value="100"${pageSize === 100 ? " selected" : ""}>100</option>
+            </select>
+          </div>
+          <noscript><button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_queue_filter">${esc(tr(lang, "Appliquer", "Apply"))}</button></noscript>
+        </div>
+      </form>
 
-    <div class="ds-table-wrap">
-      <table class="ds-table ds-table--dense" data-testid="queue-jobs-table">
-        <thead>
-          <tr>
-            <th scope="col">ID Job</th>
-            <th scope="col">Domaine</th>
-            <th scope="col">Fichier</th>
-            <th scope="col">Étape / Rubrique</th>
-            <th scope="col">Statut</th>
-            <th scope="col">Progression</th>
-            <th scope="col" class="ds-table__actions">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${jobsRows}
-        </tbody>
-      </table>
+      <div class="ds-table-wrap">
+        <table class="ds-table ds-table--dense" data-testid="queue-jobs-table">
+          <thead>
+            <tr>
+              <th scope="col">${esc(tr(lang, "Fichier", "File"))}</th>
+              <th scope="col">${esc(tr(lang, "Domaine", "Domain"))}</th>
+              <th scope="col">${esc(tr(lang, "Étape / Détail", "Step / Detail"))}</th>
+              <th scope="col">${esc(tr(lang, "Créé / Durée", "Created / Duration"))}</th>
+              <th scope="col">${esc(tr(lang, "Statut", "Status"))}</th>
+              <th scope="col">${esc(tr(lang, "Progression", "Progress"))}</th>
+              ${isAdmin ? `<th scope="col" class="ds-table__actions">${esc(tr(lang, "Actions", "Actions"))}</th>` : ""}
+            </tr>
+          </thead>
+          <tbody>
+            ${jobsRows || emptyStateHtml}
+          </tbody>
+        </table>
+      </div>
+      <nav class="ds-pagination" aria-label="${esc(tr(lang, "Pagination de la file d'analyse", "Analysis queue pagination"))}" data-testid="queue-pagination-nav">
+        <span class="ds-small ds-muted" data-testid="queue-pagination-summary">
+          ${
+            totalItems === 0
+              ? esc(tr(lang, "Aucun job", "No jobs"))
+              : esc(
+                  tr(
+                    lang,
+                    `Affichage ${startItem}–${endItem} sur ${totalItems}`,
+                    `Showing ${startItem}–${endItem} of ${totalItems}`,
+                  ),
+                )
+          }
+        </span>
+        <div class="ds-pagination__controls">
+          ${
+            page > 1
+              ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page - 1)}" data-testid="btn_queue_prev">${esc(tr(lang, "Précédent", "Previous"))}</a>`
+              : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_prev_disabled">${esc(tr(lang, "Précédent", "Previous"))}</span>`
+          }
+          <span class="ds-pagination__page">${esc(tr(lang, `Page ${page} / ${totalPages}`, `Page ${page} / ${totalPages}`))}</span>
+          ${
+            page < totalPages
+              ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="${queueUrl(page + 1)}" data-testid="btn_queue_next">${esc(tr(lang, "Suivant", "Next"))}</a>`
+              : `<span class="ds-btn ds-btn--ghost ds-btn--sm" aria-disabled="true" data-testid="btn_queue_next_disabled">${esc(tr(lang, "Suivant", "Next"))}</span>`
+          }
+        </div>
+      </nav>
     </div>
     ${deleteJobDialogsHtml}
-    <dialog class="ds-modal ds-modal--danger" id="release-locks-dialog" aria-labelledby="release-locks-title">
+    ${
+      isAdmin
+        ? `<dialog class="ds-modal ds-modal--danger" id="release-locks-dialog" aria-labelledby="release-locks-title">
       <div class="ds-modal__header">
         <span>${iconSvg("ic-refresh")}</span>
-        <h2 id="release-locks-title">Libérer les verrous GPU ?</h2>
+        <h2 id="release-locks-title">${esc(tr(lang, "Libérer les verrous GPU ?", "Release GPU locks?"))}</h2>
       </div>
       <div class="ds-modal__body">
         <div class="ds-alert ds-alert--danger" role="alert">
           <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
           <div class="ds-alert__content">
-            <span class="ds-alert__title">Action d'administration GPU</span>
-            <span>Les verrous d'inférence bloqués (${stats.gpuLocksCount}) seront forcés à l'état libre. N'utilisez cette action qu'en cas de blocage avéré d'un worker.</span>
+            <span class="ds-alert__title">${esc(tr(lang, "Action d'administration GPU", "GPU administration action"))}</span>
+            <span>${esc(tr(lang, `Les verrous d'inférence bloqués (${stats.gpuLocksCount}) seront forcés à l'état libre. N'utilisez cette action qu'en cas de blocage avéré d'un worker.`, `Stale inference locks (${stats.gpuLocksCount}) will be forced free. Only use this if a worker is genuinely stuck.`))}</span>
           </div>
         </div>
       </div>
       <div class="ds-modal__footer">
-        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>${esc(tr(lang, "Annuler", "Cancel"))}</button></form>
         <form method="post" action="/admin/queue/locks/release?domain=${domainParam}">
-          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_release_locks">${iconSvg("ic-refresh")} Confirmer la libération</button>
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_release_locks">${iconSvg("ic-refresh")} ${esc(tr(lang, "Confirmer la libération", "Confirm release"))}</button>
         </form>
       </div>
     </dialog>
     <dialog class="ds-modal ds-modal--danger" id="clean-completed-dialog" aria-labelledby="clean-completed-title">
       <div class="ds-modal__header">
         <span>${iconSvg("ic-delete")}</span>
-        <h2 id="clean-completed-title">Purger les jobs terminés ?</h2>
+        <h2 id="clean-completed-title">${esc(tr(lang, "Purger les jobs terminés ?", "Purge completed jobs?"))}</h2>
       </div>
       <div class="ds-modal__body">
         <div class="ds-alert ds-alert--danger" role="alert">
           <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
           <div class="ds-alert__content">
-            <span class="ds-alert__title">Nettoyage de l'historique de file</span>
-            <span>Les entrées terminées (${stats.completed}) seront supprimées de l'historique d'exécution.</span>
+            <span class="ds-alert__title">${esc(tr(lang, "Nettoyage de l'historique de file", "Queue history cleanup"))}</span>
+            <span>${esc(tr(lang, `Les entrées terminées (${stats.completed}) seront supprimées de l'historique d'exécution.`, `Completed entries (${stats.completed}) will be removed from the execution history.`))}</span>
           </div>
         </div>
       </div>
       <div class="ds-modal__footer">
-        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>${esc(tr(lang, "Annuler", "Cancel"))}</button></form>
         <form method="post" action="/admin/queue/clean?domain=${domainParam}">
           <input type="hidden" name="mode" value="completed">
-          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_clean_completed">${iconSvg("ic-check")} Confirmer la purge</button>
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_clean_completed">${iconSvg("ic-check")} ${esc(tr(lang, "Confirmer la purge", "Confirm purge"))}</button>
         </form>
       </div>
-    </dialog>
+    </dialog>`
+        : ""
+    }
   `;
 
   return renderLayout({
@@ -3492,7 +3820,7 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
     breadcrumbs: [{ label: t("nav.queue", lang) }],
     session,
     queueStats: stats,
-    queueJobs: jobs,
+    queueJobs: drawerQueueJobs ?? jobs,
     bodyHtml,
   });
 }
@@ -3514,11 +3842,13 @@ export function renderAgendaPage(
   const strategyOptions: Array<{ value: string; label: string }> = [
     {
       value: "hybrid",
-      label: lang === "fr" ? "Hybride (Urgences + Spécialités)" : "Hybrid (Urgency + Specialties)",
+      label:
+        lang === "fr" ? "Hybride (Priorités P1–P4 + Spécialités)" : "Hybrid (P1–P4 + Specialties)",
     },
     {
       value: "urgency_first",
-      label: lang === "fr" ? "Par urgence clinique" : "By clinical urgency",
+      label:
+        lang === "fr" ? "Par priorité de discussion (P1→P4)" : "By discussion priority (P1→P4)",
     },
     {
       value: "expert_grouping",
@@ -3615,7 +3945,7 @@ export function renderAgendaPage(
               const isFirst = idx === 0;
               const isLast = idx === agenda.items.length - 1;
               const rankTone =
-                item.priorityLevel === "high"
+                item.priorityLevel === 1
                   ? "ds-agenda-item__rank--high"
                   : !item.isComplete || !item.quorumMet
                     ? "ds-agenda-item__rank--warning"
@@ -3626,7 +3956,7 @@ export function renderAgendaPage(
               const isItemDimmed =
                 activeFocusExpert !== null && !item.requiredExperts.includes(activeFocusExpert);
 
-              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-href="${dossierHref}" data-patient-id="${esc(item.patientId)}" data-position="${item.position}" data-required-experts="${esc(item.requiredExperts.join("|"))}" title="Cliquer pour ouvrir le dossier de ${esc(item.patientName)}" data-testid="agenda-item-${esc(item.patientId)}">
+              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === 1 ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-href="${dossierHref}" data-patient-id="${esc(item.patientId)}" data-position="${item.position}" data-required-experts="${esc(item.requiredExperts.join("|"))}" title="Cliquer pour ouvrir le dossier de ${esc(item.patientName)}" data-testid="agenda-item-${esc(item.patientId)}">
                 <div class="ds-agenda-item__rank ${rankTone}" data-agenda-drag-handle="true" data-testid="agenda-rank-${esc(item.patientId)}" title="Maintenir cliqué et glisser pour modifier l'ordre de passage" aria-label="Rang de passage ${item.position}">
                   <span class="ds-agenda-item__pos">#${item.position}</span>
                   ${item.pinned ? `<span class="ds-agenda-item__pin-indicator" title="Position verrouillée manuellement">${iconSvg("ic-lock", "ds-icon--xs")}</span>` : ""}
@@ -3894,7 +4224,7 @@ export function renderAgendaPage(
                           <input type="hidden" name="enrollAllCandidates" value="true">
                           <input type="hidden" name="filterMode" value="urgent">
                           <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_urgent">
-                            + Urgences
+                            ${lang === "fr" ? "+ Priorités P1" : "+ P1 priorities"}
                           </button>
                         </form>
                         <form method="post" action="/agenda/patients?domain=${domainParam}">
@@ -3932,7 +4262,7 @@ export function renderAgendaPage(
                     ${iconSvg("ic-layers", "ds-icon--xs")} ${agenda.totalEnrolled} dossier${agenda.totalEnrolled > 1 ? "s" : ""}
                   </span>
                   <span class="ds-badge ${agenda.urgentCount > 0 ? "ds-badge--urgency-high" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-urgent">
-                    ${iconSvg("ic-priority-high", "ds-icon--xs")} ${agenda.urgentCount} urgence${agenda.urgentCount > 1 ? "s" : ""}
+                    ${iconSvg("ic-priority-high", "ds-icon--xs")} ${agenda.urgentCount} ${lang === "fr" ? `priorité${agenda.urgentCount > 1 ? "s" : ""} P1` : `P1 case${agenda.urgentCount > 1 ? "s" : ""}`}
                   </span>
                   <span class="ds-badge ${agenda.quorumWarningCount > 0 ? "ds-badge--incomplete" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-quorum">
                     ${iconSvg("ic-users", "ds-icon--xs")} ${agenda.attendingExperts.length}/${agenda.availableExperts.length} experts${agenda.quorumWarningCount > 0 ? ` · ${agenda.quorumWarningCount} alerte(s) quorum` : ""}

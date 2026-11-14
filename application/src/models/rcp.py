@@ -81,7 +81,7 @@ class LinkPatientRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     agent_name: str = Field(
-        description="Expert agent name to interact with (e.g. 'pancreas expert')"
+        description="Expert agent name to interact with (e.g. 'digestive surgeon expert')"
     )
     message: str = Field(description="Question or instruction for the agent")
     language: Optional[Literal["french", "english"]] = Field(
@@ -108,11 +108,13 @@ class _RcpTriageCardBase(BaseModel):
     completeness_label: Optional[str] = None
     completeness_tone: Optional[Literal["green", "orange", "red", "neutral"]] = None
     completeness_summary: Optional[str] = None
-    urgency: str
-    urgency_score: int
-    urgency_reason: Optional[str] = None
-    urgency_reasons: List[str] = Field(default_factory=list)
-    priority_level: Optional[int] = None
+    discussion_priority: Literal[1, 2, 3, 4, 9] = 9
+    discussion_priority_code: Literal["P1", "P2", "P3", "P4", "NOT_ASSESSED"] = (
+        "NOT_ASSESSED"
+    )
+    priority_reason: Optional[str] = None
+    priority_reasons: List[str] = Field(default_factory=list)
+    priority_source: Optional[Literal["rule", "ai", "manual"]] = None
     intervention_required: Optional[bool] = None
     intervention_type: Optional[str] = None
     care_adaptation_suggested: Optional[bool] = None

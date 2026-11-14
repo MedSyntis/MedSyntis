@@ -8,12 +8,13 @@ from typing import Any, Literal
 from src.application.config import AppConfig
 from src.application.use_cases.patient_record import PatientRecordService
 from src.domain.agents import get_domain_agents
+from src.domain.common.common_ressources import DiscussionPriority
 from src.domain.mdt_agenda import (
     MDTAgenda,
     MDTAgendaCandidateSnapshot,
     MDTAgendaScheduler,
     MDTAgendaSortStrategy,
-    map_urgency_score_to_priority_level,
+    discussion_priority_weight,
 )
 from src.domain.repositories import MDTAgendaRepository
 from src.infrastructure.documents.mongodb import Mongodb
@@ -104,7 +105,10 @@ class MDTAgendaService:
             pid = str(card.get("patient_id") or "").strip()
             if not pid:
                 continue
-            urgency_score = int(card.get("urgency_score") or 0)
+            prio_obj = (
+                DiscussionPriority.from_any(card.get("discussion_priority"))
+                or DiscussionPriority.NOT_ASSESSED
+            )
             missing_list = [str(m) for m in (card.get("missing") or []) if m]
             is_comp_raw = card.get("is_complete")
             raw_comp_status = card.get("completeness_status")
@@ -130,13 +134,17 @@ class MDTAgendaService:
                 first_name=card.get("first_name"),
                 last_name=card.get("last_name"),
                 date_birth=card.get("date_birth"),
-                urgency=str(card.get("urgency") or "Indéfini"),
-                urgency_score=urgency_score,
-                urgency_reason=str(card.get("urgency_reason") or ""),
-                urgency_reasons=[
-                    str(r) for r in (card.get("urgency_reasons") or []) if r
+                discussion_priority=int(prio_obj),
+                discussion_priority_code=prio_obj.code,
+                priority_reason=str(card.get("priority_reason") or ""),
+                priority_reasons=[
+                    str(r) for r in (card.get("priority_reasons") or []) if r
                 ],
-                priority_level=map_urgency_score_to_priority_level(urgency_score),
+                priority_source=(
+                    card.get("priority_source")
+                    if card.get("priority_source") in ("rule", "ai", "manual")
+                    else "rule"
+                ),
                 is_complete=is_complete,
                 completeness_status=comp_status or ("yes" if is_complete else "no"),
                 missing_count=len(missing_list),
@@ -151,7 +159,7 @@ class MDTAgendaService:
 
         ordered_list.sort(
             key=lambda s: (
-                -s.urgency_score,
+                -discussion_priority_weight(s.discussion_priority),
                 0 if s.is_complete else 1,
                 -(1 if s.care_adaptation_suggested else 0),
                 s.patient_name.lower(),
@@ -288,7 +296,9 @@ class MDTAgendaService:
                 target_ids = [s.patient_id for s in ordered_snapshots if s.is_complete]
             elif resolved_mode == "urgent":
                 target_ids = [
-                    s.patient_id for s in ordered_snapshots if s.urgency_score >= 2
+                    s.patient_id
+                    for s in ordered_snapshots
+                    if s.discussion_priority == int(DiscussionPriority.TIME_BOUND)
                 ]
             else:
                 target_ids = [s.patient_id for s in ordered_snapshots]

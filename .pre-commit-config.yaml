@@ -7,6 +7,7 @@ repos:
     -   id: trailing-whitespace
     -   id: check-added-large-files
         args: ["--maxkb=1024"]
+        exclude: '^application/ressources/documents/'
     -   id: detect-private-key
     -   id: check-merge-conflict
 # Ruff and pyrefly run from the uv-locked versions in application/uv.lock (same as CI).

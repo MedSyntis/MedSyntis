@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, ClassVar, List, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, List, Optional
 
 from pydantic import Field
 
 from src.domain.common.common_ressources import *  # noqa: F403
 from src.domain.common.common_ressources import MarkdownStr
 from src.domain.common.patient_mdt_common_form import PatientMDTForm
-from src.domain.oncology.agents import Agents
+from src.domain.oncology.agents import Agents, resolve_oncology_resources
 
 if TYPE_CHECKING:
     from src.application.agent.agent import MedSyntisAgent
@@ -276,11 +276,7 @@ class PatientMDTOncologicForm(PatientMDTForm):
         )
 
     class ExpertAnswer(PatientMDTForm.ExpertAnswer):
-        agents: ClassVar[list[type[MedSyntisAgent]]] = [
-            Agents.Pancreas_expert_agent,
-            Agents.Oesophagus_expert_agent,
-            Agents.Hepatocellular_expert_agent,
-        ]
+        agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
 
     class MTDCompleted(PatientMDTForm.MTDCompleted):
         agents: ClassVar[list[type[MedSyntisAgent]]] = Agents().expert_agents
@@ -298,82 +294,49 @@ class PatientMDTOncologicForm(PatientMDTForm):
             Based on the multidisciplinary oncology expert debate, synthesize a pre-MDT orientation proposal to assist the medical board (do not replace the physicians' final decision):
             Determine if an initiation or adaptation of medical, surgical, or radiological care should be discussed for this patient.
             If yes, specify:
-            1. The suggested priority level (`suggested_priority`) for the MDT discussion.
-               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate recommends or identifies that the case is urgent or high priority (e.g., due to rapid tumor progression, biliary obstruction, or suspected metastases), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts disagree or recommend a lower priority.
+            1. The MDT discussion priority (`suggested_priority`: 1=P1 Time-bound, 2=P2 Decision needed, 3=P3 Standard sign-off, 4=P4 Information, 9=Not assessed).
+               CRITICAL SAFETY RULE: Ignore the priority of any expert whose expertise is not relevant to the case (`expert_relevant=False`). If even a single relevant expert (`expert_relevant=True`) in the debate recommends `P1` (`TIME_BOUND = 1`, e.g., upcoming therapeutic window, post-induction resectability reassessment, progression under active treatment, biliary obstruction, or scheduled surgery awaiting board sign-off), you MUST classify `suggested_priority` as `1` (`P1 · Time-bound`), regardless of whether other experts recommend a lower discussion priority.
             2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., surgery, chemotherapy, biliary drainage, endoscopy, radiotherapy, or surveillance).
-            Provide a clear `clinical_rationale` detailing the positions of the experts and TNCD references, especially highlighting any divergence in opinions regarding urgency.
+            Provide a clear `clinical_rationale` detailing the positions of the experts and applicable guideline references (when available), especially highlighting any divergence in opinions regarding discussion priority.
             """
 
-    # class ExpertPancreasAnswer(default_model):
+    @classmethod
+    def resolve_agent_ressources(
+        cls,
+        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
+        agent_cls: type[MedSyntisAgent],
+        available_files: list[str] | None = None,
+    ) -> list[str]:
+        """Resolve organ-scoped TNCD guideline PDFs for specialist agents based on `TumorLocation`."""
+        _ = available_files
+        if not (
+            isinstance(agent_cls, type) and issubclass(agent_cls, Agents.Expert_model)
+        ):
+            return []
+        d = cls._as_dict(doc_or_form) if doc_or_form is not None else {}
+        tl = d.get("TumorLocation")
+        organ = tl.get("tumor_location") if isinstance(tl, dict) else None
+        return resolve_oncology_resources(organ)
 
-    #     expert_relevant: bool = Field(description="Is Pancreas Expert is relevant")
-
-    #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
-
-    #     sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
-
-    #     patient_priority: PatientPriority = Field(
-    #         description="patient treatment emergency"
-    #     )
-
-    #     suggetions: list[ExpertSuggestion] = Field(
-    #         description="One suggetion by item, this list can be empty if expert is not relevant"
-    #     )
-
-    #     question: ClassVar[str] = (
-    #         """
-    #         As expert, tell me if the patient must be threat urgently for the pancreas, if your expertise is relevant and why do you have answer that.
-    #         """
-    #     )
-    # class ExpertOesophagusAnswer(default_model):
-
-    #     expert_relevant: bool = Field(description="Is Oesophagus Expert is relevant")
-
-    #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
-
-    #     sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
-
-    #     patient_priority: PatientPriority = Field(
-    #         description="patient treatment emergency"
-    #     )
-
-    #     suggetions: list[ExpertSuggestion] = Field(
-    #         description="One suggetion by item, this list can be empty if expert is not relevant"
-    #     )
-
-    #     question: ClassVar[str] = (
-    #         "As expert, tell me if the patient must be threat urgently for the oesophagus, if your expertise is relevant and why do you have answer that."
-    #     )
-
-    # class ExpertHepatocellularAnswer(default_model):
-
-    #     expert_relevant: bool = Field(description="Is Oesophagus Expert is relevant")
-
-    #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
-
-    #     sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
-
-    #     patient_priority: PatientPriority = Field(
-    #         description="patient treatment emergency"
-    #     )
-
-    #     suggetions: list[ExpertSuggestion] = Field(
-    #         description="One suggetion by item"
-    #     )
-
-    #     question: ClassVar[str] = (
-    #         "As expert, tell me if the patient must be threat urgently for the hepatocellular, if your expertise is relevant and why do you have answer that."
-    #     )
-
-    #  // // // // // //  WORK IN PROGRESS
-
-    # class ClinicalTrial(default_model):
-
-    #     trial_title: str = Field(description="Title of the trial")
-    #     inclusion_criteria: List[str] = Field(description="List of inclusion criteria")
-    #     non_inclusion_criteria: List[str] = Field(description="List of non-inclusion criteria")
-
-    #     question: ClassVar[str] = "Tell me the name, inclusion and non-inclusion criteria of this clinical trial ?"
+    @classmethod
+    def get_completeness_guardrail_flags(
+        cls,
+        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
+    ) -> tuple[bool, str | None]:
+        """Block marking an oncology MDT complete when primary tumor location is unknown/missing."""
+        d = cls._as_dict(doc_or_form) if doc_or_form is not None else {}
+        tl = d.get("TumorLocation")
+        organ = (
+            str(tl.get("tumor_location") or "").strip().lower()
+            if isinstance(tl, dict)
+            else ""
+        )
+        if not organ or organ == "unknown":
+            return (
+                True,
+                "Localisation tumorale primitive non identifiée (organe primitif inconnu).",
+            )
+        return False, None
 
     # class PreviousTreatments(default_model):
 

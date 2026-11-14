@@ -35,7 +35,7 @@ from src.domain.common.common_ressources import (
     ExpertSuggestion,
     Gender,
     MTDComplete,
-    PatientPriority,
+    DiscussionPriority,
     PrimaryOrganEnum,
     RadiologicExamType,
     RadiologicalExamination,
@@ -572,7 +572,7 @@ def render_expert_answer_model(pydantic_model: BaseModel):
     """Render a single specialist's `ExpertAnswer` cleanly according to relevance."""
     is_relevant = getattr(pydantic_model, "expert_relevant", False)
     why_rel = getattr(pydantic_model, "why_relevant", "")
-    priority = getattr(pydantic_model, "patient_priority", None)
+    priority = getattr(pydantic_model, "discussion_priority", None)
     suggestions = getattr(pydantic_model, "suggestions", []) or []
     sources = getattr(pydantic_model, "sources_relevant", []) or []
 
@@ -584,14 +584,16 @@ def render_expert_answer_model(pydantic_model: BaseModel):
             st.caption(f"**Motif :** {why_rel}")
         return
 
-    prio_badge = ":gray-badge[⚪ Priorité non spécifiée]"
-    if isinstance(priority, PatientPriority):
-        if priority.name == "urgent":
-            prio_badge = f":red-badge[🚨 {translate(priority)}]"
-        elif priority.name == "medium":
-            prio_badge = f":orange-badge[🟠 {translate(priority)}]"
-        elif priority.name == "low":
-            prio_badge = f":green-badge[🟢 {translate(priority)}]"
+    prio_badge = ":gray-badge[⚪ Non évaluée]"
+    parsed_prio = DiscussionPriority.from_any(priority)
+    if parsed_prio == DiscussionPriority.TIME_BOUND:
+        prio_badge = f":red-badge[⏱️ {parsed_prio.label_fr}]"
+    elif parsed_prio == DiscussionPriority.DECISION_NEEDED:
+        prio_badge = f":orange-badge[⚖️ {parsed_prio.label_fr}]"
+    elif parsed_prio == DiscussionPriority.STANDARD_SIGN_OFF:
+        prio_badge = f":green-badge[✅ {parsed_prio.label_fr}]"
+    elif parsed_prio == DiscussionPriority.INFORMATION:
+        prio_badge = f":blue-badge[ℹ️ {parsed_prio.label_fr}]"
 
     st.markdown(f":green-badge[✅ Expertise requise] {prio_badge}")
     if why_rel:
@@ -866,18 +868,17 @@ def render_field(label, value, field_name: str | None = None):
         st.markdown(f"**{translated_label} :** {msi_badge}")
         return
 
-    if isinstance(value, PatientPriority):
-        translated_value = translate(value)
-        if value.name == "urgent":
-            st.markdown(f"**{translated_label} :** :red-badge[🚨 {translated_value}]")
-        elif value.name == "medium":
-            st.markdown(
-                f"**{translated_label} :** :orange-badge[🟠 {translated_value}]"
-            )
-        elif value.name == "low":
-            st.markdown(f"**{translated_label} :** :green-badge[🟢 {translated_value}]")
+    if isinstance(value, DiscussionPriority):
+        if value == DiscussionPriority.TIME_BOUND:
+            st.markdown(f"**{translated_label} :** :red-badge[⏱️ {value.label_fr}]")
+        elif value == DiscussionPriority.DECISION_NEEDED:
+            st.markdown(f"**{translated_label} :** :orange-badge[⚖️ {value.label_fr}]")
+        elif value == DiscussionPriority.STANDARD_SIGN_OFF:
+            st.markdown(f"**{translated_label} :** :green-badge[✅ {value.label_fr}]")
+        elif value == DiscussionPriority.INFORMATION:
+            st.markdown(f"**{translated_label} :** :blue-badge[ℹ️ {value.label_fr}]")
         else:
-            st.markdown(f"**{translated_label} :** :gray-badge[{translated_value}]")
+            st.markdown(f"**{translated_label} :** :gray-badge[{value.label_fr}]")
     elif isinstance(value, (datetime, date)):
         st.markdown(f"**{translated_label} :** 📅 {value.strftime('%d/%m/%Y')}")
     elif isinstance(value, bool):
@@ -2534,17 +2535,32 @@ def _render_inline_section_editor(
             )
             prio_options = [
                 None,
-                PatientPriority.urgent.value,
-                PatientPriority.medium.value,
-                PatientPriority.low.value,
+                int(DiscussionPriority.TIME_BOUND),
+                int(DiscussionPriority.DECISION_NEEDED),
+                int(DiscussionPriority.STANDARD_SIGN_OFF),
+                int(DiscussionPriority.INFORMATION),
+                int(DiscussionPriority.NOT_ASSESSED),
             ]
-            cur_prio = raw.get("suggested_priority")
+            cur_prio_obj = DiscussionPriority.from_any(raw.get("suggested_priority"))
+            cur_prio = int(cur_prio_obj) if cur_prio_obj is not None else None
             prio_idx = prio_options.index(cur_prio) if cur_prio in prio_options else 0
             prio_labels = {
-                None: "⚪ Suivi habituel / Non prioritaire",
-                PatientPriority.urgent.value: "🚨 Priorité haute (Urgent)",
-                PatientPriority.medium.value: "🟠 Semi-urgent (Priorité moyenne)",
-                PatientPriority.low.value: "🟢 Standard (Priorité basse)",
+                None: "⚪ Non évaluée",
+                int(
+                    DiscussionPriority.TIME_BOUND
+                ): f"⏱️ {DiscussionPriority.TIME_BOUND.label_fr}",
+                int(
+                    DiscussionPriority.DECISION_NEEDED
+                ): f"⚖️ {DiscussionPriority.DECISION_NEEDED.label_fr}",
+                int(
+                    DiscussionPriority.STANDARD_SIGN_OFF
+                ): f"✅ {DiscussionPriority.STANDARD_SIGN_OFF.label_fr}",
+                int(
+                    DiscussionPriority.INFORMATION
+                ): f"ℹ️ {DiscussionPriority.INFORMATION.label_fr}",
+                int(
+                    DiscussionPriority.NOT_ASSESSED
+                ): f"⚪ {DiscussionPriority.NOT_ASSESSED.label_fr}",
             }
             prio_val = st.selectbox(
                 "Niveau de priorité RCP",
@@ -3137,14 +3153,10 @@ def _render_form_sections_list(
                 if not isinstance(ag_d, dict):
                     return (2, 9, ag_name)
                 rel = bool(ag_d.get("expert_relevant"))
-                prio_val = str(ag_d.get("patient_priority") or "").lower()
-                prio_rank = (
-                    0
-                    if "urgent" in prio_val and "not" not in prio_val
-                    else 1
-                    if "soon" in prio_val or "medium" in prio_val
-                    else 2
+                parsed_ag_prio = DiscussionPriority.from_any(
+                    ag_d.get("discussion_priority")
                 )
+                prio_rank = parsed_ag_prio.sort_rank if parsed_ag_prio else 9
                 return (0 if rel else 1, prio_rank, ag_name)
 
             agent_names = sorted(raw_agents, key=_expert_sort_key)
@@ -3152,11 +3164,15 @@ def _render_form_sections_list(
                 ag_icon, ag_label = get_agent_icon_and_label(agent_name)
                 agent_dict = model_data.get(agent_name)
                 if isinstance(agent_dict, dict) and agent_dict.get("expert_relevant"):
-                    prio_val = str(agent_dict.get("patient_priority") or "").lower()
-                    if "urgent" in prio_val and "not" not in prio_val:
-                        ag_summary = " — 🚨 Priorité haute"
-                    elif "soon" in prio_val or "medium" in prio_val:
-                        ag_summary = " — 🟠 Priorité moyenne"
+                    parsed_ag_prio = DiscussionPriority.from_any(
+                        agent_dict.get("discussion_priority")
+                    )
+                    if parsed_ag_prio == DiscussionPriority.TIME_BOUND:
+                        ag_summary = f" — ⏱️ {parsed_ag_prio.label_fr}"
+                    elif parsed_ag_prio == DiscussionPriority.DECISION_NEEDED:
+                        ag_summary = f" — ⚖️ {parsed_ag_prio.label_fr}"
+                    elif parsed_ag_prio is not None:
+                        ag_summary = f" — ✅ {parsed_ag_prio.label_fr}"
                     else:
                         ag_summary = " — ✅ Spécialité concernée"
                     sugg_list = agent_dict.get("expert_suggestion") or []

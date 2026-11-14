@@ -47,6 +47,7 @@ from pymongo import MongoClient  # noqa: E402
 
 from scripts.migrate_patient_ids import migrate_database_patient_ids  # noqa: E402
 from src.application.config import AppConfig  # noqa: E402
+from src.domain.oncology.agents import Agents as OncologyAgents  # noqa: E402
 from src.domain.patient import Patient  # noqa: E402
 from src.infrastructure.documents.mongodb import (  # noqa: E402
     _BSON_CODEC_OPTIONS,
@@ -69,6 +70,49 @@ LEGACY_SECTION_ALIASES: dict[str, str] = {
     "PreviousSurgery": "PreviousCurativeSurgery",
     "PlannedSurgery": "PlannedCurativeSurgery",
 }
+
+LEGACY_ONCOLOGY_EXPERT_MAP: dict[str, str] = {
+    "pancreas expert": "digestive surgeon expert",
+    "oesophagus expert": "gastroenterologist expert",
+    "hepatocellular expert": "medical oncologist expert",
+    "radiotherapy": "radiation oncologist expert",
+    "anatomopathologie": "pathologist expert",
+}
+
+LEGACY_ORGAN_EXPERT_KEYS: frozenset[str] = frozenset(
+    {
+        "pancreas expert",
+        "oesophagus expert",
+        "hepatocellular expert",
+    }
+)
+
+
+def _migrate_expert_dict_keys(raw_map: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """
+    Migrate deprecated organ-centric oncology expert keys to canonical practice-specialty keys,
+    purging organ-specific non-relevant entries (`expert_relevant=False`) so another organ's
+    negative opinion never pollutes a transverse practice specialty.
+    """
+    migrated: dict[str, Any] = {}
+    changed = False
+    for raw_key, val in raw_map.items():
+        clean = str(raw_key).strip()
+        low = clean.lower()
+        target = LEGACY_ONCOLOGY_EXPERT_MAP.get(low)
+        if target is not None:
+            changed = True
+            if (
+                low in LEGACY_ORGAN_EXPERT_KEYS
+                and isinstance(val, dict)
+                and val.get("expert_relevant") is False
+            ):
+                continue
+            if target not in migrated and target not in raw_map:
+                migrated[target] = val
+        else:
+            migrated[raw_key] = val
+    return migrated, changed
 
 
 def is_opaque_pdf_filename(filename: str | None) -> bool:
@@ -290,10 +334,12 @@ def migrate_database_storage_and_schema(
         "forms_file_migrated": 0,
         "forms_merged": 0,
         "forms_sections_migrated": 0,
+        "forms_specialties_migrated": 0,
         "patients_files_migrated": 0,
         "unverified_patients_isolated": 0,
         "patients_flags_updated": 0,
         "agendas_files_migrated": 0,
+        "agendas_specialties_migrated": 0,
         "bugs_files_migrated": 0,
     }
 
@@ -339,6 +385,14 @@ def migrate_database_storage_and_schema(
                 unset_fields[legacy_sec] = ""
                 section_migrated = True
 
+        expert_ans = form_doc.get("ExpertAnswer")
+        specialties_migrated = False
+        if isinstance(expert_ans, dict):
+            migrated_ea, ea_changed = _migrate_expert_dict_keys(expert_ans)
+            if ea_changed:
+                set_fields["ExpertAnswer"] = migrated_ea
+                specialties_migrated = True
+
         manual_edits = form_doc.get("manual_edits")
         if isinstance(manual_edits, dict):
             updated_me = dict(manual_edits)
@@ -349,9 +403,47 @@ def migrate_database_storage_and_schema(
                         updated_me[canonical_sec] = updated_me[legacy_sec]
                     del updated_me[legacy_sec]
                     me_changed = True
+            ea_trace = updated_me.get("ExpertAnswer")
+            if isinstance(ea_trace, dict):
+                trace_copy = dict(ea_trace)
+                trace_changed = False
+                for sub_k in ("human_value", "ai_original", "previous_ai_value"):
+                    sub_v = trace_copy.get(sub_k)
+                    if isinstance(sub_v, dict):
+                        mig_sub, sub_changed = _migrate_expert_dict_keys(sub_v)
+                        if sub_changed:
+                            trace_copy[sub_k] = mig_sub
+                            trace_changed = True
+                archived_traces = trace_copy.get("archived_judge_traces")
+                if isinstance(archived_traces, list) and archived_traces:
+                    new_archived: list[Any] = []
+                    arch_changed = False
+                    for arch_item in archived_traces:
+                        if not isinstance(arch_item, dict):
+                            new_archived.append(arch_item)
+                            continue
+                        arch_copy = dict(arch_item)
+                        for sub_k in ("human_value", "ai_original"):
+                            sub_v = arch_copy.get(sub_k)
+                            if isinstance(sub_v, dict):
+                                mig_sub, sub_changed = _migrate_expert_dict_keys(sub_v)
+                                if sub_changed:
+                                    arch_copy[sub_k] = mig_sub
+                                    arch_changed = True
+                        new_archived.append(arch_copy)
+                    if arch_changed:
+                        trace_copy["archived_judge_traces"] = new_archived
+                        trace_changed = True
+                if trace_changed:
+                    updated_me["ExpertAnswer"] = trace_copy
+                    me_changed = True
+                    specialties_migrated = True
             if me_changed:
                 set_fields["manual_edits"] = updated_me
                 section_migrated = True
+
+        if specialties_migrated:
+            stats["forms_specialties_migrated"] += 1
 
         edited_list = form_doc.get("manually_edited_sections")
         if isinstance(edited_list, list):
@@ -577,56 +669,84 @@ def migrate_database_storage_and_schema(
                     )
                 stats["forms_migrated"] += 1
 
-    # 4. `mdt_agendas`: rewrite `entries[].filename` and isolated `patient_id`s
+    # 4. `mdt_agendas`: rewrite `attending_experts`, `entries[].filename`, and isolated `patient_id`s
     agendas_col = database["mdt_agendas"]
+    canonical_onco_specialties = [
+        ag.agent_name for ag in OncologyAgents().expert_agents
+    ]
+    canonical_onco_set = set(canonical_onco_specialties)
     for agenda_doc in list(agendas_col.find({})):
-        entries = agenda_doc.get("entries")
-        if not isinstance(entries, list) or not entries:
-            continue
-        changed = False
-        new_entries: list[dict[str, Any]] = []
-        seen_pids: set[str] = set()
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            entry_copy = dict(entry)
-            ef_name = entry_copy.get("filename")
-            if isinstance(ef_name, str) and ef_name in effective_map:
-                mapped_ef = effective_map[ef_name]
-                if mapped_ef != ef_name:
-                    entry_copy["filename"] = mapped_ef
-                    changed = True
-            resolved_ef = entry_copy.get("filename")
-            ep_id = entry_copy.get("patient_id")
-            new_epid = (
-                file_to_new_pid.get(str(resolved_ef))
-                if isinstance(resolved_ef, str) and resolved_ef in file_to_new_pid
-                else (
-                    old_pid_to_default_pid.get(str(ep_id))
-                    if isinstance(ep_id, str)
-                    else None
-                )
+        agenda_updates: dict[str, Any] = {}
+        ag_domain = str(agenda_doc.get("domain") or "").strip().lower()
+        raw_attending = agenda_doc.get("attending_experts")
+        if ag_domain == "oncology" and isinstance(raw_attending, list):
+            has_non_canonical_exp = any(
+                not isinstance(e, str) or e.strip() not in canonical_onco_set
+                for e in raw_attending
             )
-            if new_epid and new_epid != ep_id:
-                entry_copy["patient_id"] = new_epid
-                changed = True
-            final_pid = entry_copy.get("patient_id")
-            if isinstance(final_pid, str) and final_pid:
-                if final_pid in seen_pids:
-                    changed = True
-                    continue
-                seen_pids.add(final_pid)
-            new_entries.append(entry_copy)
+            if has_non_canonical_exp:
+                kept = [
+                    str(e).strip()
+                    for e in raw_attending
+                    if isinstance(e, str) and str(e).strip() in canonical_onco_set
+                ]
+                agenda_updates["attending_experts"] = (
+                    list(dict.fromkeys(kept))
+                    if len(kept) >= 3
+                    else list(canonical_onco_specialties)
+                )
+                stats["agendas_specialties_migrated"] += 1
 
-        if changed:
-            for idx, item in enumerate(new_entries):
-                item["manual_order"] = idx
+        entries = agenda_doc.get("entries")
+        if isinstance(entries, list) and entries:
+            changed = False
+            new_entries: list[dict[str, Any]] = []
+            seen_pids: set[str] = set()
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                entry_copy = dict(entry)
+                ef_name = entry_copy.get("filename")
+                if isinstance(ef_name, str) and ef_name in effective_map:
+                    mapped_ef = effective_map[ef_name]
+                    if mapped_ef != ef_name:
+                        entry_copy["filename"] = mapped_ef
+                        changed = True
+                resolved_ef = entry_copy.get("filename")
+                ep_id = entry_copy.get("patient_id")
+                new_epid = (
+                    file_to_new_pid.get(str(resolved_ef))
+                    if isinstance(resolved_ef, str) and resolved_ef in file_to_new_pid
+                    else (
+                        old_pid_to_default_pid.get(str(ep_id))
+                        if isinstance(ep_id, str)
+                        else None
+                    )
+                )
+                if new_epid and new_epid != ep_id:
+                    entry_copy["patient_id"] = new_epid
+                    changed = True
+                final_pid = entry_copy.get("patient_id")
+                if isinstance(final_pid, str) and final_pid:
+                    if final_pid in seen_pids:
+                        changed = True
+                        continue
+                    seen_pids.add(final_pid)
+                new_entries.append(entry_copy)
+
+            if changed:
+                for idx, item in enumerate(new_entries):
+                    item["manual_order"] = idx
+                agenda_updates["entries"] = new_entries
+                stats["agendas_files_migrated"] += 1
+
+        if agenda_updates:
+            agenda_updates["updated_at"] = datetime.now()
             if not dry_run:
                 agendas_col.update_one(
                     {"_id": agenda_doc["_id"]},
-                    {"$set": {"entries": new_entries, "updated_at": datetime.now()}},
+                    {"$set": agenda_updates},
                 )
-            stats["agendas_files_migrated"] += 1
 
     # 5. `bug_reports`: rewrite `rcp_file` and isolated `patient_id`s
     bugs_col = database["bug_reports"]
@@ -740,7 +860,7 @@ def main(argv: list[str] | None = None) -> int:
                         dry_run=args.dry_run,
                     )
                 except Exception as vec_exc:
-                    vectordb_warnings[dom] = str(vec_exc)
+                    vectordb_warnings[dom] = type(vec_exc).__name__
 
             results_by_domain[dom] = {**fs_stats, **db_stats, **vec_stats}
     except ValueError as exc:
@@ -779,6 +899,8 @@ def main(argv: list[str] | None = None) -> int:
             f"bbox_deleted={GREEN}{counts['bbox_files_deleted']}{RESET}, "
             f"forms_file={GREEN}{counts['forms_file_migrated']}{RESET}, "
             f"forms_sections={GREEN}{counts['forms_sections_migrated']}{RESET}, "
+            f"forms_specialties={GREEN}{counts['forms_specialties_migrated']}{RESET}, "
+            f"agendas_specialties={GREEN}{counts['agendas_specialties_migrated']}{RESET}, "
             f"patients_id={GREEN}{counts['patients_migrated']}{RESET}, "
             f"unverified_isolated={YELLOW}{counts['unverified_patients_isolated']}{RESET}, "
             f"cache={GREEN}{counts['cache_docs_migrated']}{RESET}, "

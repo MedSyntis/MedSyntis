@@ -1,4 +1,5 @@
 from datetime import datetime
+import threading
 import time
 from typing import Any
 
@@ -41,6 +42,16 @@ class QueueThinkingCallbackHandler(BaseCallbackHandler):
         self.active_agent: str | None = section_name
         self._in_think: bool = False
         self._raw_buffer: str = ""
+
+    def clone_for_worker(self) -> "QueueThinkingCallbackHandler":
+        """Return an independent callback instance for a parallel worker thread."""
+        return QueueThinkingCallbackHandler(
+            queue_manager=self.queue_manager,
+            job_id=self.job_id,
+            run_id=self.run_id,
+            lease_id=self.lease_id,
+            section_name=self.section_name,
+        )
 
     def _emit_thinking(self, text: str, reset: bool = False) -> None:
         if not text and not reset:
@@ -530,7 +541,9 @@ class PatientMDTFormQueueJobExecutor:
                 is_Explicit_rerun = bool(job.get("force_replace", False))
                 preserve_manual = bool(job.get("preserve_manual_edits", True))
 
-                for idx, model_cls in enumerate(expert_models, start=1):
+                progress_lock = threading.Lock()
+
+                def _process_wave3_model(idx: int, model_cls: Any) -> None:
                     if queue_manager._is_job_aborted(
                         job_id, run_id=run_id, lease_id=lease_id
                     ):
@@ -550,17 +563,23 @@ class PatientMDTFormQueueJobExecutor:
                         and model_name in service.form.sections
                         and service.form.sections.get(model_name)
                     ):
-                        if model_name not in completed_models:
-                            completed_models.append(model_name)
-                        queue_manager.update_job_progress(
-                            job_id=job_id,
-                            current_step=f"Concertation d'experts ({idx}/{total}) — {model_name} (déjà extraite)",
-                            completed_models=completed_models,
-                            progress_pct=round((idx / total) * 100.0, 1),
-                            run_id=run_id,
-                            lease_id=lease_id,
-                        )
-                        continue
+                        with progress_lock:
+                            if model_name not in completed_models:
+                                completed_models.append(model_name)
+                            queue_manager.update_job_progress(
+                                job_id=job_id,
+                                current_step=f"Concertation d'experts ({idx}/{total}) — {model_name} (déjà extraite)",
+                                completed_models=list(completed_models),
+                                progress_pct=round(
+                                    (len(completed_models) / total) * 100.0, 1
+                                ),
+                                run_id=run_id,
+                                lease_id=lease_id,
+                            )
+                        return
+
+                    with progress_lock:
+                        snapshot_completed = list(completed_models)
 
                     self._run_model_extraction_step(
                         service=service,
@@ -571,13 +590,25 @@ class PatientMDTFormQueueJobExecutor:
                         step_label=f"Concertation d'experts ({idx}/{total}) — {model_name}",
                         idx=idx,
                         total=total,
-                        completed_models=completed_models,
+                        completed_models=snapshot_completed,
                         preserve_manual=preserve_manual,
                         queue_manager=queue_manager,
                         job_id=job_id,
                         run_id=run_id,
                         lease_id=lease_id,
                     )
+                    with progress_lock:
+                        if model_name not in completed_models:
+                            completed_models.append(model_name)
+
+                # Execute Wave 3 sections sequentially (ExpertAnswer -> MTDCompleted -> CareOrientationProposal)
+                # so inner specialist parallelism utilizes llama-cpp slots cleanly without SSE thinking interleaving across sections.
+                for idx, model_cls in enumerate(expert_models, start=1):
+                    if queue_manager._is_job_aborted(
+                        job_id, run_id=run_id, lease_id=lease_id
+                    ):
+                        return
+                    _process_wave3_model(idx, model_cls)
 
                 self.on_job_enqueued(domain, filename, RCPProcessingStatus.COMPLETED)
             finally:
@@ -653,6 +684,44 @@ class PatientMDTFormQueueJobExecutor:
                 )
         finally:
             service.close()
+
+    def execute_resource_index(
+        self, job: dict[str, Any], lease_id: str, queue_manager: Any
+    ) -> None:
+        """Execute a `JobType.RESOURCE_INDEX` job to index a clinical reference PDF."""
+        from src.application.ressources import Ressources
+
+        job_id = job["job_id"]
+        run_id = job.get("run_id")
+        domain = job.get("domain") or "oncology"
+        filename = job.get("filename")
+        if not filename:
+            raise ValueError("Missing filename for RESOURCE_INDEX job.")
+
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=f"Indexation de {filename} en cours",
+            progress_pct=25.0,
+            run_id=run_id,
+            lease_id=lease_id,
+        )
+        domain_conf = self._resolve_domain_config(domain)
+        with start_span(
+            "medsyntis.resource.index",
+            attributes={
+                "medsyntis.domain": domain,
+                "medsyntis.resource_filename": filename,
+                "medsyntis.job_id": job_id,
+            },
+        ):
+            Ressources(domain_conf).index_ressource(filename)
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=f"Indexation de {filename} terminée",
+            progress_pct=100.0,
+            run_id=run_id,
+            lease_id=lease_id,
+        )
 
     def execute_patient_record_summary(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any

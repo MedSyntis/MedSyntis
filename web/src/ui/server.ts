@@ -578,7 +578,7 @@ export async function buildServer({
     const allDomains = Boolean(isAdmin);
     const [queueStats, queueJobs] = await Promise.all([
       api.getQueueStats(domain, allDomains),
-      api.listQueueJobs(domain, allDomains),
+      api.listQueueJobs(domain, allDomains, { limit: 15, offset: 0 }),
     ]);
     return { queueStats, queueJobs };
   }
@@ -1543,9 +1543,11 @@ export async function buildServer({
       return reply.code(400).send("Nom de fichier invalide");
     }
     await guidelinesUseCase.reindexResource(filename, session.domain);
-    return reply.redirect(
-      `/guidelines?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}`,
-    );
+    const referer = typeof req.headers.referer === "string" ? req.headers.referer : "";
+    const target = referer.includes("/agents")
+      ? `/agents?domain=${encodeURIComponent(session.domain)}`
+      : `/guidelines?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}`;
+    return reply.redirect(target);
   });
 
   app.post("/guidelines/:filename/delete", async (req, reply) => {
@@ -1662,25 +1664,47 @@ export async function buildServer({
   });
 
   // 9. Queue Supervision & SSE Stream
-  app.get("/admin/queue", async (req, reply) => {
-    const session = resolveSession(req);
-    const dashboard = await queueAdminUseCase.getDashboard(
-      session.domain,
-      Boolean(session.isAdmin),
-    );
-    const html = renderQueueAdminPage(dashboard, session);
-    return reply.type("text/html; charset=utf-8").send(html);
-  });
+  function buildQueueRedirectUrl(
+    req: { headers: Record<string, unknown> },
+    domain: ClinicalDomain,
+  ): string {
+    const fallback = `/admin/queue?domain=${encodeURIComponent(domain)}`;
+    const referer = typeof req.headers.referer === "string" ? req.headers.referer : "";
+    if (!referer) return fallback;
+    try {
+      const parsed = new URL(referer, "http://localhost");
+      if (parsed.pathname !== "/admin/queue" && parsed.pathname !== "/queue") {
+        return fallback;
+      }
+      parsed.searchParams.set("domain", domain);
+      return `${parsed.pathname}?${parsed.searchParams.toString()}`;
+    } catch {
+      return fallback;
+    }
+  }
 
-  app.get("/queue", async (req, reply) => {
-    const session = resolveSession(req);
-    const dashboard = await queueAdminUseCase.getDashboard(
-      session.domain,
-      Boolean(session.isAdmin),
-    );
-    const html = renderQueueAdminPage(dashboard, session);
+  const renderQueueRoute = async (
+    req: { query: unknown; headers: Record<string, unknown> },
+    reply: { type: (t: string) => { send: (body: string) => unknown } },
+  ) => {
+    const session = resolveSession(req as Parameters<typeof resolveSession>[0]);
+    const q = (req.query ?? {}) as { page?: string; pageSize?: string; status?: string };
+    const parsedPage = Number.parseInt(String(q.page ?? "1"), 10);
+    const parsedPageSize = Number.parseInt(String(q.pageSize ?? "25"), 10);
+    const [dashboard, shellQueue] = await Promise.all([
+      queueAdminUseCase.getDashboard(session.domain, Boolean(session.isAdmin), {
+        page: Number.isFinite(parsedPage) ? parsedPage : 1,
+        pageSize: Number.isFinite(parsedPageSize) ? parsedPageSize : 25,
+        status: typeof q.status === "string" ? q.status : undefined,
+      }),
+      loadShellQueue(session.domain, Boolean(session.isAdmin)),
+    ]);
+    const html = renderQueueAdminPage(dashboard, session, shellQueue.queueJobs);
     return reply.type("text/html; charset=utf-8").send(html);
-  });
+  };
+
+  app.get("/admin/queue", renderQueueRoute);
+  app.get("/queue", renderQueueRoute);
 
   app.post("/admin/queue/jobs/:jobId/retry", async (req, reply) => {
     const session = resolveSession(req);
@@ -1689,7 +1713,7 @@ export async function buildServer({
     }
     const { jobId } = req.params as { jobId: string };
     await queueAdminUseCase.retryJob(jobId, session.domain);
-    return reply.redirect(`/admin/queue?domain=${encodeURIComponent(session.domain)}`);
+    return reply.redirect(buildQueueRedirectUrl(req, session.domain));
   });
 
   app.post("/admin/queue/jobs/:jobId/delete", async (req, reply) => {
@@ -1699,7 +1723,7 @@ export async function buildServer({
     }
     const { jobId } = req.params as { jobId: string };
     await queueAdminUseCase.cancelOrDeleteJob(jobId, session.domain);
-    return reply.redirect(`/admin/queue?domain=${encodeURIComponent(session.domain)}`);
+    return reply.redirect(buildQueueRedirectUrl(req, session.domain));
   });
 
   app.post("/admin/queue/clean", async (req, reply) => {
@@ -1709,7 +1733,7 @@ export async function buildServer({
     }
     const body = QueueCleanBodySchema.parse(req.body ?? {});
     await queueAdminUseCase.cleanQueue(body.mode, session.domain);
-    return reply.redirect(`/admin/queue?domain=${encodeURIComponent(session.domain)}`);
+    return reply.redirect(buildQueueRedirectUrl(req, session.domain));
   });
 
   app.post("/admin/queue/locks/release", async (req, reply) => {
@@ -1718,7 +1742,7 @@ export async function buildServer({
       return reply.code(403).send("Accès réservé aux administrateurs.");
     }
     await queueAdminUseCase.releaseLocks(session.domain);
-    return reply.redirect(`/admin/queue?domain=${encodeURIComponent(session.domain)}`);
+    return reply.redirect(buildQueueRedirectUrl(req, session.domain));
   });
 
   app.get("/events/queue", async (req, reply) => {

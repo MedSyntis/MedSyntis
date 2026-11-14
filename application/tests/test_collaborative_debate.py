@@ -147,3 +147,221 @@ class TestCollaborativeDebate(unittest.TestCase):
             form.sections["MockDebateModel"]["complete_data"]["comment"],
             "Consensus reached",
         )
+
+    @patch(
+        "src.application.use_cases.patient_mdt_form_extraction.get_domain_agents_cls"
+    )
+    def test_mtd_completed_single_coordinator_and_unknown_organ_guardrail(
+        self, mock_get_domain_agents
+    ):
+        mock_coordinator_cls = MagicMock()
+        coordinator_instance = MagicMock()
+        mock_coordinator_cls.return_value = coordinator_instance
+        mock_get_domain_agents.return_value.Coordinator_agent = mock_coordinator_cls
+
+        self.mock_config.domain = "oncology"
+        form = PatientMDTOncologicForm(file="test_doc.pdf")
+        form.sections["TumorLocation"] = {"tumor_location": "unknown"}
+
+        coordinator_instance.ask.return_value = PatientMDTOncologicForm.MTDCompleted(
+            mtd_complete={
+                "is_mtd_complete": True,
+                "what_missing": [],
+                "references": [],
+            }
+        )
+
+        mock_reader = MagicMock()
+        mock_reader.document = "test_doc.pdf"
+        extraction_service = PatientMDTFormExtractionService(
+            config=self.mock_config,
+            patient_repo=InMemoryPatientRepository(),
+            mdt_form_repo=InMemoryPatientMDTFormRepository(),
+            cache_repo=InMemoryDocumentCacheRepository(),
+        )
+
+        result = extraction_service.extract_section(
+            form=form,
+            reader=mock_reader,
+            model_cls=PatientMDTOncologicForm.MTDCompleted,
+            upsert=False,
+        )
+
+        coordinator_instance.ask.assert_called_once()
+        self.assertFalse(mock_coordinator_cls.call_args.kwargs.get("reasoning"))
+        self.assertFalse(result["mtd_complete"]["is_mtd_complete"])
+        self.assertTrue(len(result["mtd_complete"]["what_missing"]) >= 1)
+
+    @patch("src.application.use_cases.patient_mdt_form_extraction.collaborative_debate")
+    def test_care_orientation_priority_floor_semi_urgent_and_urgent(
+        self, mock_collab_debate
+    ):
+        mock_collab_debate.return_value = (
+            PatientMDTOncologicForm.CareOrientationProposal(
+                care_adaptation_suggested=False,
+                suggested_priority=3,
+                proposed_care_type="Surveillance",
+                clinical_rationale="Consensus rationale",
+            )
+        )
+
+        form = PatientMDTOncologicForm(file="test_doc.pdf")
+        # Hydrated Pydantic ExpertAnswer instance (simulates rerun from MongoDB)
+        form.sections["ExpertAnswer"] = {
+            "medical oncologist expert": PatientMDTOncologicForm.ExpertAnswer(
+                expert_relevant=True,
+                discussion_priority=2,
+                why_relevant="Needs timely systemic workup",
+                suggestions=[],
+                sources_relevant=[
+                    {
+                        "name": "TNCDPANCREAS.pdf",
+                        "page": 12,
+                        "position": "top",
+                        "excerpt": "Bilan sous 15 jours",
+                    }
+                ],
+            ),
+            "radiologist expert": {
+                "expert_relevant": False,
+                "discussion_priority": 1,
+                "why_relevant": "Not needed",
+                "suggestions": [],
+                "sources_relevant": [],
+            },
+        }
+
+        mock_reader = MagicMock()
+        mock_reader.document = "test_doc.pdf"
+        extraction_service = PatientMDTFormExtractionService(
+            config=self.mock_config,
+            patient_repo=InMemoryPatientRepository(),
+            mdt_form_repo=InMemoryPatientMDTFormRepository(),
+            cache_repo=InMemoryDocumentCacheRepository(),
+        )
+
+        result = extraction_service.extract_section(
+            form=form,
+            reader=mock_reader,
+            model_cls=PatientMDTOncologicForm.CareOrientationProposal,
+            upsert=False,
+        )
+
+        call_kwargs = mock_collab_debate.call_args.kwargs
+        self.assertIsNotNone(call_kwargs["seed_opinions"])
+        self.assertIn(
+            "TNCDPANCREAS.pdf",
+            call_kwargs["seed_opinions"]["medical oncologist expert"],
+        )
+        self.assertTrue(call_kwargs["coordinator_reasoning"])
+        # P2 relevant expert prevents downgrade to P3,
+        # does NOT force care_adaptation_suggested=True when coordinator said False,
+        # and ignores non-relevant P1 expert.
+        self.assertFalse(result["care_adaptation_suggested"])
+        self.assertEqual(result["suggested_priority"], 2)
+
+    @patch("src.application.use_cases.patient_mdt_form_extraction.collaborative_debate")
+    def test_care_orientation_debate_path_and_round2_escalation(
+        self, mock_collab_debate
+    ):
+        def _fake_collab(**kwargs):
+            # Simulate Round 2 specialist escalating priority to P1 during cross-review
+            if kwargs.get("out_round2_priorities") is not None:
+                kwargs["out_round2_priorities"]["medical oncologist expert"] = 1
+            return {
+                "care_adaptation_suggested": False,
+                "suggested_priority": 3,
+            }
+
+        mock_collab_debate.side_effect = _fake_collab
+        form = PatientMDTOncologicForm(file="test_doc.pdf")
+        form.sections["ExpertAnswer"] = {
+            "medical oncologist expert": {
+                "expert_relevant": True,
+                "discussion_priority": 3,
+                "why_relevant": "Initial reading",
+                "suggestions": [],
+                "sources_relevant": [],
+            },
+            "digestive surgeon expert": {
+                "expert_relevant": True,
+                "discussion_priority": 3,
+                "why_relevant": "Elective surgery possible",
+                "suggestions": [],
+                "sources_relevant": [],
+            },
+        }
+
+        mock_reader = MagicMock()
+        mock_reader.document = "test_doc.pdf"
+        extraction_service = PatientMDTFormExtractionService(
+            config=self.mock_config,
+            patient_repo=InMemoryPatientRepository(),
+            mdt_form_repo=InMemoryPatientMDTFormRepository(),
+            cache_repo=InMemoryDocumentCacheRepository(),
+        )
+
+        result = extraction_service.extract_section(
+            form=form,
+            reader=mock_reader,
+            model_cls=PatientMDTOncologicForm.CareOrientationProposal,
+            upsert=False,
+        )
+
+        call_kwargs = mock_collab_debate.call_args.kwargs
+        self.assertIsNotNone(call_kwargs["seed_opinions"])
+        self.assertEqual(len(call_kwargs["seed_opinions"]), 2)
+        self.assertTrue(call_kwargs["coordinator_reasoning"])
+        self.assertTrue(result["care_adaptation_suggested"])
+        self.assertEqual(result["suggested_priority"], 1)
+
+    @patch("src.application.use_cases.patient_mdt_form_extraction.collaborative_debate")
+    def test_care_orientation_allows_round2_collegial_deescalation_by_same_expert(
+        self, mock_collab_debate
+    ):
+        def _fake_collab(**kwargs):
+            # Medical oncologist de-escalates own initial P1 to P3 after Round 2 review
+            if kwargs.get("out_round2_priorities") is not None:
+                kwargs["out_round2_priorities"]["medical oncologist expert"] = 3
+            return {
+                "care_adaptation_suggested": False,
+                "suggested_priority": 3,
+            }
+
+        mock_collab_debate.side_effect = _fake_collab
+        form = PatientMDTOncologicForm(file="test_doc.pdf")
+        form.sections["ExpertAnswer"] = {
+            "medical oncologist expert": {
+                "expert_relevant": True,
+                "discussion_priority": 1,
+                "why_relevant": "Suspected progression before reading scan",
+                "suggestions": [],
+                "sources_relevant": [],
+            },
+            "radiologist expert": {
+                "expert_relevant": True,
+                "discussion_priority": 3,
+                "why_relevant": "Stable lesion on CT",
+                "suggestions": [],
+                "sources_relevant": [],
+            },
+        }
+
+        mock_reader = MagicMock()
+        mock_reader.document = "test_doc.pdf"
+        extraction_service = PatientMDTFormExtractionService(
+            config=self.mock_config,
+            patient_repo=InMemoryPatientRepository(),
+            mdt_form_repo=InMemoryPatientMDTFormRepository(),
+            cache_repo=InMemoryDocumentCacheRepository(),
+        )
+
+        result = extraction_service.extract_section(
+            form=form,
+            reader=mock_reader,
+            model_cls=PatientMDTOncologicForm.CareOrientationProposal,
+            upsert=False,
+        )
+
+        self.assertFalse(result["care_adaptation_suggested"])
+        self.assertEqual(result["suggested_priority"], 3)

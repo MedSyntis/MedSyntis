@@ -68,4 +68,4 @@ This skill defines the brand identity, visual design system, clinical UX pattern
 3. **Destructive Button Convention**:
    - Prefix delete/purge trigger keys with `btn_del_...` and confirmation dialog buttons with `btn_danger_...` so MedSyntis Rose destructive styling applies automatically.
 4. **Clinical Specialty Badges (`get_agent_icon_and_label()`)**:
-   - Use concise specialty labels (`🧠 Neurologie`, `🧬 Génétique`, `🫁 Pneumologie`, `🦿 MPR / Rééducation`, `🦴 Orthopédie`, `🩺 Pancréas`, `⚖️ Coordinateur RCP`, `🗂️ Extraction administrative & clinique`, `📚 Assistant référentiels`) — never detective emojis (`🕵️`).
+   - Use concise specialty labels (`✂️ Chirurgie digestive`, `💊 Oncologie médicale`, `☢️ Radiothérapie`, `🩻 Radiologie`, `🩺 Gastro-entérologie`, `🔬 Anatomopathologie`, `🧠 Neurologie`, `🧬 Génétique`, `🫁 Pneumologie`, `🦿 MPR / Rééducation`, `🦴 Orthopédie`, `⚖️ Coordinateur RCP`, `🗂️ Extraction administrative & clinique`, `📚 Assistant référentiels`) — never detective emojis (`🕵️`).

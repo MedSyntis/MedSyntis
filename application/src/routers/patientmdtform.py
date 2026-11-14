@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 
 from src.application.paths import UnsafePathError, safe_path
 from src.application.reader import DocumentReader
+from src.application.ressources import Ressources
 from src.application.use_cases import (
     PatientMDTFormExtractionService,
     PatientRecordService,
@@ -363,7 +364,18 @@ def chat_with_patient_record(
         extraction_service = _build_extraction_service(effective_config, db=db)
         patient_readers = extraction_service.build_patient_readers(existing_files)
         agent_cls = available_agents[request.agent_name]
-        agent = agent_cls(config=effective_config, patient_readers=patient_readers)
+        latest_doc = (
+            record_service.form_cls.select_latest_analyzed(detail["rcps"])
+            if detail.get("rcps")
+            else None
+        )
+        agent = agent_cls(
+            config=effective_config,
+            patient_readers=patient_readers,
+            ressources=record_service.form_cls.resolve_agent_ressources(
+                latest_doc, agent_cls, Ressources.list_from_config(effective_config)
+            ),
+        )
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
     except Exception as err:
@@ -715,7 +727,10 @@ def process_mdt_form(filename: str, request: ProcessRequest, config: DomainConfi
 
 @router.post("/{filename}/chat", response_model=ChatResponse)
 def chat_with_patient_agent(
-    filename: str, request: ChatRequest, config: DomainConfigDep
+    filename: str,
+    request: ChatRequest,
+    config: DomainConfigDep,
+    record_service: RecordServiceDep,
 ):
     """Chat with an expert agent for a given PatientMDTForm document."""
     file_path = _safe_mdt_form_path(config.rcp.path, filename)
@@ -741,7 +756,14 @@ def chat_with_patient_agent(
         )
         reader = DocumentReader(config=effective_config, document=filename)
         agent_cls = available_agents[request.agent_name]
-        agent = agent_cls(config=effective_config, mtd=reader)
+        form_doc = record_service.mdt_form_repo.get_by_file(filename)
+        agent = agent_cls(
+            config=effective_config,
+            mtd=reader,
+            ressources=record_service.form_cls.resolve_agent_ressources(
+                form_doc, agent_cls, Ressources.list_from_config(effective_config)
+            ),
+        )
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
     except Exception as err:

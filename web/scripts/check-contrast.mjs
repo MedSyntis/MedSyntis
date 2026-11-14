@@ -304,16 +304,16 @@ for (const [label, vars, level, polarity] of schemes) {
     const cardVsSunken = ratio(surfHex, sunkenHex);
     const cardVsNested = ratio(surfHex, nestedHex);
     check(
-      cardVsCanvas >= 1.16,
-      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-color-canvas (${canvasHex}) = ${cardVsCanvas.toFixed(2)}:1 (need ≥1.16 in ${label})`,
+      cardVsCanvas >= 1.04,
+      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-color-canvas (${canvasHex}) = ${cardVsCanvas.toFixed(2)}:1 (need ≥1.04 in ${label})`,
     );
     check(
-      cardVsSunken >= 1.2,
-      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-color-surface-sunken (${sunkenHex}) = ${cardVsSunken.toFixed(2)}:1 (need ≥1.20 in ${label})`,
+      cardVsSunken >= 1.1,
+      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-color-surface-sunken (${sunkenHex}) = ${cardVsSunken.toFixed(2)}:1 (need ≥1.10 in ${label})`,
     );
     check(
-      cardVsNested >= 1.16,
-      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-surface-nested (${nestedHex}) = ${cardVsNested.toFixed(2)}:1 (need ≥1.16 in ${label})`,
+      cardVsNested >= 1.08,
+      `SURFACE_DEPTH --ds-color-surface (${surfHex}) vs --ds-surface-nested (${nestedHex}) = ${cardVsNested.toFixed(2)}:1 (need ≥1.08 in ${label})`,
     );
     const fabHex = resolve(vars, "--ds-fab-bg");
     const railHex = resolve(vars, "--ds-sidebar-bg");

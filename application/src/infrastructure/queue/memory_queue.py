@@ -313,6 +313,69 @@ class InMemoryQueueManager:
                     return self._clone_job(j)
         return None
 
+    def _enqueue_singleton_job(
+        self,
+        *,
+        domain: str | None,
+        job_type: JobType,
+        match_fn: Any,
+        build_job_fn: Any,
+        span_attrs: dict[str, Any],
+        extra_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Enqueue a deduplicated background job if no active matching job exists."""
+        target_domain = self._normalize_domain(domain)
+        with self._lock:
+            for j in self._jobs.values():
+                if (
+                    j["domain"] == target_domain
+                    and j.get("job_type") == job_type.value
+                    and j["status"]
+                    in (JobStatus.PENDING.value, JobStatus.PROCESSING.value)
+                    and match_fn(j)
+                ):
+                    cloned = self._clone_job(j)
+                    return {
+                        "already_queued": True,
+                        "domain": target_domain,
+                        "job": cloned,
+                        "jobs": [cloned],
+                        **extra_result,
+                    }
+
+            job_dict = build_job_fn(target_domain).model_dump(mode="python")
+            job_dict["job_type"] = job_type.value
+            job_dict["status"] = JobStatus.PENDING.value
+
+            self._jobs[job_dict["job_id"]] = job_dict
+            with start_span(
+                "medsyntis.queue.enqueue",
+                kind=SpanKind.PRODUCER,
+                attributes={
+                    "medsyntis.domain": target_domain,
+                    "medsyntis.job_type": job_type.value,
+                    **span_attrs,
+                },
+            ):
+                carrier = inject_trace_context()
+                if carrier:
+                    self._job_trace_contexts[job_dict["job_id"]] = carrier
+                get_metrics().record_queue_enqueue(
+                    domain=target_domain,
+                    job_type=job_type.value,
+                    count=1,
+                )
+            self._push_to_pq(job_dict)
+            cloned = self._clone_job(job_dict)
+
+        return {
+            "already_queued": False,
+            "domain": target_domain,
+            "job": cloned,
+            "jobs": [cloned],
+            **extra_result,
+        }
+
     def enqueue_patient_summary(
         self,
         patient_id: str,
@@ -320,31 +383,15 @@ class InMemoryQueueManager:
         domain: str | None = None,
     ) -> dict[str, Any]:
         """Enqueue an on-demand global `PatientRecord` summary synthesis job in the `PriorityQueue`."""
-        target_domain = self._normalize_domain(domain)
-        with self._lock:
-            for j in self._jobs.values():
-                if (
-                    j["domain"] == target_domain
-                    and j.get("job_type") == JobType.PATIENT_SUMMARY.value
-                    and (
-                        j.get("target_patient_id") == patient_id
-                        or j.get("resolved_patient_id") == patient_id
-                        or j.get("filename") == patient_id
-                    )
-                    and j["status"]
-                    in (JobStatus.PENDING.value, JobStatus.PROCESSING.value)
-                ):
-                    cloned = self._clone_job(j)
-                    return {
-                        "already_queued": True,
-                        "patient_id": patient_id,
-                        "domain": target_domain,
-                        "job": cloned,
-                        "jobs": [cloned],
-                    }
-
-            now = datetime.now()
-            summary_job = QueueJob(
+        return self._enqueue_singleton_job(
+            domain=domain,
+            job_type=JobType.PATIENT_SUMMARY,
+            match_fn=lambda j: (
+                j.get("target_patient_id") == patient_id
+                or j.get("resolved_patient_id") == patient_id
+                or j.get("filename") == patient_id
+            ),
+            build_job_fn=lambda target_domain: QueueJob(
                 domain=target_domain,
                 filename=patient_id,
                 target_patient_id=patient_id,
@@ -357,39 +404,37 @@ class InMemoryQueueManager:
                 current_step="Synthèse longitudinale du dossier en attente",
                 total_models=1,
                 max_retries=self.base_config.queue.max_retries,
-                created_at=now,
-            ).model_dump(mode="python")
-            summary_job["job_type"] = JobType.PATIENT_SUMMARY.value
-            summary_job["status"] = JobStatus.PENDING.value
+                created_at=datetime.now(),
+            ),
+            span_attrs={"medsyntis.patient_id": patient_id},
+            extra_result={"patient_id": patient_id},
+        )
 
-            self._jobs[summary_job["job_id"]] = summary_job
-            with start_span(
-                "medsyntis.queue.enqueue",
-                kind=SpanKind.PRODUCER,
-                attributes={
-                    "medsyntis.domain": target_domain,
-                    "medsyntis.job_type": JobType.PATIENT_SUMMARY.value,
-                    "medsyntis.patient_id": patient_id,
-                },
-            ):
-                carrier = inject_trace_context()
-                if carrier:
-                    self._job_trace_contexts[summary_job["job_id"]] = carrier
-                get_metrics().record_queue_enqueue(
-                    domain=target_domain,
-                    job_type=JobType.PATIENT_SUMMARY.value,
-                    count=1,
-                )
-            self._push_to_pq(summary_job)
-            cloned = self._clone_job(summary_job)
-
-        return {
-            "already_queued": False,
-            "patient_id": patient_id,
-            "domain": target_domain,
-            "job": cloned,
-            "jobs": [cloned],
-        }
+    def enqueue_resource_index(
+        self,
+        filename: str,
+        domain: str | None = None,
+    ) -> dict[str, Any]:
+        """Enqueue a background vector indexing job for a clinical reference PDF."""
+        return self._enqueue_singleton_job(
+            domain=domain,
+            job_type=JobType.RESOURCE_INDEX,
+            match_fn=lambda j: j.get("filename") == filename,
+            build_job_fn=lambda target_domain: QueueJob(
+                domain=target_domain,
+                filename=filename,
+                job_type=JobType.RESOURCE_INDEX,
+                model_name="ResourceIndex",
+                status=JobStatus.PENDING,
+                priority=JobPriority.RESOURCE_INDEX,
+                current_step=f"Indexation de {filename} en attente",
+                total_models=1,
+                max_retries=self.base_config.queue.max_retries,
+                created_at=datetime.now(),
+            ),
+            span_attrs={"medsyntis.doc_id": filename},
+            extra_result={"filename": filename},
+        )
 
     # ------------------------------------------------------------------
     # Enqueue Operations (Step 1 + Step 2 & Reruns)
@@ -1385,6 +1430,15 @@ class InMemoryQueueManager:
             "allowed_domains": self.base_config.enabled_domains_list,
         }
 
+    _QUEUE_STATUS_SORT_RANK: dict[str, int] = {
+        "RUNNING": 0,
+        "PROCESSING": 0,
+        "PENDING": 1,
+        "FAILED": 2,
+        "COMPLETED": 3,
+        "CANCELLED": 4,
+    }
+
     def get_queue_jobs(
         self,
         status: str | None = None,
@@ -1392,19 +1446,37 @@ class InMemoryQueueManager:
         limit: int = 100,
         domain: str | None = None,
         filename: str | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         target_domain = domain.strip().lower() if domain else None
+        status_norm = status.strip().upper() if status else None
+        status_targets = (
+            {"RUNNING", "PROCESSING"}
+            if status_norm == "RUNNING"
+            else ({status_norm} if status_norm else None)
+        )
         with self._lock:
             jobs = [
                 self._clone_job(j)
                 for j in self._jobs.values()
                 if (not target_domain or j["domain"] == target_domain)
-                and (not status or j["status"] == status)
+                and (
+                    not status_targets
+                    or str(j.get("status") or "").upper() in status_targets
+                )
                 and (not batch_id or j.get("batch_id") == batch_id)
                 and (not filename or j.get("filename") == filename)
             ]
+        # Stable Timsort: newest first within each status, then RUNNING -> PENDING -> FAILED -> COMPLETED -> CANCELLED
         jobs.sort(key=lambda j: j.get("created_at") or datetime.min, reverse=True)
-        return jobs[:limit]
+        jobs.sort(
+            key=lambda j: self._QUEUE_STATUS_SORT_RANK.get(
+                str(j.get("status") or "").upper(), 9
+            )
+        )
+        safe_offset = max(0, offset)
+        safe_limit = max(1, limit)
+        return jobs[safe_offset : safe_offset + safe_limit]
 
     def cancel_or_delete_job(self, job_id: str) -> bool:
         file_to_stabilize: tuple[str, str] | None = None
@@ -1683,6 +1755,10 @@ class InMemoryQueueManager:
         if hasattr(self.executor, "execute_patient_record_summary"):
             self.executor.execute_patient_record_summary(job, lease_id, self)
 
+    def _execute_resource_index(self, job: dict[str, Any], lease_id: str) -> None:
+        if hasattr(self.executor, "execute_resource_index"):
+            self.executor.execute_resource_index(job, lease_id, self)
+
     def execute_claimed_job(self, job: dict[str, Any], lease_id: str) -> None:
         job_id = job["job_id"]
         run_id = job.get("run_id")
@@ -1739,6 +1815,8 @@ class InMemoryQueueManager:
                     self._execute_single_model(job, lease_id)
                 elif job_type == JobType.PATIENT_SUMMARY.value:
                     self._execute_patient_record_summary(job, lease_id)
+                elif job_type == JobType.RESOURCE_INDEX.value:
+                    self._execute_resource_index(job, lease_id)
                 else:
                     raise ValueError(f"Unsupported job_type: {job_type}")
 
@@ -1747,11 +1825,16 @@ class InMemoryQueueManager:
                     self.release_gpu_lease(lease_id=lease_id)
                     return
 
+                done_step = (
+                    "Référentiel indexé"
+                    if job_type == JobType.RESOURCE_INDEX.value
+                    else "Dossier prêt"
+                )
                 self.complete_job(
                     job_id=job_id,
                     lease_id=lease_id,
                     resolved_patient_id=resolved_pid,
-                    current_step="Dossier prêt",
+                    current_step=done_step,
                     run_id=run_id,
                 )
         except Exception as exc:
@@ -2212,11 +2295,14 @@ class QueueBroker:
         limit: int = 100,
         cross_domain: bool = False,
         filename: str | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         target_domain = None if cross_domain else self.domain
         if self._use_remote_api():
             try:
                 params: dict[str, Any] = {"limit": limit}
+                if offset > 0:
+                    params["offset"] = offset
                 if target_domain:
                     params["domain"] = target_domain
                 if status:
@@ -2241,6 +2327,7 @@ class QueueBroker:
             limit=limit,
             domain=target_domain,
             filename=filename,
+            offset=offset,
         )
 
     def cancel_or_delete_job(self, job_id: str) -> bool:

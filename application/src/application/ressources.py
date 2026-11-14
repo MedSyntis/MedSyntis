@@ -16,6 +16,15 @@ class Ressources:
         self.config = config
         self.directory = Path(config.rcp.additional_path)
 
+    @classmethod
+    def list_from_config(cls, config: AppConfig) -> list[str]:
+        """Safely list available PDF resource filenames when `config.rcp.additional_path` is configured."""
+        rcp = getattr(config, "rcp", None)
+        additional_path = getattr(rcp, "additional_path", None)
+        if not isinstance(additional_path, (str, Path)):
+            return []
+        return cls(config).list_ressources()
+
     def list_ressources(self) -> list[str]:
         """
         List all available PDF resource filenames in the additional path directory,

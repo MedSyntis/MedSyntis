@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { MedsyntisApiPort } from "../../src/application/ports/medsyntis-api.port.js";
 import { FeedbackUseCase } from "../../src/application/use-cases/feedback.use-case.js";
 import { GuidelinesUseCase } from "../../src/application/use-cases/guidelines.use-case.js";
 import { IngestUseCase } from "../../src/application/use-cases/ingest.use-case.js";
@@ -18,8 +19,8 @@ describe("Application Use-Cases with InMemoryMedsyntisApiFake", () => {
 
     const oncoView = await useCase.execute("oncology", { completeness: "all" });
     expect(oncoView.kpis.structuredCount).toBeGreaterThanOrEqual(2);
-    expect(oncoView.kpis.highPriorityCount).toBeGreaterThanOrEqual(1);
-    expect(oncoView.cards[0]?.priorityLevel).toBe("high");
+    expect(oncoView.kpis.p1Count).toBeGreaterThanOrEqual(1);
+    expect(oncoView.cards[0]?.priorityLevel).toBe(1);
 
     const smaView = await useCase.execute("sma", { completeness: "all" });
     expect(smaView.cards.some((c) => c.domain === "sma")).toBe(true);
@@ -138,6 +139,68 @@ describe("Application Use-Cases with InMemoryMedsyntisApiFake", () => {
     const released = await useCase.releaseLocks("oncology");
     expect(released.released).toBeGreaterThanOrEqual(0);
   });
+
+  it("QueueAdminUseCase keeps RUNNING jobs first, filters by status, and paginates", async () => {
+    const baseJob = {
+      jobType: "FULL_EXTRACTION",
+      priority: 10,
+      domain: "oncology",
+      filename: "case.pdf",
+      section: "clinical",
+      progressPct: 0,
+      step: "QUEUED",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+      preserveManualEdits: true,
+    };
+    const fakeJobs = [
+      { ...baseJob, jobId: "j-comp", status: "COMPLETED", createdAt: "2026-11-14T12:00:00Z" },
+      { ...baseJob, jobId: "j-pend", status: "PENDING", createdAt: "2026-11-14T11:30:00Z" },
+      { ...baseJob, jobId: "j-fail", status: "FAILED", createdAt: "2026-11-14T11:15:00Z" },
+      {
+        ...baseJob,
+        jobId: "j-run",
+        status: "RUNNING",
+        progressPct: 50,
+        createdAt: "2026-11-14T09:00:00Z",
+      },
+    ];
+    const listQueueJobs = vi.fn().mockResolvedValue(fakeJobs);
+    const getQueueStats = vi.fn().mockResolvedValue({
+      pending: 1,
+      running: 1,
+      completed: 1,
+      failed: 1,
+      cancelled: 0,
+      total: 35,
+      activeFormFile: "case.pdf",
+      activeStep: "clinical",
+      activeProgressPct: 50,
+      thinkingPreview: null,
+      gpuLocksCount: 0,
+    });
+    const useCase = new QueueAdminUseCase({
+      listQueueJobs,
+      getQueueStats,
+    } as unknown as MedsyntisApiPort);
+
+    const view = await useCase.getDashboard("oncology", true, {
+      page: 2,
+      pageSize: 25,
+      status: "all",
+    });
+
+    expect(listQueueJobs).toHaveBeenCalledWith("oncology", true, {
+      limit: 25,
+      offset: 25,
+      status: undefined,
+    });
+    expect(view.page).toBe(2);
+    expect(view.totalPages).toBe(2);
+    expect(view.totalItems).toBe(35);
+    expect(view.jobs.map((j) => j.jobId)).toEqual(["j-run", "j-pend", "j-fail", "j-comp"]);
+  });
 });
 
 describe("HttpMedsyntisApiAdapter server-side security headers & contract", () => {
@@ -153,12 +216,13 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
           first_name: "Jeanne",
           last_name: "Fictive",
           mdt_date: "2026-11-06",
-          priority_level: "high",
+          discussion_priority: 1,
+          discussion_priority_code: "P1",
           is_complete: false,
           missing_count: 2,
           care_adaptation_suggested: true,
           proposed_care_type: "Gemcitabine",
-          specialties: ["pancreas expert"],
+          specialties: ["digestive surgeon expert"],
           processing_status: "COMPLETED",
           processing_step: null,
           processing_progress_pct: 100,
@@ -177,7 +241,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
     const cards = await adapter.listPatientCards("oncology");
     expect(cards).toHaveLength(1);
     expect(cards[0]?.patientName).toBe("Fictive Jeanne");
-    expect(cards[0]?.priorityLevel).toBe("high");
+    expect(cards[0]?.priorityLevel).toBe(1);
     expect(cards[0]?.careAdaptationSuggested).toBe(true);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -310,10 +374,10 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
                 CareOrientationProposal: {
                   care_adaptation_suggested: true,
                   proposed_care_type: "Chirurgie",
-                  suggested_priority: "medium",
+                  suggested_priority: 2,
                 },
                 ExpertAnswer: {
-                  "pancreas expert": { expert_relevant: true, patient_priority: "high" },
+                  "digestive surgeon expert": { expert_relevant: true, discussion_priority: 1 },
                 },
                 manual_edits: {
                   PatientAdministrative: { is_manual: true, edited_by: "Dr Test" },
@@ -352,7 +416,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
               patient_id: "P-1",
               patient: "Fictive Jeanne",
               missing: ["IRM"],
-              experts: ["pancreas expert"],
+              experts: ["digestive surgeon expert"],
               processing_status: "COMPLETED",
             },
           ],
@@ -443,9 +507,9 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
           status: 200,
           json: async () => [
             {
-              name: "pancreas expert",
-              role: "Expert pancréas",
-              resources: ["TNCD.pdf"],
+              name: "digestive surgeon expert",
+              role: "Chirurgie digestive",
+              resources: { Pancreas: ["TNCDPANCREAS.pdf"] },
               models: ["mistral"],
               system_prompt: "Tu es expert",
             },
@@ -541,25 +605,25 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
             session_date: "2026-11-12",
             sort_strategy: "urgency_first",
             defer_incomplete_files: true,
-            available_experts: ["pancreas expert"],
-            attending_experts: ["pancreas expert"],
+            available_experts: ["digestive surgeon expert"],
+            attending_experts: ["digestive surgeon expert"],
             items: [
               {
                 position: 1,
                 patient_id: "P-1",
                 filename: "doc.pdf",
                 patient_name: "Fictive Jeanne",
-                urgency: "high",
-                urgency_score: 90,
+                discussion_priority: 1,
+                discussion_priority_code: "P1",
                 is_complete: true,
-                required_experts: ["pancreas expert"],
-                present_required_experts: ["pancreas expert"],
+                required_experts: ["digestive surgeon expert"],
+                present_required_experts: ["digestive surgeon expert"],
                 absent_required_experts: [],
               },
             ],
             expert_windows: [
               {
-                expert_name: "pancreas expert",
+                expert_name: "digestive surgeon expert",
                 is_attending: true,
                 case_count: 1,
                 urgent_case_count: 1,
@@ -574,7 +638,8 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
                 patient_id: "P-2",
                 filename: "doc2.pdf",
                 patient_name: "Autre Patient",
-                urgency: "low",
+                discussion_priority: 3,
+                discussion_priority_code: "P3",
               },
             ],
           }),
@@ -688,7 +753,7 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
 
     const forms = await adapter.getPatientForms("P-1", "oncology");
     expect(forms).toHaveLength(1);
-    expect(forms[0]?.metrics.priority_level).toBe("high");
+    expect(forms[0]?.metrics.discussion_priority).toBe(1);
 
     const updated = await adapter.updateFormSection(
       "doc.pdf",
@@ -788,8 +853,8 @@ describe("HttpMedsyntisApiAdapter server-side security headers & contract", () =
         sessionDate: "2026-11-15",
         sortStrategy: "hybrid",
         deferIncompleteFiles: false,
-        attendingExperts: ["pancreas expert"],
-        toggleExpert: "pancreas expert",
+        attendingExperts: ["digestive surgeon expert"],
+        toggleExpert: "digestive surgeon expert",
         patientIds: ["P-1"],
         resetEnrolledPatients: false,
       },

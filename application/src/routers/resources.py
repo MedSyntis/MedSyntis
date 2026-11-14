@@ -11,6 +11,7 @@ from src.application.paths import UnsafePathError, is_safe_filename, safe_path
 from src.application.reader import DocumentReader
 from src.application.ressources import Ressources
 from src.domain.agents import get_domain_agents
+from src.infrastructure.queue import get_global_queue_manager
 from src.models.rcp import ChatResponse
 from src.models.resources import (
     ResourceChatRequest,
@@ -18,7 +19,7 @@ from src.models.resources import (
     ResourceIndexedResponse,
     ResourceIndexResponse,
 )
-from src.routers.dependencies import DomainConfigDep, require_admin
+from src.routers.dependencies import DomainConfigDep, get_base_config, require_admin
 
 router = APIRouter(prefix="/resources", tags=["resources"])
 
@@ -187,9 +188,13 @@ def delete_resource(filename: str, config: DomainConfigDep):
     return {"deleted": filename}
 
 
-@router.post("/{filename}/index", response_model=ResourceIndexedResponse)
+@router.post(
+    "/{filename}/index",
+    response_model=ResourceIndexedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 def index_resource(filename: str, config: DomainConfigDep):
-    """Index a scientific clinical reference resource into the domain vector store."""
+    """Enqueue a background vector indexing job for a clinical reference resource."""
     try:
         safe_path(config.rcp.additional_path, filename)
     except UnsafePathError as err:
@@ -206,19 +211,29 @@ def index_resource(filename: str, config: DomainConfigDep):
         )
 
     try:
-        manager.index_ressource(filename)
+        queue_mgr = get_global_queue_manager(get_base_config())
+        result = queue_mgr.enqueue_resource_index(filename, domain=config.domain)
+        job = result["job"]
+        already_queued = bool(result.get("already_queued"))
         return {
             "filename": filename,
             "domain": config.domain,
-            "message": "Ressource indexée avec succès.",
+            "job_id": job.get("job_id"),
+            "status": str(job.get("status", "PENDING")),
+            "already_queued": already_queued,
+            "message": (
+                "Indexation déjà en cours en tâche de fond."
+                if already_queued
+                else "Indexation lancée en tâche de fond."
+            ),
         }
     except Exception as err:
         config.set_logger("medsyntis.api").exception(
-            "Failed to index resource %s", filename
+            "Failed to enqueue resource indexing for %s", filename
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erreur interne lors de l'indexation de la ressource.",
+            detail="Erreur interne lors de la mise en file de l'indexation.",
         ) from err
 
 

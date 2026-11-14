@@ -1543,6 +1543,83 @@ a.ds-kpi:hover {
 }
 .ds-kpi__value { font-size: var(--ds-text-3xl); font-weight: var(--ds-weight-bold); line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--_fg); }
 .ds-kpi__meta { font-size: var(--ds-text-xs); color: var(--_muted); font-weight: var(--ds-weight-medium); }
+.ds-kpi-grid--compact { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--ds-space-3); }
+.ds-kpi-grid--compact .ds-kpi { padding: var(--ds-space-3) var(--ds-space-4); gap: var(--ds-space-1); }
+.ds-kpi-grid--compact .ds-kpi__label { font-size: var(--ds-text-xs); gap: var(--ds-space-2); }
+.ds-kpi-grid--compact .ds-kpi__label > span:first-child,
+.ds-kpi-grid--compact .ds-kpi__label > .ds-icon-box { width: 1.75rem; height: 1.75rem; border-radius: var(--ds-radius-sm); }
+.ds-kpi-grid--compact .ds-kpi__value { font-size: var(--ds-text-2xl); }
+
+/* Queue 1-line Filter Toolbar & Aligned Pagination */
+.ds-queue-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+}
+.ds-queue-toolbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex: 1 1 auto;
+}
+.ds-queue-toolbar__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.ds-queue-toolbar__page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  white-space: nowrap;
+}
+.ds-queue-toolbar__page-size .ds-select {
+  width: auto;
+  min-width: 4.5rem;
+}
+.ds-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  background: var(--ds-color-surface);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-xs);
+}
+.ds-pagination__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-left: auto;
+}
+.ds-pagination__page {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--ds-space-2);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-color-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ds-queue-error-snippet {
+  display: block;
+  margin-top: var(--ds-space-1);
+  color: var(--ds-color-danger);
+  font-size: var(--ds-text-xs);
+  line-height: 1.35;
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ds-kpi--success {
   --_bg: var(--ds-rcp-green-grad);
   --_fg: var(--ds-rcp-green-fg);
@@ -2516,20 +2593,49 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-dropzone__title { font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-md); }
 
-.ds-file-list { display: flex; flex-direction: column; gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; }
+.ds-file-list { display: flex; flex-direction: column; gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; min-width: 0; }
 .ds-file-list__item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--ds-space-3);
+  gap: var(--ds-space-2) var(--ds-space-3);
   padding: var(--ds-space-3) var(--ds-space-4);
   border: 1px solid var(--ds-color-border);
   border-radius: var(--ds-radius-md);
   background: var(--ds-color-surface);
   font-size: var(--ds-text-sm);
+  min-width: 0;
+  max-width: 100%;
   transition: background var(--ds-duration-fast) var(--ds-ease);
 }
 .ds-file-list__item:hover { background: var(--ds-surface-container-low); }
+.ds-file-list__title {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex: 1 1 12rem;
+  min-width: 0;
+}
 .ds-file-list__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--ds-weight-medium); }
+.ds-file-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-left: auto;
+  max-width: 100%;
+}
+.ds-subcard .ds-file-list__item {
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--ds-space-2) var(--ds-space-3);
+}
+.ds-subcard .ds-file-list__title {
+  flex: 0 0 auto;
+}
+.ds-subcard .ds-file-list__actions {
+  margin-left: 0;
+}
 
 /* M3 Expansion Panels / Clinical Sections (ZERO border, M3 surface + elevation) */
 .ds-section {

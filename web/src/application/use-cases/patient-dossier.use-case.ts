@@ -29,6 +29,7 @@ import type {
   CitationRef,
   ClinicalDomain,
   CompletenessStatus,
+  DiscussionPriorityLevel,
   DomainFormSchema,
   ExpertSuggestion,
   Language,
@@ -38,7 +39,6 @@ import type {
   PatientDashboardView,
   PatientListItem,
   PatientRecordSummaryView,
-  PriorityLevel,
   RawCompletenessStatus,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
@@ -108,7 +108,7 @@ export interface TimelineSessionItem {
   mdtDate: string;
   isCurrent: boolean;
   isLatest: boolean;
-  priorityLevel: PriorityLevel;
+  priorityLevel: DiscussionPriorityLevel;
   priorityLabel: string;
   completenessStatus: CompletenessStatus;
   completenessLabel: string;
@@ -238,13 +238,15 @@ export class PatientDossierUseCase {
         : currentForm.file;
     const patientName = `${lastName} ${firstName}`.trim();
 
-    const priorityLevel = normalizePriorityLevel(currentForm.metrics.priority_level);
+    const priorityLevel = normalizePriorityLevel(
+      currentForm.metrics.discussion_priority ?? currentForm.metrics.discussion_priority_code,
+    );
     const priorityBadge = derivePriorityBadgeInfo(priorityLevel, lang, false, {
-      urgency_reason: currentForm.metrics.urgency_reason
-        ? String(currentForm.metrics.urgency_reason)
+      priority_reason: currentForm.metrics.priority_reason
+        ? String(currentForm.metrics.priority_reason)
         : null,
-      urgency_reasons: Array.isArray(currentForm.metrics.urgency_reasons)
-        ? currentForm.metrics.urgency_reasons.map(String)
+      priority_reasons: Array.isArray(currentForm.metrics.priority_reasons)
+        ? currentForm.metrics.priority_reasons.map(String)
         : [],
     });
 
@@ -376,7 +378,9 @@ export class PatientDossierUseCase {
     const opinions = this.buildOpinions(currentForm, lang);
 
     const timeline: TimelineSessionItem[] = sorted.map((f, idx) => {
-      const fPrio = normalizePriorityLevel(f.metrics.priority_level);
+      const fPrio = normalizePriorityLevel(
+        f.metrics.discussion_priority ?? f.metrics.discussion_priority_code,
+      );
       const fPrioInfo = derivePriorityBadgeInfo(fPrio, lang, true);
       const fMtdRaw = (f.sections.MTDCompleted ?? {}) as Record<string, unknown>;
       const fHasMtd = Object.keys(fMtdRaw).length > 0;
@@ -1090,7 +1094,7 @@ export class PatientDossierUseCase {
           : null;
       const carePriorityLevel =
         sectionName === "CareOrientationProposal"
-          ? normalizePriorityLevel(rawObj.suggested_priority ?? form.metrics.priority_level)
+          ? normalizePriorityLevel(rawObj.suggested_priority ?? form.metrics.discussion_priority)
           : null;
       const sectionTone: "green" | "orange" | "red" | "neutral" | null =
         sectionName === "MTDCompleted"
@@ -1098,7 +1102,7 @@ export class PatientDossierUseCase {
             ? "neutral"
             : (form.metrics.completeness_tone ?? mtdFieldTone ?? "neutral")
           : sectionName === "CareOrientationProposal"
-            ? carePriorityLevel === "high"
+            ? carePriorityLevel === 1
               ? "red"
               : rawObj.care_adaptation_suggested === true ||
                   form.metrics.care_adaptation_suggested === true
@@ -1189,7 +1193,7 @@ export class PatientDossierUseCase {
       if (!payload || typeof payload !== "object") continue;
       const pres = getAgentPresentation(agentKey, lang);
       const relevant = payload.expert_relevant !== false;
-      const priorityLevel = normalizePriorityLevel(payload.patient_priority);
+      const priorityLevel = normalizePriorityLevel(payload.discussion_priority);
       const whyRelevant = String(payload.why_relevant ?? "");
       const reasoningThinking =
         typeof payload.reasoning_thinking === "string" && payload.reasoning_thinking.trim()

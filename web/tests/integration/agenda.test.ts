@@ -33,10 +33,10 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     expect(res.body).toContain('data-testid="agenda-rank-A-1042"');
     expect(res.body).not.toContain("Reléguer les dossiers incomplets");
 
-    // Focus on specialty "pancreas expert" highlights matching RCP dossiers and dims others
+    // Focus on specialty "digestive surgeon expert" highlights matching RCP dossiers and dims others
     const focusRes = await app.inject({
       method: "GET",
-      url: "/agenda?domain=oncology&focusExpert=pancreas%20expert",
+      url: "/agenda?domain=oncology&focusExpert=digestive%20surgeon%20expert",
     });
     expect(focusRes.statusCode).toBe(200);
     expect(focusRes.body).toContain("ds-agenda-item--focused");
@@ -88,7 +88,7 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
         sessionDate: "2026-12-10",
         sortStrategy: "urgency_first",
         attendingExpertsPresent: "true",
-        attendingExperts: ["pancreas expert", "oesophagus expert"],
+        attendingExperts: ["digestive surgeon expert", "gastroenterologist expert"],
         patientIdsPresent: "true",
         patientIds: ["A-1042"],
       },
@@ -98,7 +98,10 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     const view = await api.getMdtAgenda("oncology");
     expect(view.sessionDate).toBe("2026-12-10");
     expect(view.sortStrategy).toBe("urgency_first");
-    expect(view.attendingExperts).toEqual(["pancreas expert", "oesophagus expert"]);
+    expect(view.attendingExperts).toEqual([
+      "digestive surgeon expert",
+      "gastroenterologist expert",
+    ]);
     expect(view.items.map((i) => i.patientId)).toEqual(["A-1042"]);
     expect(view.candidates.map((c) => c.patientId)).toContain("A-1037");
   });
@@ -108,12 +111,12 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     const config = loadConfig({ APP_DEV_MODE: "true" });
     const app = await buildServer({ config, api });
 
-    // 1. Toggle pancreas expert off -> triggers quorum warning on Jeanne FICTIVE (#A-1042)
+    // 1. Toggle digestive surgeon expert off -> triggers quorum warning on Jeanne FICTIVE (#A-1042)
     const toggleRes = await app.inject({
       method: "POST",
       url: "/agenda/options?domain=oncology",
       payload: {
-        toggleExpert: "pancreas expert",
+        toggleExpert: "digestive surgeon expert",
         sessionDate: "2026-12-01",
         sortStrategy: "expert_grouping",
       },
@@ -121,12 +124,12 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     expect(toggleRes.statusCode).toBe(302);
 
     const agendaAfterToggle = await api.getMdtAgenda("oncology");
-    expect(agendaAfterToggle.attendingExperts).not.toContain("pancreas expert");
+    expect(agendaAfterToggle.attendingExperts).not.toContain("digestive surgeon expert");
     expect(agendaAfterToggle.sessionDate).toBe("2026-12-01");
     expect(agendaAfterToggle.sortStrategy).toBe("expert_grouping");
     expect(agendaAfterToggle.quorumWarningCount).toBeGreaterThanOrEqual(1);
 
-    // 2. Move Jeanne FICTIVE (#A-1042, currently #2 because pancreas expert is absent) up to #1 and pin
+    // 2. Move Jeanne FICTIVE (#A-1042, currently #2 because digestive surgeon expert is absent) up to #1 and pin
     await app.inject({
       method: "POST",
       url: "/agenda/patients/A-1042/move?domain=oncology",
@@ -191,8 +194,8 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
           session_date: "2026-11-20",
           sort_strategy: "urgency_first",
           defer_incomplete_files: true,
-          available_experts: ["pancreas expert"],
-          attending_experts: ["pancreas expert"],
+          available_experts: ["digestive surgeon expert"],
+          attending_experts: ["digestive surgeon expert"],
           total_enrolled: 1,
           urgent_count: 1,
           incomplete_count: 0,
@@ -206,20 +209,20 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
               first_name: "Jeanne",
               last_name: "FICTIVE",
               date_birth: "1958-03-02",
-              urgency: "Urgent",
-              urgency_score: 2,
-              priority_level: "high",
+              discussion_priority: 1,
+              discussion_priority_code: "P1",
+              priority_source: "ai",
               is_complete: true,
               missing_count: 0,
               missing_items: [],
               care_adaptation_suggested: true,
               proposed_care_type: "Chirurgie",
-              required_experts: ["pancreas expert"],
-              present_required_experts: ["pancreas expert"],
+              required_experts: ["digestive surgeon expert"],
+              present_required_experts: ["digestive surgeon expert"],
               absent_required_experts: [],
               quorum_met: true,
               expert_coverage_ratio: 1,
-              cluster_key: "pancreas expert",
+              cluster_key: "digestive surgeon expert",
               pinned: false,
               rank_reason: "Priorité haute (Urgent)",
               mdt_date: "2026-11-06",
@@ -227,7 +230,7 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
           ],
           expert_windows: [
             {
-              expert_name: "pancreas expert",
+              expert_name: "digestive surgeon expert",
               is_attending: true,
               case_count: 1,
               urgent_case_count: 1,
